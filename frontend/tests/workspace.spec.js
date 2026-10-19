@@ -1,11 +1,14 @@
 import { test, expect } from "@playwright/test";
 
+const workspacePath = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`;
+
 // Run against a disposable backend database. This test intentionally creates a job.
 test("capture, persist, progress, contact, resume and responsive board", async ({
   page,
 }) => {
   const title = `Platform engineer ${Date.now()}`;
-  await page.goto("/");
+  await page.goto(workspacePath === "/" ? "/" : workspacePath.slice(0, -1));
+  expect(new URL(page.url()).pathname).toBe(workspacePath);
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -58,6 +61,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
     .click();
   const resume = page.getByRole("link", { name: /demo-resume.pdf/ });
   await expect(resume).toBeVisible();
+  await expect(resume).toHaveAttribute("href", new RegExp(`^${workspacePath}api/v1/resumes/`));
   const downloadEvent = page.waitForEvent("download");
   await resume.click();
   expect((await downloadEvent).suggestedFilename()).toBe("demo-resume.pdf");
@@ -85,7 +89,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
 test("invalid login and empty intake surface recoverable errors", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto(workspacePath);
   await page.getByLabel("Workspace password").fill("incorrect-demo-password");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
@@ -107,7 +111,7 @@ test("invalid login and empty intake surface recoverable errors", async ({
 test("partial intake retains failed contact and field labels stay distinct", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto(workspacePath);
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -152,7 +156,7 @@ test("partial intake retains failed contact and field labels stay distinct", asy
 test("late detail response cannot replace pipeline after navigating back", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto(workspacePath);
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");

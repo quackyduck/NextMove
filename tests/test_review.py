@@ -93,3 +93,11 @@ def test_found_date_uses_los_angeles_when_utc_has_rolled_over(app_factory, monke
                            headers={'Authorization': 'Bearer review-agent-token'})
     assert response.status_code == 201
     assert response.json['found_date'] == '2026-10-19'
+
+
+def test_host_allowlist_rejects_unknown_and_forwarded_hosts(app_factory):
+    client = app_factory(TRUSTED_HOSTS=['tracker.example', '127.0.0.1'], TRUST_PROXY=True).test_client()
+    assert client.get('/health', base_url='https://tracker.example').status_code == 200
+    assert client.get('/health', base_url='http://127.0.0.1').status_code == 200
+    assert client.get('/health', base_url='https://evil.example',
+                      headers={'X-Forwarded-Host': 'tracker.example'}).status_code == 400

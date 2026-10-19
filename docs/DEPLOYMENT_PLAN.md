@@ -2,6 +2,14 @@
 
 Prepared October 19, 2026. This is an execution checklist for a future deployment; creating this document does not provision infrastructure or publish the app.
 
+Demo scope update, October 19: the user selected `/nextmove/` on the existing
+host, an empty hosted workspace, a homepage link, and persistent login throttling.
+They explicitly deferred backups/recovery testing. [Production preparation](PRODUCTION_PREPARATION.md)
+records this superseding scope and the uninstalled nginx/systemd configuration.
+Docker/Caddy are not required for this demo. Statements below about absent
+manifests or process-local throttling describe the original baseline. Production
+credentials, Linux capacity, and public acceptance remain pending.
+
 ## Target and release scope
 
 Deploy the existing manual tracker first: password login, job intake, table/board, stages, contacts, activity, next actions, and private resume versions. Manual posting descriptions remain sufficient. Add Celery/Redis extraction in a subsequent independently tested release; it is not a prerequisite for the manual tracker.

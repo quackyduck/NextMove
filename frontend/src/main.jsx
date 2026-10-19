@@ -4,7 +4,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "./style.css";
 
 import { stages, outcomes, label, blank } from "./workflow.js";
-import { api, setCsrf } from "./api.js";
+import { api, apiUrl, setCsrf } from "./api.js";
 import { Field, JobFields } from "./components.jsx";
 
 function App() {
@@ -744,7 +744,7 @@ function App() {
                       <a
                         className="resume-link"
                         key={r.id}
-                        href={`/api/v1/resumes/${r.id}/download`}
+                        href={apiUrl(`/resumes/${r.id}/download`)}
                       >
                         ↓ {r.original_filename || r.filename || "Resume"}
                         <small>

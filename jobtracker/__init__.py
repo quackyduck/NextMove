@@ -1,5 +1,6 @@
 """Application factory for the private Job Tracker."""
 import os
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -20,8 +21,12 @@ def create_app(test_config=None):
         AGENT_API_TOKEN=os.getenv('AGENT_API_TOKEN'),
         DATABASE_URL=os.getenv('DATABASE_URL', f'sqlite:///{Path(app.instance_path) / "jobtracker.sqlite3"}'),
         UPLOAD_FOLDER=os.getenv('UPLOAD_FOLDER', str(Path(app.instance_path) / 'resumes')),
-        FRONTEND_DIST=str(Path(__file__).resolve().parent.parent / 'frontend' / 'dist'),
+        FRONTEND_DIST=os.getenv('FRONTEND_DIST', str(Path(__file__).resolve().parent.parent / 'frontend' / 'dist')),
         TRUST_PROXY=os.getenv('TRUST_PROXY') == '1',
+        LOGIN_THROTTLE_DATABASE=os.getenv('LOGIN_THROTTLE_DATABASE'),
+        TRUSTED_HOSTS=[host.strip() for host in os.getenv('APP_ALLOWED_HOSTS', '').split(',') if host.strip()] or None,
+        APP_ROOT_PATH=os.getenv('APP_ROOT_PATH', ''),
+        SESSION_COOKIE_NAME='next_move_session',
         MAX_CONTENT_LENGTH=10 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
@@ -30,6 +35,11 @@ def create_app(test_config=None):
     )
     if test_config:
         app.config.update(test_config)
+    prefix = app.config['APP_ROOT_PATH'].rstrip('/')
+    if prefix and not re.fullmatch(r'(?:/[A-Za-z0-9_-]+)+', prefix):
+        raise RuntimeError('APP_ROOT_PATH must be empty or an absolute path of simple segments')
+    app.config['APPLICATION_ROOT'] = prefix or '/'
+    app.config['SESSION_COOKIE_PATH'] = prefix + '/'
     if app.config['TRUST_PROXY']:
         # Only enable behind exactly one reverse proxy on a private connection.
         # Trust its scheme, but keep the original Host for origin validation.
@@ -47,7 +57,8 @@ def create_app(test_config=None):
         raise RuntimeError('Production SECRET_KEY must contain at least 32 characters')
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True, mode=0o700)
-    app.extensions['login_attempts'] = {}
+    from . import throttle
+    throttle.init_app(app)
     from . import db
     from .api import api
     from .auth import auth
@@ -87,6 +98,9 @@ def create_app(test_config=None):
         if request_is_private():
             response.headers['Cache-Control'] = 'no-store'
         return response
+    if prefix:
+        from .prefix import PrefixMount
+        app.wsgi_app = PrefixMount(app.wsgi_app, prefix)
     return app
 
 
