@@ -48,48 +48,48 @@ Create five distinct roles: Service/site, Database, API layer, Code reviews, Rel
 - [x] Inspect repository and available Numbers reference preview.
 - [x] Choose stack and document module/API ownership.
 - [x] Define stages, outcomes, dates, document handling and fallback behavior.
-- [ ] Initialize Git, ignore secrets/DB/uploads/build artifacts.
-- [ ] Create isolated Python environment and reproducible frontend dependencies.
-- [ ] Establish documented local run/test commands.
+- [x] Initialize Git, ignore secrets/DB/uploads/build artifacts.
+- [x] Create isolated Python environment and reproducible frontend dependencies.
+- [x] Establish documented local run/test commands.
 
 Exit: each module owner can work against the contract independently.
 
 ## Milestone 1 — Useful manual tracker (first local demo)
 
-1. Database agent creates SQLAlchemy models, repository/service layer, initial migration strategy and isolated tests. Enable foreign keys, WAL, bounded busy timeout; use short transactions. Stage updates and activity writes must commit atomically. Use durable IDs, ISO dates and UTC timestamps.
-2. API agent creates Flask factory, password sessions, bearer auth, CSRF, validation, job CRUD, contacts and resume upload/download. Enforce upload size/type limits, private paths, safe downloads and consistent errors. Configuration comes from environment; demo credentials are development-only and production must fail closed.
-3. Service/site agent creates responsive dashboard with summary counts, table-first view, board toggle, intake form, job details, editable progress, notes, next actions, contacts, resume upload and activity timeline. Provide accessible labels, keyboard stage controls, pending state, failures and retry.
-4. Integrate real persistent backend. Keep frontend demo/fixtures separate from actual user data.
-5. Test create → reload → edit → stage change → history, auth, invalid input, dates, upload/download and API collaboration.
-6. Start local servers bound to loopback, run browser tests, report exact demo URL, credentials/setup command and limitations.
+- [x] 1. Database agent creates SQLAlchemy models, repository/service layer, initial migration strategy and isolated tests. Enable foreign keys, WAL, bounded busy timeout; use short transactions. Stage updates and activity writes must commit atomically. Use durable IDs, ISO dates and UTC timestamps.
+- [x] 2. API agent creates Flask factory, password sessions, bearer auth, CSRF, validation, job CRUD, contacts and resume upload/download. Enforce upload size/type limits, private paths, safe downloads and consistent errors. Configuration comes from environment; demo credentials are development-only and production must fail closed.
+- [x] 3. Service/site agent creates responsive dashboard with summary counts, table-first view, board toggle, intake form, job details, editable progress, notes, next actions, contacts, resume upload and activity timeline. Provide accessible labels, keyboard stage controls, pending state, failures and retry.
+- [x] 4. Integrate real persistent backend. Keep frontend demo/fixtures separate from actual user data.
+- [x] 5. Test create → reload → edit → stage change → history, auth, invalid input, dates, upload/download and API collaboration.
+- [x] 6. Start local servers bound to loopback, run browser tests, report exact demo URL, credentials/setup command and limitations.
 
 Exit: a job can be captured manually, tracked across stages and revisited after reload without Redis or extraction. User can run this demo immediately while later modules evolve.
 
 ## Milestone 2 — Review and release foundation
 
-1. Independent code-review agent checks authorization, CSRF, upload traversal, validation, transaction behavior, user-visible errors, data loss and frontend integration.
-2. Release-manager agent creates repeatable setup/run/test scripts, environment template, CI, health checks and a deployment runbook. Add initial migration and backup/restore verification against disposable data.
-3. Primary agent resolves high-impact findings, runs Python + frontend + browser tests and records actual evidence.
-4. Add API documentation and a copyable agent example: create job, append contact, upload modified resume, read activity. Preserve earlier resume versions.
+- [x] 1. Independent code-review agent checks authorization, CSRF, upload traversal, validation, transaction behavior, user-visible errors, data loss and frontend integration.
+- [x] 2. Release-manager agent creates repeatable setup/run/test scripts, environment template, CI, health checks and a deployment runbook. Add initial migration and backup/restore verification against disposable data.
+- [x] 3. Primary agent resolves high-impact findings, runs Python + frontend + browser tests and records actual evidence.
+- [x] 4. Add API documentation and a copyable agent example: create job, append contact, upload modified resume, read activity. Preserve earlier resume versions.
 
 Exit: reproducible manual demo with documented limitations and no unresolved blocking findings.
 
 ## Milestone 3 — Asynchronous ingestion, always optional
 
-1. Add Redis/Celery worker with task status persisted in SQLite: queued, running, needs_review, failed, completed. Web process never waits for extraction.
-2. Separate URL validation, secure HTTP fetch, parsing, proposal persistence and user approval. Allow only HTTP/S, reject credentials and private/loopback/link-local/metadata destinations; revalidate DNS and redirects, pin connections or enforce egress policy against DNS rebinding. Limit timeout, redirects, response size and content type. Treat HTML as inert input.
-3. Extract schema.org JobPosting JSON-LD first, then common HTML metadata; retain source and extraction timestamp. Do not require LLMs. JS-only/blocked sites surface a helpful manual-paste fallback.
-4. Review extracted company/title/location/salary/description before applying; never overwrite edits made after task start. Add idempotency, bounded retries for transient failures, job cancellation/deletion behavior and redacted errors.
-5. Unit-test parsing fixtures and SSRF defenses; integration-test real Redis/worker success, retry, failure, restart and concurrent manual edit. Eager task tests alone do not prove queue integration.
+- [ ] 1. Add Redis/Celery worker with task status persisted in SQLite: queued, running, needs_review, failed, completed. Web process never waits for extraction.
+- [ ] 2. Separate URL validation, secure HTTP fetch, parsing, proposal persistence and user approval. Allow only HTTP/S, reject credentials and private/loopback/link-local/metadata destinations; revalidate DNS and redirects, pin connections or enforce egress policy against DNS rebinding. Limit timeout, redirects, response size and content type. Treat HTML as inert input.
+- [ ] 3. Extract schema.org JobPosting JSON-LD first, then common HTML metadata; retain source and extraction timestamp. Do not require LLMs. JS-only/blocked sites surface a helpful manual-paste fallback.
+- [ ] 4. Review extracted company/title/location/salary/description before applying; never overwrite edits made after task start. Add idempotency, bounded retries for transient failures, job cancellation/deletion behavior and redacted errors.
+- [ ] 5. Unit-test parsing fixtures and SSRF defenses; integration-test real Redis/worker success, retry, failure, restart and concurrent manual edit. Eager task tests alone do not prove queue integration.
 
 Exit demo: paste URL, keep working, review extraction or paste description when extraction fails.
 
 ## Milestone 4 — Personal workflow and migration
 
-1. Extract Numbers data read-only using a supported parser or exported CSV; do not infer rows from preview. Produce an import preview with field mapping and duplicate report before committing rows.
-2. Map spreadsheet statuses to stages/outcomes, preserve unknown values and original notes/resume references. Distinguish workbook summary cells from actual job rows.
-3. Add CSV export, import rollback/batch IDs, search/filter/sort persistence, overdue next actions and contact follow-ups.
-4. Add resume version labels, links between jobs and chosen versions, and optional resume-generated activity. Keep automated outreach/submission out of scope unless requested.
+- [ ] 1. Extract Numbers data read-only using a supported parser or exported CSV; do not infer rows from preview. Produce an import preview with field mapping and duplicate report before committing rows.
+- [ ] 2. Map spreadsheet statuses to stages/outcomes, preserve unknown values and original notes/resume references. Distinguish workbook summary cells from actual job rows.
+- [ ] 3. Add CSV export, import rollback/batch IDs, search/filter/sort persistence, overdue next actions and contact follow-ups.
+- [ ] 4. Add resume version labels, links between jobs and chosen versions, and optional resume-generated activity. Keep automated outreach/submission out of scope unless requested.
 
 Exit: imported counts and representative rows reconciled to source; full export and restore verified.
 
@@ -97,12 +97,12 @@ Exit: imported counts and representative rows reconciled to source; full export 
 
 Suggested topology: one Docker-enabled Droplet, Caddy HTTPS reverse proxy, Gunicorn Flask serving built React, worker, Redis, persistent SQLite and uploads volumes. SQLite requires durable local disk and a single app host; use one worker at first. Migrate to PostgreSQL if multi-host scaling/write contention becomes real. Do not place SQLite on ephemeral App Platform storage.
 
-1. Release manager prepares Docker/Compose, non-root processes, pinned dependencies, health checks, production env validation, domain/TLS instructions and rollback procedure.
-2. Password hash and random secret outside source control; HTTPS-only cookies, login throttling, scoped/revocable agent tokens, no broad CORS, request size limits and secure headers. No demo credentials/sample private data in production.
-3. Back up SQLite consistently with its online backup API and include uploads in a coordinated maintenance snapshot; encrypt off-host backups. Restore into a clean environment and verify job/file integrity. Define retention and rotate secrets.
-4. Verify production image locally: auth, browser flow, real queue, worker restart, persistence across recreation, migrations from prior release, backup/restore and rollback compatibility.
-5. Present evidence plus remaining blockers. Obtain user decision on domain, Droplet/account access and spending before provisioning. Deployment remains a separate decision; do not publish automatically.
-6. On approval, provision, deploy, smoke-test HTTPS/auth/agent API/queue and verify backup operation. Document deployed version and rollback command.
+- [ ] 1. Release manager prepares Docker/Compose, non-root processes, pinned dependencies, health checks, production env validation, domain/TLS instructions and rollback procedure.
+- [ ] 2. Password hash and random secret outside source control; HTTPS-only cookies, login throttling, scoped/revocable agent tokens, no broad CORS, request size limits and secure headers. No demo credentials/sample private data in production.
+- [ ] 3. Back up SQLite consistently with its online backup API and include uploads in a coordinated maintenance snapshot; encrypt off-host backups. Restore into a clean environment and verify job/file integrity. Define retention and rotate secrets.
+- [ ] 4. Verify production image locally: auth, browser flow, real queue, worker restart, persistence across recreation, migrations from prior release, backup/restore and rollback compatibility.
+- [ ] 5. Present evidence plus remaining blockers. Obtain user decision on domain, Droplet/account access and spending before provisioning. Deployment remains a separate decision; do not publish automatically.
+- [ ] 6. On approval, provision, deploy, smoke-test HTTPS/auth/agent API/queue and verify backup operation. Document deployed version and rollback command.
 
 Exit: user-approved private deployment with recoverable data and verified operations.
 
@@ -122,3 +122,7 @@ Official architecture/testing references: https://flask.palletsprojects.com/en/s
 ## Deferred decisions
 
 No decision needed to start: use table as default, optional board, local files for resumes, manual intake first. Before deployment only: domain, approved infrastructure spend/account access, backup destination. Later product choices: reminders, email/calendar integration, LLM extraction provider and multi-user support.
+
+## Current checkpoint — first local demo
+
+Milestones 0–2 are complete for the local manual tracker. Five distinct agent roles participated in two waves. Verified: 32 Python tests, 4 real Chromium browser tests, frontend build, fresh lock-based Python install, disposable coordinated backup/restore, and live bearer-authenticated agent resume upload. CI is configured but has not run remotely. See REVIEW.md and OPERATIONS.md for evidence and remaining deployment gates. Local user demo: http://127.0.0.1:5001 . Celery extraction, Numbers row import and DigitalOcean deployment remain unchecked future milestones.

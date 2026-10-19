@@ -1,0 +1,83 @@
+"""Persistence records; business changes belong in services.py."""
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .db import Base
+
+
+STAGES = ("interesting", "resume_updated", "outreach", "applied", "recruiter_interview", "hiring_manager_interview", "panel_interview", "offer")
+OUTCOMES = ("active", "rejected", "withdrawn", "closed", "accepted")
+PRIORITIES = ("low", "medium", "high")
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def new_id():
+    return str(uuid4())
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint("stage IN ('interesting','resume_updated','outreach','applied','recruiter_interview','hiring_manager_interview','panel_interview','offer')"),
+        CheckConstraint("outcome IN ('active','rejected','withdrawn','closed','accepted')"),
+        CheckConstraint("priority IN ('low','medium','high')"),
+        CheckConstraint("version > 0"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    title: Mapped[str] = mapped_column(String(500))
+    company: Mapped[str] = mapped_column(String(500), default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    found_date: Mapped[object] = mapped_column(Date)
+    description: Mapped[str] = mapped_column(Text, default="")
+    location: Mapped[str] = mapped_column(String(500), default="")
+    salary: Mapped[str] = mapped_column(String(500), default="")
+    lane: Mapped[str] = mapped_column(String(500), default="")
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    stage: Mapped[str] = mapped_column(String(40), default="interesting")
+    outcome: Mapped[str] = mapped_column(String(20), default="active")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    next_action: Mapped[str] = mapped_column(Text, default="")
+    next_action_date: Mapped[object | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class Contact(Base):
+    __tablename__ = "contacts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    name: Mapped[str] = mapped_column(String(500), default="")
+    email: Mapped[str] = mapped_column(String(500), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+    __table_args__ = (CheckConstraint("size >= 0"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    original_filename: Mapped[str] = mapped_column(String(500))
+    stored_filename: Mapped[str] = mapped_column(String(100), unique=True)
+    media_type: Mapped[str] = mapped_column(String(200))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(50))
+    message: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
