@@ -1,8 +1,9 @@
 # NextMove demo deployment preparation
 
 Prepared October 19, 2026 on `deploy/production-preparation`, based on
-`fea2185caa8f2b0797240ebf00e178fad906fe3c`. No server changes or production
-credential creation have occurred. No applicable `AGENTS.md`, `.agents`, or
+`fea2185caa8f2b0797240ebf00e178fad906fe3c`. Production credentials were created with explicit approval. A private loopback
+preview was installed and then stopped when the user required main-only deployment;
+no public nginx route or homepage link has been installed. No applicable `AGENTS.md`, `.agents`, or
 `.codex` instructions were present in this checkout or its ancestors.
 
 ## Accepted scope and pending approval
@@ -13,19 +14,22 @@ explicitly deferred backup infrastructure and recovery testing for this demo.
 These choices supersede the earlier production-plan backup/recovery requirements.
 No local data is to be migrated. The existing local workspace stays intact.
 
-Production password/hash and session-secret creation still require explicit
-per-action approval and private password handoff. Do not reuse the local demo
-password or `.env`. Agent access is disabled; Celery/Redis remain out of scope.
+Production password/hash and session-secret creation were explicitly approved
+and completed privately. Retrieval is through the ignored mode-0600 local
+`instance/deployment/nextmove-login.json`; never print or commit its contents.
+Do not reuse the local demo password or `.env`. Agent access is disabled; Celery/Redis remain out of scope.
 Do not install software, resize, open ports, or expand administrator access
 without resolving any required approval. No new DNS or certificate is needed:
 this path uses the existing nicolasmelo.com HTTPS virtual host and certificate.
 
 The separate gainesville repository has a local homepage-link change; preserve
 its existing links and all live homepage changes when applying the small patch.
-Its README says to deploy merged main, while this session explicitly requests
-the link deployment without pushing or opening a PR yet. Apply only the reviewed
-link patch as the authorized exception; never run its broad rsync --delete
-deployment script for a single-link update.
+The user now explicitly requires **all deployments from latest origin/main**.
+Both changes are pushed in unmerged draft PRs. Do not deploy either branch.
+After review/merge, fetch and verify each repository’s latest `origin/main`,
+record its exact SHA, and package only that commit; never use a stale local main
+or a branch artifact. Preserve live homepage changes when publishing its link.
+Do not run the broad rsync --delete script for a single-link update.
 
 ## Current host and capacity
 
@@ -51,7 +55,11 @@ Linux host first, or use a tightly monitored private preview only after the
 server-change approval. Avoid load/stress tests on the shared host. If it cannot
 retain a safe margin, request a resize rather than risk the existing services.
 A 1 GiB host is a more practical minimum; 2 GiB allows upgrade/recovery headroom.
-No resize or software installation is authorized by this assessment.
+No resize or global software installation was performed. Native application
+dependencies were installed inside the isolated release virtualenv. The private
+preview used about 54 MiB peak cgroup memory at idle, with no restarts, under an
+additional runtime override of MemoryHigh=96M/MemoryMax=128M. It was stopped before
+public login or load validation; this does not establish peak login capacity.
 
 ## Prepared files and prefix behavior
 
@@ -133,8 +141,9 @@ The ordinary root-path frontend build is retained in `frontend/dist`; the tested
 prefixed build is separately retained in `/tmp/nextmove-release-preview/frontend-dist`
 so the existing local demo is not broken by release assets.
 
-Before transfer, commit the reviewed app change and record the resulting SHA and
-artifact checksum; use a clean source archive plus frontend build, without local
+Before transfer, fetch latest `origin/main` after the reviewed PR is merged and
+record that exact SHA and artifact checksum. Archive that commit, never branch
+HEAD, plus its frontend build, without local
 `.env`, data, or macOS `.venv`. Build the Python virtualenv on Linux with the
 lockfile. Start the empty app privately, measure capacity, then add only the nginx
 include and homepage link when authorized. Check real public login, private APIs,
@@ -155,3 +164,19 @@ rsync --delete the homepage. No rollback has been performed during preparation.
 
 Configuration references: [nginx upstream headers](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)
 and [SQLAlchemy process pools](https://docs.sqlalchemy.org/en/20/core/pooling.html#using-connection-pools-with-multiprocessing-or-os-fork).
+
+## Paused server state after main-only instruction
+
+The installed private preview points `/opt/next-move/current` to release
+`dc361520413a2ab4eadaa17bb12433a19a618743`. Its isolated Linux virtualenv,
+root-private `/etc/next-move/production.env`, unit/drop-in, and empty durable
+workspace remain on disk. `next-move.service` is **inactive and disabled**;
+port 5001 has no listener. No nginx snippet/include or public homepage link was
+installed. `/nextmove/` still returns the original homepage fallback, not NextMove.
+The existing nginx, BuyItAgain, and homepage services remained active. No data
+was migrated, no backup infrastructure was created, and nothing was deleted.
+
+Linux validation before stopping: pip check, all 40 Python tests, and real
+production-Gunicorn smoke checks passed. NextMove PR CI passed on both push and
+pull-request events; the homepage repository reported no checks. Public login
+and final publication remain pending main merges and exact-main revalidation.
