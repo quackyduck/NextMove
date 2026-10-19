@@ -199,7 +199,7 @@ function App() {
     return (
       <main className="login">
         <div className="login-card">
-          <div className="brand-mark">f.</div>
+          <div className="brand-mark" aria-hidden="true">↗</div>
           <p className="eyebrow mt-4">YOUR NEXT CHAPTER</p>
           <h1>
             Keep your search
@@ -258,7 +258,7 @@ function App() {
             navigate("pipeline");
           }}
         >
-          <span className="brand-mark">f.</span> fieldnotes
+          <span className="brand-mark" aria-hidden="true">↗</span> Next Move
           <span className="brand-sub">JOB SEARCH WORKSPACE</span>
         </a>
         <nav aria-label="Main navigation">
@@ -831,7 +831,7 @@ function App() {
           </>
         )}
         <footer className="workspace-footer">
-          FIELDNOTES <span>A thoughtful search. A clearer next step.</span>
+          NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
         </footer>
       </main>
     </div>

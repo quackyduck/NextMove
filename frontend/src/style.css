@@ -112,8 +112,8 @@ h2 {
   border-radius: 11px;
   font-size: 31px;
   font-weight: 500;
-  letter-spacing: -3px;
-  padding-right: 4px;
+  letter-spacing: 0;
+  padding-right: 0;
 }
 .brand-sub {
   position: absolute;

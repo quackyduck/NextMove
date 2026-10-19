@@ -1,4 +1,4 @@
-# Job Tracker
+# Next Move
 
 Private, single-user job search tracker: Flask + SQLAlchemy/SQLite API, React + Bootstrap interface, password session login, and bearer-token agent access. The first demo supports manual intake, spreadsheet/board views, stage/outcome updates, notes and next actions, contacts, versioned resume uploads, and activity history.
 
