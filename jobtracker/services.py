@@ -63,7 +63,7 @@ def _payload(data, allowed):
 
 
 TEXT_FIELDS = {"title", "company", "url", "description", "location", "salary", "lane", "notes", "next_action"}
-JOB_FIELDS = TEXT_FIELDS | {"found_date", "next_action_date", "priority", "stage", "outcome"}
+JOB_FIELDS = TEXT_FIELDS | {"found_date", "next_action_date", "priority", "stage", "outcome", "outreach_completed"}
 
 
 def _text(value, field, limit=100000):
@@ -92,6 +92,10 @@ def _job_values(data):
             continue
         if field in TEXT_FIELDS:
             values[field] = _text(value, field, 500 if field in {"title", "company", "location", "salary", "lane"} else 100000)
+        elif field == "outreach_completed":
+            if type(value) is not bool:
+                raise ServiceError("outreach_completed must be true or false")
+            values[field] = value
         elif field in {"found_date", "next_action_date"}:
             values[field] = _date(value, field, optional=field == "next_action_date")
         else:
@@ -124,6 +128,8 @@ def create_job(data):
         raise ServiceError("Provide a title, posting URL, or pasted description")
     values["title"] = values.get("title") or "Untitled role"
     values.setdefault("found_date", datetime.now(ZoneInfo("America/Los_Angeles")).date())
+    if values.get("stage") == "outreach":
+        values["outreach_completed"] = True
     job = Job(**values)
     get_session().add(job)
     get_session().flush()
@@ -151,6 +157,8 @@ def update_job(job_id, data):
     values = _job_values(data)
     if "title" in values and not values["title"]:
         raise ServiceError("title cannot be empty")
+    if values.get("stage") == "outreach" and job.stage != "outreach":
+        values["outreach_completed"] = True
     changes = {}
     for field, value in values.items():
         if getattr(job, field) != value:

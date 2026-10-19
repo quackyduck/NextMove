@@ -48,3 +48,9 @@ The tool only uploads the file. It deliberately leaves progress changes to the c
 ## Not implemented in the first manual demo
 
 Queued extraction, extraction review, scoped token management, OpenAPI generation and spreadsheet import are later milestones in PLAN.md. The API accepts manually entered descriptions now; adding a URL does not yet fetch it.
+
+## Outreach badge
+
+Job JSON includes `outreach_completed` (a JSON boolean, default `false`), accepted by job POST/PATCH. Creating a role at Outreach or transitioning into Outreach sets it to `true`. Other stage changes preserve it. An explicit PATCH can mark past outreach or correct an accidental mark without changing stage; a transition into Outreach takes precedence and marks outreach completed. Changes are recorded atomically in the activity timeline and respect optimistic versions.
+
+Contacts are people you may contact; adding one does not prove contact was made and does not automatically mark outreach. A later pipeline stage also does not imply outreach occurred. The badge appears on table rows, board cards and job details while this field is true.

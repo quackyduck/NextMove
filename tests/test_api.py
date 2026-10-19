@@ -111,3 +111,17 @@ def test_upload_rejections_and_bearer_unicode(client, app):
     app.config['MAX_CONTENT_LENGTH'] = 512
     assert client.post(endpoint, data={'file': (io.BytesIO(b'A' * 1024), 'large.txt')}, headers=headers).status_code == 413
     assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+
+
+def test_outreach_badge_api_persistence_and_validation(client):
+    headers = {'Authorization': 'Bearer test-agent-token'}
+    job = client.post('/api/v1/jobs', json={'title': 'Engineer', 'stage': 'outreach'}, headers=headers).json
+    assert job['outreach_completed'] is True
+    result = client.patch(f'/api/v1/jobs/{job["id"]}', json={'stage': 'applied', 'version': job['version']}, headers=headers)
+    assert result.status_code == 200
+    assert result.json['outreach_completed'] is True
+    assert client.get('/api/v1/jobs', headers=headers).json['jobs'][0]['outreach_completed'] is True
+    result = client.patch(f'/api/v1/jobs/{job["id"]}', json={'outreach_completed': False}, headers=headers)
+    assert result.json['stage'] == 'applied'
+    assert result.json['outreach_completed'] is False
+    assert client.patch(f'/api/v1/jobs/{job["id"]}', json={'outreach_completed': 'false'}, headers=headers).status_code == 400

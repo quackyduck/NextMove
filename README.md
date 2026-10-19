@@ -42,3 +42,5 @@ Configure `AGENT_API_TOKEN` in your private `.env` and restart the server. Reque
 [DigitalOcean deployment plan](docs/DEPLOYMENT_PLAN.md) provides the phased checklist for a private preview, production preparation, HTTPS cutover, recovery, and later Celery rollout.
 
 [Production preparation](docs/PRODUCTION_PREPARATION.md) records the inspected existing host, pending user decisions, local runtime templates, persistent login defense, and remaining validation. These templates have not been installed or deployed.
+
+Outreach is both a stage and a lasting fact: entering Outreach marks **Outreach made**, which stays visible on the table and board after you progress. The checkbox in intake/details lets you record past outreach or correct it; saving a contact alone does not mark it. The schema-2 upgrade preserves evidenced outreach from existing stage history. See the [operations notes](docs/OPERATIONS.md#outreach-badge-release--schema-2) before upgrading an existing workspace.

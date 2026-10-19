@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -40,6 +40,7 @@ class Job(Base):
     lane: Mapped[str] = mapped_column(String(500), default="")
     priority: Mapped[str] = mapped_column(String(20), default="medium")
     stage: Mapped[str] = mapped_column(String(40), default="interesting")
+    outreach_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     outcome: Mapped[str] = mapped_column(String(20), default="active")
     notes: Mapped[str] = mapped_column(Text, default="")
     next_action: Mapped[str] = mapped_column(Text, default="")

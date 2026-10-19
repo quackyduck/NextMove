@@ -55,6 +55,7 @@ export function Field({
   );
 }
 export function JobFields({ values, set, detail = false }) {
+  const outreachId = useId();
   return (
     <div className="row g-3">
       <Field name="title" title="Role title" values={values} set={set} />
@@ -102,7 +103,15 @@ export function JobFields({ values, set, detail = false }) {
             title="Stage"
             options={stages}
             values={values}
-            set={set}
+            set={(next) =>
+              set({
+                ...next,
+                outreach_completed:
+                  next.stage === "outreach" && values.stage !== "outreach"
+                    ? true
+                    : next.outreach_completed,
+              })
+            }
           />
           <Field
             name="outcome"
@@ -113,6 +122,26 @@ export function JobFields({ values, set, detail = false }) {
           />
         </>
       )}
+      <div className="col-12">
+        <div className="form-check">
+          <input
+            id={outreachId}
+            className="form-check-input"
+            type="checkbox"
+            checked={Boolean(values.outreach_completed)}
+            onChange={(e) =>
+              set({ ...values, outreach_completed: e.target.checked })
+            }
+          />
+          <label className="form-check-label" htmlFor={outreachId}>
+            I reached out to a colleague or recruiter
+          </label>
+        </div>
+        <p className="form-text mb-0">
+          Keeps an outreach badge as this role progresses. Saving a contact
+          alone does not mark outreach.
+        </p>
+      </div>
       <Field name="next_action" title="Next action" values={values} set={set} />
       <Field
         name="next_action_date"
@@ -124,4 +153,15 @@ export function JobFields({ values, set, detail = false }) {
       <Field name="notes" title="Your notes" area values={values} set={set} />
     </div>
   );
+}
+
+export function OutreachBadge({ job }) {
+  return job.outreach_completed ? (
+    <span
+      className="outreach-badge"
+      title="You reached out to a colleague or recruiter for this role"
+    >
+      Outreach made
+    </span>
+  ) : null;
 }
