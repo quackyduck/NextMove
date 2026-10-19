@@ -1,0 +1,43 @@
+# Native alternative to Docker on a capacity-constrained host. Template only.
+# Uses a transient non-login identity; no administrator access/key is created.
+[Unit]
+Description=Next Move private job tracker
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=next-move
+DynamicUser=yes
+WorkingDirectory=/opt/next-move/current
+EnvironmentFile=/etc/next-move/production.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+UnsetEnvironment=APP_PASSWORD AGENT_API_TOKEN
+ExecStart=/opt/next-move/current/.venv/bin/gunicorn --config deploy/gunicorn.conf.py jobtracker:create_app()
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=next-move
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/next-move
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+TasksMax=32
+MemoryHigh=128M
+MemoryMax=192M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

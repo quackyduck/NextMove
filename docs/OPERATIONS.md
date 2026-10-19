@@ -2,6 +2,14 @@
 
 Status: local manual tracker only. No infrastructure has been provisioned and no deployment is authorized by these instructions. Celery/Redis and URL extraction are not implemented; pasted descriptions keep intake useful.
 
+Demo scope update, October 19: the user selected `/nextmove/` on the existing
+host, an empty hosted workspace, a homepage link, and persistent login throttling.
+They explicitly deferred backups/recovery testing. [Production preparation](PRODUCTION_PREPARATION.md)
+records this superseding scope and the uninstalled nginx/systemd configuration.
+Docker/Caddy are not required for this demo. Statements below about absent
+manifests or process-local throttling describe the original baseline. Production
+credentials, Linux capacity, and public acceptance remain pending.
+
 ## Local health and configuration
 
 Run `./scripts/run.sh` and check `curl --fail http://127.0.0.1:5001/health`. The health response checks database connectivity. It does not prove resume-file integrity or a functioning queue. The same Flask process serves the built frontend and API. Rebuild after frontend changes.

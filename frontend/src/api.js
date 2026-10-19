@@ -1,4 +1,5 @@
 let csrf = null;
+export const apiUrl = (path) => `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/v1${path}`;
 export async function api(path, { method = "GET", body, ...options } = {}) {
   const headers = {};
   if (csrf) headers["X-CSRF-Token"] = csrf;
@@ -6,7 +7,7 @@ export async function api(path, { method = "GET", body, ...options } = {}) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(body);
   }
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(apiUrl(path), {
     method,
     body,
     headers,

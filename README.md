@@ -40,3 +40,5 @@ Configure `AGENT_API_TOKEN` in your private `.env` and restart the server. Reque
 [Implementation plan and milestone checklist](docs/PLAN.md) describes the parallel agent roles and incremental demos. [Operations and deployment runbook](docs/OPERATIONS.md) includes verified local backup/restore and the gates for a future private DigitalOcean deployment. Nothing has been provisioned or deployed.
 
 [DigitalOcean deployment plan](docs/DEPLOYMENT_PLAN.md) provides the phased checklist for a private preview, production preparation, HTTPS cutover, recovery, and later Celery rollout.
+
+[Production preparation](docs/PRODUCTION_PREPARATION.md) records the inspected existing host, pending user decisions, local runtime templates, persistent login defense, and remaining validation. These templates have not been installed or deployed.

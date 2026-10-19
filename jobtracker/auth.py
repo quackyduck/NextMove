@@ -2,10 +2,10 @@
 from functools import wraps
 import hmac
 import secrets
-import time
 
 from flask import Blueprint, current_app, g, jsonify, request, session
 from werkzeug.security import check_password_hash
+from . import throttle
 
 auth = Blueprint('auth', __name__)
 
@@ -48,20 +48,19 @@ def login():
     origin = request.headers.get('Origin')
     if origin and origin.rstrip('/') != request.host_url.rstrip('/'):
         return error('Invalid request origin', 403)
-    remote = request.remote_addr or 'unknown'
-    now = time.monotonic()
-    attempts = current_app.extensions['login_attempts']
-    recent = [stamp for stamp in attempts.get(remote, []) if now - stamp < 300]
-    attempts[remote] = recent
-    if len(recent) >= 10:
-        return error('Too many login attempts; try again in five minutes', 429)
+    try:
+        allowed = throttle.reserve_attempt()
+    except throttle.Unavailable:
+        return error('Login temporarily unavailable; try again later', 503)
+    if not allowed:
+        response, status = error('Too many login attempts; try again in five minutes', 429)
+        response.headers['Retry-After'] = str(throttle.WINDOW_SECONDS)
+        return response, status
     payload = request.get_json(silent=True)
     password = payload.get('password') if isinstance(payload, dict) else None
     password_hash = current_app.config['APP_PASSWORD_HASH']
     if not isinstance(password, str) or not check_password_hash(password_hash, password):
-        recent.append(now)
         return error('Invalid password', 401)
-    attempts.pop(remote, None)
     session.clear()
     session['authenticated'] = True
     session['csrf_token'] = secrets.token_urlsafe(32)
