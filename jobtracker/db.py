@@ -1,8 +1,4 @@
-"""Small SQLAlchemy extension with explicit schema version checks.
-
-Version 1 is the initial schema. Subsequent schema changes must add a numbered
-migration here before changing SCHEMA_VERSION; create_all is never an upgrade.
-"""
+"""SQLAlchemy extension with transactional, numbered schema upgrades."""
 from pathlib import Path
 
 from flask import current_app
@@ -14,7 +10,7 @@ class Base(DeclarativeBase):
     pass
 
 
-SCHEMA_VERSION = 1
+from .migrations import SCHEMA_VERSION, migrate
 
 
 def init_app(app):
@@ -34,6 +30,9 @@ def init_app(app):
             cursor.close()
 
     with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            # Explicit BEGIN also makes DDL transactional on legacy sqlite3 drivers.
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
         tables = inspect(connection).get_table_names()
         if "schema_version" not in tables:
             if tables:
@@ -43,8 +42,7 @@ def init_app(app):
             connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"), {"version": SCHEMA_VERSION})
         else:
             versions = connection.execute(text("SELECT version FROM schema_version")).scalars().all()
-            if versions != [SCHEMA_VERSION]:
-                raise RuntimeError(f"Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.")
+            migrate(connection, versions)
 
     sessions = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
     app.extensions["jobtracker_db"] = {"engine": engine, "sessions": sessions}

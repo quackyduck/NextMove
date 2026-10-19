@@ -5,7 +5,7 @@ import "./style.css";
 
 import { stages, outcomes, label, blank } from "./workflow.js";
 import { api, apiUrl, setCsrf } from "./api.js";
-import { Field, JobFields } from "./components.jsx";
+import { Field, JobFields, OutreachBadge } from "./components.jsx";
 
 function App() {
   const detailRequest = useRef(0);
@@ -199,7 +199,9 @@ function App() {
     return (
       <main className="login">
         <div className="login-card">
-          <div className="brand-mark" aria-hidden="true">↗</div>
+          <div className="brand-mark" aria-hidden="true">
+            ↗
+          </div>
           <p className="eyebrow mt-4">YOUR NEXT CHAPTER</p>
           <h1>
             Keep your search
@@ -258,7 +260,10 @@ function App() {
             navigate("pipeline");
           }}
         >
-          <span className="brand-mark" aria-hidden="true">↗</span> Next Move
+          <span className="brand-mark" aria-hidden="true">
+            ↗
+          </span>{" "}
+          Next Move
           <span className="brand-sub">JOB SEARCH WORKSPACE</span>
         </a>
         <nav aria-label="Main navigation">
@@ -489,6 +494,7 @@ function App() {
                             <span className={`stage-badge stage-${j.stage}`}>
                               {label(j.stage)}
                             </span>
+                            <OutreachBadge job={j} />
                             {j.outcome !== "active" && (
                               <small className="d-block mt-1 text-secondary">
                                 {label(j.outcome)}
@@ -537,6 +543,7 @@ function App() {
                             <span className={`priority priority-${j.priority}`}>
                               ● {label(j.priority)}
                             </span>
+                            <OutreachBadge job={j} />
                             <strong>{j.title}</strong>
                             <span>{j.company || "Company to be added"}</span>
                             {j.next_action && <small>↳ {j.next_action}</small>}
@@ -653,9 +660,12 @@ function App() {
                   )}
                 </p>
               </div>
-              <span className={`stage-badge stage-${selected.stage}`}>
-                {label(selected.stage)}
-              </span>
+              <div className="d-flex align-items-center flex-wrap gap-2">
+                <span className={`stage-badge stage-${selected.stage}`}>
+                  {label(selected.stage)}
+                </span>
+                <OutreachBadge job={selected} />
+              </div>
             </header>
             {loading ? (
               <p role="status">Loading details…</p>

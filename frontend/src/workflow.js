@@ -37,6 +37,7 @@ export const blank = () => ({
   lane: "",
   priority: "medium",
   stage: "interesting",
+  outreach_completed: false,
   outcome: "active",
   notes: "",
   next_action: "",

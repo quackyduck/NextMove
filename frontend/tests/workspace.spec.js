@@ -61,7 +61,10 @@ test("capture, persist, progress, contact, resume and responsive board", async (
     .click();
   const resume = page.getByRole("link", { name: /demo-resume.pdf/ });
   await expect(resume).toBeVisible();
-  await expect(resume).toHaveAttribute("href", new RegExp(`^${workspacePath}api/v1/resumes/`));
+  await expect(resume).toHaveAttribute(
+    "href",
+    new RegExp(`^${workspacePath}api/v1/resumes/`),
+  );
   const downloadEvent = page.waitForEvent("download");
   await resume.click();
   expect((await downloadEvent).suggestedFilename()).toBe("demo-resume.pdf");
@@ -198,4 +201,60 @@ test("late detail response cannot replace pipeline after navigating back", async
   ).toBeVisible();
   await expect(page.getByText("Loading opportunities…")).not.toBeVisible();
   await expect(page.getByRole("button", { name: title })).toBeVisible();
+});
+
+test("outreach badge persists past its stage and can be corrected independently", async ({
+  page,
+}) => {
+  await page.goto(workspacePath);
+  await page
+    .getByLabel("Workspace password")
+    .fill(process.env.E2E_PASSWORD || "local-demo-only");
+  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page
+    .getByRole("button", { name: "Capture a role", exact: false })
+    .first()
+    .click();
+  const title = `Outreach retention ${Date.now()}`;
+  await page.getByLabel("Role title", { exact: true }).fill(title);
+  await page.getByRole("button", { name: "Save opportunity" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  const reachedOut = page.getByRole("checkbox", {
+    name: "I reached out to a colleague or recruiter",
+  });
+  await expect(reachedOut).not.toBeChecked();
+  await page.getByLabel("Stage", { exact: true }).selectOption("outreach");
+  await expect(reachedOut).toBeChecked();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Changes saved");
+  await page.getByLabel("Stage", { exact: true }).selectOption("applied");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Changes saved");
+  await page.reload();
+  await page.getByLabel("Search roles").fill(title);
+  const row = page.locator("tbody tr").filter({ hasText: title });
+  await expect(row).toContainText("Applied");
+  await expect(row.locator(".outreach-badge")).toHaveText("Outreach made");
+  await page.getByRole("button", { name: "Board", exact: true }).click();
+  const card = page.locator(".job-card").filter({ hasText: title });
+  await expect(card.locator(".outreach-badge")).toHaveText("Outreach made");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(card).toBeVisible();
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await card.click();
+  await expect(reachedOut).toBeChecked();
+  await reachedOut.uncheck();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Changes saved");
+  await page.reload();
+  await page.getByLabel("Search roles").fill(title);
+  await expect(
+    page.locator("tbody tr").filter({ hasText: title }),
+  ).toContainText("Applied");
+  await expect(
+    page
+      .locator("tbody tr")
+      .filter({ hasText: title })
+      .locator(".outreach-badge"),
+  ).toHaveCount(0);
 });

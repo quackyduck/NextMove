@@ -56,7 +56,7 @@ Production requires `APP_ENV=production`, a fresh random `SECRET_KEY` of at leas
 
 ## Rollback policy
 
-Keep the prior image and a coordinated pre-upgrade snapshot. Stop writers before any migration; current schema is version 1 and startup rejects unsupported/unversioned schemas. There is no automatic migration or downgrade command yet. Never run an older image against a newer schema unless compatibility has been explicitly tested. Roll back application code alone only for a compatible schema; otherwise restore the coordinated snapshot into a new directory and point the prior release at that restored data. Snapshot rollback loses changes made after the snapshot, so review that loss before switching. Smoke-test login, a known job/activity, and a resume before reopening writes.
+Keep the prior image and a coordinated pre-upgrade snapshot. Stop writers before any migration; current schema is version 2. Startup transactionally upgrades version 1 to 2 and rejects unsupported/unversioned schemas. There is no downgrade command. Never run an older image against a newer schema unless compatibility has been explicitly tested. Roll back application code alone only for a compatible schema; otherwise restore the coordinated snapshot into a new directory and point the prior release at that restored data. Snapshot rollback loses changes made after the snapshot, so review that loss before switching. Smoke-test login, a known job/activity, and a resume before reopening writes.
 
 ## Local release evidence — October 19, 2026
 
@@ -65,3 +65,13 @@ Keep the prior image and a coordinated pre-upgrade snapshot. Stop writers before
 - A fresh temporary virtualenv installed `requirements.lock.txt`, `pip check` reported no broken requirements, and the same **32 Python tests passed**. Verified on macOS/Python 3.14; GitHub's Linux workflow is prepared but has not run.
 - The backup tests included a disposable coordinated SQLite/WAL + uploads restore and corruption/non-overwrite checks. No personal data was backed up or restored during validation.
 - Shell scripts passed `bash -n`. Production image, external TLS proxy, real queue, DigitalOcean provisioning, off-host encryption/retention, and schema upgrades beyond initial version 1 remain unverified/deferred.
+
+## Outreach badge release — schema 2
+
+This release adds a persistent `outreach_completed` boolean. Version 1 databases upgrade at startup under an explicit SQLite write transaction, including the column addition, evidence-based backfill, and version change. Stop all old app/worker writers before starting the new release. Do not restart the current local demo or deploy a feature-branch artifact before the PR merges.
+
+Backfill marks only jobs currently at Outreach or whose recorded stage history includes entering/leaving Outreach. Applied/interview/offer jobs without such evidence remain unmarked; users can mark them manually. It preserves existing job IDs, versions, contacts, resume metadata/files and activity. Subsequent restarts do not repeat backfill or undo a user's correction. A migration error rolls back the schema change and leaves version 1 intact.
+
+Before upgrading a workspace with data, retain a private coordinated pre-upgrade database/files checkpoint with writers stopped. This is a release rollback checkpoint, not new scheduled/off-host backup infrastructure. Existing hosted-demo decisions deferring backup infrastructure still apply. A version-1 binary refuses version 2; code-only rollback is not supported. For rollback restore the matching pre-upgrade data checkpoint into new storage and use the previous binary, explicitly accounting for post-checkpoint writes. Do not downgrade by deleting the new column in a live database.
+
+Validation for this change is recorded in its PR. Future upgrades must add explicit numbered migrations rather than use `create_all` to alter an existing schema.
