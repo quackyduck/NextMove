@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def main():
+def run_file(spec):
     if not (Path(os.environ.get('FRONTEND_DIST', ROOT / 'frontend/dist')) / 'index.html').is_file():
         raise SystemExit('Build frontend before running UI tests')
     with tempfile.TemporaryDirectory(prefix='jobtracker-ui-') as directory:
@@ -45,7 +45,7 @@ def main():
                     time.sleep(0.2)
             else:
                 raise RuntimeError('UI test server did not become healthy')
-            return subprocess.run(['npm', 'run', 'test:e2e'], cwd=ROOT / 'frontend', env=environment).returncode
+            return subprocess.run(['npm', 'run', 'test:e2e', '--', spec], cwd=ROOT / 'frontend', env=environment).returncode
         finally:
             server.terminate()
             try:
@@ -53,6 +53,19 @@ def main():
             except subprocess.TimeoutExpired:
                 server.kill()
                 server.wait()
+
+
+def main():
+    # Each browser suite gets separate data and a fresh persistent login budget.
+    # Recovery tests deliberately perform multiple real login attempts; sharing
+    # a limiter with unrelated suites would make test order cause false failures.
+    specs = sys.argv[1:] or [str(path.relative_to(ROOT / 'frontend'))
+                            for path in sorted((ROOT / 'frontend/tests').glob('*.spec.js'))]
+    for spec in specs:
+        result = run_file(spec)
+        if result:
+            return result
+    return 0
 
 
 if __name__ == '__main__':
