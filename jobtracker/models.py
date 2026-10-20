@@ -82,3 +82,11 @@ class Activity(Base):
     message: Mapped[str] = mapped_column(Text)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceCredential(Base):
+    __tablename__ = "workspace_credentials"
+    __table_args__ = (CheckConstraint("id = 1"), CheckConstraint("session_version > 0"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False)

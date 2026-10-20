@@ -4,7 +4,7 @@ import json
 from sqlalchemy import text
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def upgrade_v1_to_v2(connection):
@@ -22,9 +22,22 @@ def upgrade_v1_to_v2(connection):
     connection.execute(text('UPDATE schema_version SET version=2'))
 
 
+def upgrade_v2_to_v3(connection):
+    connection.execute(text(
+        'CREATE TABLE workspace_credentials ('
+        'id INTEGER PRIMARY KEY CHECK (id=1), '
+        'password_hash VARCHAR(512) NOT NULL, '
+        'session_version INTEGER NOT NULL CHECK (session_version>0))'
+    ))
+    connection.execute(text('UPDATE schema_version SET version=3'))
+
+
 def migrate(connection, versions):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
         versions = [2]
+    if versions == [2]:
+        upgrade_v2_to_v3(connection)
+        versions = [3]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

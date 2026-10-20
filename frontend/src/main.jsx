@@ -7,7 +7,10 @@ import { stages, outcomes, label, blank } from "./workflow.js";
 import { api, apiUrl, setCsrf } from "./api.js";
 import { Field, JobFields, OutreachBadge } from "./components.jsx";
 
+import { PasswordSettings } from "./PasswordSettings.jsx";
+
 function App() {
+  const [passwordSettingsOpen, setPasswordSettingsOpen] = useState(false);
   const detailRequest = useRef(0);
   function navigate(next) {
     detailRequest.current += 1;
@@ -288,6 +291,13 @@ function App() {
           >
             ＋ <span>Capture a role</span>
           </button>
+          <button
+            className="nav-button"
+            disabled={busy}
+            onClick={() => setPasswordSettingsOpen(true)}
+          >
+            <span>Change password</span>
+          </button>
         </nav>
         <div className="sidebar-note">
           <span className="little-dot" /> A little progress, every day.
@@ -304,6 +314,8 @@ function App() {
               await api("/auth/logout", { method: "POST" });
               setCsrf(null);
               setAuth(false);
+              navigate("pipeline");
+              setPasswordSettingsOpen(false);
               setJobs([]);
               setSelected(null);
             })
@@ -844,6 +856,17 @@ function App() {
           NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
         </footer>
       </main>
+      {passwordSettingsOpen && (
+        <PasswordSettings
+          onClose={() => setPasswordSettingsOpen(false)}
+          onSessionExpired={() => {
+            setPasswordSettingsOpen(false);
+            setCsrf(null);
+            setAuth(false);
+            setError("Please sign in again before changing your password.");
+          }}
+        />
+      )}
     </div>
   );
 }

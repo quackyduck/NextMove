@@ -63,6 +63,8 @@ def create_app(test_config=None):
     from .api import api
     from .auth import auth
     db.init_app(app)
+    from . import credentials
+    credentials.init_app(app)
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
 
