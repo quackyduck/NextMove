@@ -18,8 +18,11 @@ def init_app(app):
 
     url = app.config["DATABASE_URL"]
     if url.startswith("sqlite:///") and not url.endswith(":memory:"):
-        Path(url.removeprefix("sqlite:///")).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(url, connect_args={"check_same_thread": False} if url.startswith("sqlite:") else {})
+        database_path = Path(url.removeprefix("sqlite:///")).expanduser().resolve()
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        database_path.touch(mode=0o600, exist_ok=True)
+        database_path.chmod(0o600)
+    engine = create_engine(url, hide_parameters=True, connect_args={"check_same_thread": False} if url.startswith("sqlite:") else {})
     if engine.dialect.name == "sqlite":
         @event.listens_for(engine, "connect")
         def configure_sqlite(connection, _):
@@ -34,6 +37,7 @@ def init_app(app):
             # Explicit BEGIN also makes DDL transactional on legacy sqlite3 drivers.
             connection.exec_driver_sql("BEGIN IMMEDIATE")
         tables = inspect(connection).get_table_names()
+        initialize_credential = "schema_version" not in tables
         if "schema_version" not in tables:
             if tables:
                 raise RuntimeError("Database has unversioned tables; back up and migrate explicitly.")
@@ -42,7 +46,11 @@ def init_app(app):
             connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"), {"version": SCHEMA_VERSION})
         else:
             versions = connection.execute(text("SELECT version FROM schema_version")).scalars().all()
+            initialize_credential = versions in ([1], [2])
             migrate(connection, versions)
+        if initialize_credential and app.config.get("APP_PASSWORD_HASH"):
+            from .credentials import bootstrap
+            bootstrap(connection, app.config["APP_PASSWORD_HASH"])
 
     sessions = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
     app.extensions["jobtracker_db"] = {"engine": engine, "sessions": sessions}

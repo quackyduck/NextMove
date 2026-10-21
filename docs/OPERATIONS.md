@@ -56,7 +56,7 @@ Production requires `APP_ENV=production`, a fresh random `SECRET_KEY` of at leas
 
 ## Rollback policy
 
-Keep the prior image and a coordinated pre-upgrade snapshot. Stop writers before any migration; current schema is version 2. Startup transactionally upgrades version 1 to 2 and rejects unsupported/unversioned schemas. There is no downgrade command. Never run an older image against a newer schema unless compatibility has been explicitly tested. Roll back application code alone only for a compatible schema; otherwise restore the coordinated snapshot into a new directory and point the prior release at that restored data. Snapshot rollback loses changes made after the snapshot, so review that loss before switching. Smoke-test login, a known job/activity, and a resume before reopening writes.
+Keep the prior image and a coordinated pre-upgrade snapshot. Stop writers before any migration; current schema is version 3. Startup transactionally upgrades versions 1/2 to 3 and rejects unsupported/unversioned schemas. There is no downgrade command. Never run an older image against a newer schema unless compatibility has been explicitly tested. Roll back application code alone only for a compatible schema; otherwise restore the coordinated snapshot into a new directory and point the prior release at that restored data. Snapshot rollback loses changes made after the snapshot, so review that loss before switching. Smoke-test login, a known job/activity, and a resume before reopening writes.
 
 ## Local release evidence — October 19, 2026
 
@@ -75,3 +75,15 @@ Backfill marks only jobs currently at Outreach or whose recorded stage history i
 Before upgrading a workspace with data, retain a private coordinated pre-upgrade database/files checkpoint with writers stopped. This is a release rollback checkpoint, not new scheduled/off-host backup infrastructure. Existing hosted-demo decisions deferring backup infrastructure still apply. A version-1 binary refuses version 2; code-only rollback is not supported. For rollback restore the matching pre-upgrade data checkpoint into new storage and use the previous binary, explicitly accounting for post-checkpoint writes. Do not downgrade by deleting the new column in a live database.
 
 Validation for this change is recorded in its PR. Future upgrades must add explicit numbered migrations rather than use `create_all` to alter an existing schema.
+
+## Password settings release — schema 3
+
+Schema 2 → 3 adds the singleton `workspace_credentials` table without modifying job/contact/resume/history records. The existing configured password hash seeds it once. Subsequent starts use the database credential and do not overwrite a UI change with an older environment value. Keep the deployment configuration/secret key intact; the app still requires production bootstrap configuration and fails closed when credentials cannot be read. SQLite workspace files are explicitly mode 0600.
+
+Existing pre-upgrade cookies have no session generation and are signed out once on deployment. Password changes rotate the current cookie/CSRF and atomically increment the stored generation, revoking other browser sessions including copied cookies. Concurrent password verification cannot overwrite a newer credential or acquire its generation. Bearer access cannot change the password.
+
+Existing coordinated SQLite + uploads snapshots include the verifier/session generation because they are part of the main database. Treat those snapshots as private credentials. Stop writers and retain a rollback checkpoint before migration. A schema-2 binary cannot open schema 3; rollback requires the matching database checkpoint and can lose later writes/password changes. A restored snapshot may reinstate an older credential/session generation: rotate `SECRET_KEY` during a full restore to invalidate all pre-restore cookies, and verify or reset the intended password before reopening access. This does not create new backup infrastructure.
+
+Administrator recovery uses the hidden interactive `flask --app jobtracker reset-workspace-password` command in the actual service runtime/configuration, under the correct data identity. Do not source the environment file into a shell, print secrets, pass a new password in command arguments, or run the command against a different database. Recovery is compare-and-swap protected and revokes all sessions. UI changes deliberately do not rewrite the root-owned environment file or any saved local password record; those older records are no longer authoritative once the user changes their password.
+
+This PR is independent of the session-expiry recovery PR (#3). Merge/rebase as needed; do not deploy a feature-branch artifact. No hosted password, local personal database, or production configuration was changed while implementing/testing it.

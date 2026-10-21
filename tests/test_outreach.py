@@ -65,6 +65,7 @@ def legacy_database(app, malformed=False):
     engine.dispose()
     filename = app.config['DATABASE_URL'].removeprefix('sqlite:///')
     with sqlite3.connect(filename) as connection:
+        connection.execute('DROP TABLE workspace_credentials')
         connection.execute('ALTER TABLE jobs DROP COLUMN outreach_completed')
         connection.execute('UPDATE schema_version SET version=1')
         if malformed:
@@ -85,7 +86,7 @@ def test_v1_migration_preserves_rows_and_backfills_only_evidence(app):
         assert services.list_contacts(reached['id'])[0]['name'] == 'Existing colleague'
         assert services.list_resumes(reached['id'])[0]['stored_filename'] == 'old.txt'
         assert len(services.list_activities(reached['id'])) == 4
-        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == 2
+        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
         services.update_job(reached['id'], {'outreach_completed': False})
     db.init_app(app)  # Restart must not re-backfill a deliberate correction.
     with app.app_context():
