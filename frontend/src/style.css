@@ -824,7 +824,8 @@ nav {
   font-weight: 600;
 }
 
-.session-recovery {
+.session-recovery,
+.password-settings {
   width: min(480px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
@@ -835,13 +836,16 @@ nav {
   background: #fafbf7;
   box-shadow: 0 20px 80px #142c3e33;
 }
-.session-recovery::backdrop {
+.session-recovery::backdrop,
+.password-settings::backdrop {
   background: #182a2377;
   backdrop-filter: blur(3px);
 }
-.session-recovery h2 {
+.session-recovery h2,
+.password-settings h2 {
   font-size: 25px;
 }
-.session-recovery p {
+.session-recovery p,
+.password-settings p {
   line-height: 1.6;
 }

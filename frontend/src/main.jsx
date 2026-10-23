@@ -9,7 +9,10 @@ import { Field, JobFields, OutreachBadge } from "./components.jsx";
 
 import { SessionRecovery } from "./SessionRecovery.jsx";
 
+import { PasswordSettings } from "./PasswordSettings.jsx";
+
 function App() {
+  const [passwordSettingsOpen, setPasswordSettingsOpen] = useState(false);
   const detailRequest = useRef(0);
   function navigate(next) {
     detailRequest.current += 1;
@@ -310,6 +313,13 @@ function App() {
           >
             ＋ <span>Capture a role</span>
           </button>
+          <button
+            className="nav-button"
+            disabled={busy}
+            onClick={() => setPasswordSettingsOpen(true)}
+          >
+            <span>Change password</span>
+          </button>
         </nav>
         <div className="sidebar-note">
           <span className="little-dot" /> A little progress, every day.
@@ -331,6 +341,8 @@ function App() {
               setReauthRequired(false);
               setCsrf(null);
               setAuth(false);
+              navigate("pipeline");
+              setPasswordSettingsOpen(false);
               setJobs([]);
               setSelected(null);
             })
@@ -872,6 +884,18 @@ function App() {
         </footer>
       </main>
       {reauthRequired && <SessionRecovery onAuthenticated={sessionRecovered} />}
+
+      {passwordSettingsOpen && (
+        <PasswordSettings
+          onClose={() => setPasswordSettingsOpen(false)}
+          onSessionExpired={() => {
+            setPasswordSettingsOpen(false);
+            setCsrf(null);
+            setAuth(false);
+            setError("Please sign in again before changing your password.");
+          }}
+        />
+      )}
     </div>
   );
 }

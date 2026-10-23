@@ -13,7 +13,7 @@ Prerequisites: Python 3.11+ (tested with 3.14), Node.js 22.12+ and npm. From the
 ./scripts/run.sh
 ```
 
-Open [http://127.0.0.1:5001](http://127.0.0.1:5001). The local development password is `local-demo-only` unless `APP_PASSWORD` or `APP_PASSWORD_HASH` is configured. No debug server or reloader is enabled. Keep the local server bound to loopback.
+Open [http://127.0.0.1:5001](http://127.0.0.1:5001). On first setup, the local development password is `local-demo-only` unless `APP_PASSWORD` or `APP_PASSWORD_HASH` is configured. After setup, the database holds the active password; environment changes do not reset it. No debug server or reloader is enabled. Keep the local server bound to loopback.
 
 Setup installs the tested Python versions from `requirements.lock.txt`, installs the frontend with `npm ci`, and builds the UI that Flask serves. It creates a private `.env` with a random session secret only when `.env` does not already exist. Existing settings and personal records are preserved. `requirements.txt` lists direct dependencies; refresh both files deliberately after testing upgrades.
 
@@ -50,3 +50,9 @@ Outreach is both a stage and a lasting fact: entering Outreach marks **Outreach 
 If your session expires or another tab changes it, a sign-in dialog opens over the current workspace. Unsaved form values and selected files remain in memory in that tab; refreshing or closing it still discards them. After signing back in, retry your action explicitly. The app never automatically repeats a save, job creation or upload. Session lifetime and server-side authentication/CSRF protection are unchanged.
 
 The browser test launcher gives each spec file separate disposable storage and a fresh persistent login budget. This lets recovery tests exercise real failed/repeated logins without exhausting the unrelated workflow suite's limiter; production limits remain enabled.
+
+## Change your password
+
+Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.
+
+The configured `APP_PASSWORD_HASH` is bootstrap-only after the credential is initialized. For administrator recovery, run `.venv/bin/flask --app jobtracker reset-workspace-password` in the intended runtime with its configuration/data access; it prompts without echo and revokes all browser sessions. Do not pass a password as a shell argument or delete the database to reset access. Production recovery must use the service's data ownership/configuration, not the local development `.env`.
