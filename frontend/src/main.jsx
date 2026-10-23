@@ -4,8 +4,10 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "./style.css";
 
 import { stages, outcomes, label, blank } from "./workflow.js";
-import { api, apiUrl, setCsrf } from "./api.js";
+import { api, apiUrl, setCsrf, onAuthenticationRequired } from "./api.js";
 import { Field, JobFields, OutreachBadge } from "./components.jsx";
+
+import { SessionRecovery } from "./SessionRecovery.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
@@ -17,6 +19,9 @@ function App() {
     setLoading(false);
     setPage(next);
   }
+
+  const [reauthRequired, setReauthRequired] = useState(false);
+  useEffect(() => onAuthenticationRequired(() => setReauthRequired(true)), []);
 
   const [auth, setAuth] = useState(null),
     [password, setPassword] = useState(""),
@@ -50,14 +55,14 @@ function App() {
         setAuth(false);
       });
   }, []);
-  async function refresh() {
-    setLoading(true);
+  async function refresh({ showLoading = page === "pipeline" } = {}) {
+    if (showLoading) setLoading(true);
     try {
       setJobs((await api("/jobs")).jobs);
     } catch (e) {
-      setError(e.message);
+      if (!e.authenticationRequired) setError(e.message);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }
   useEffect(() => {
@@ -70,7 +75,7 @@ function App() {
     try {
       await fn();
     } catch (e) {
-      setError(e.message);
+      if (!e.authenticationRequired) setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -93,7 +98,8 @@ function App() {
       setSelected(fresh);
       setExtras({ ...contacts, ...resumes, ...activities });
     } catch (e) {
-      if (request === detailRequest.current) setError(e.message);
+      if (request === detailRequest.current && !e.authenticationRequired)
+        setError(e.message);
     } finally {
       if (request === detailRequest.current) setLoading(false);
     }
@@ -105,6 +111,22 @@ function App() {
       api(`/jobs/${selected.id}/activities`),
     ]);
     setExtras({ ...contacts, ...resumes, ...activities });
+  }
+  async function sessionRecovered() {
+    setReauthRequired(false);
+    setError("");
+    setNotice(
+      "Signed back in. Your edits are still here. Retry your save, upload, or other action when ready.",
+    );
+    await refresh({ showLoading: false });
+    if (page === "detail" && selected) {
+      try {
+        // Refresh related records only; never overwrite the unsaved job form.
+        await reloadExtras();
+      } catch (e) {
+        if (!e.authenticationRequired) setError(e.message);
+      }
+    }
   }
   async function login(e) {
     e.preventDefault();
@@ -311,7 +333,12 @@ function App() {
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await api("/auth/logout", { method: "POST" });
+              try {
+                await api("/auth/logout", { method: "POST" });
+              } catch (e) {
+                if (e.status !== 401) throw e;
+              }
+              setReauthRequired(false);
               setCsrf(null);
               setAuth(false);
               navigate("pipeline");
@@ -856,6 +883,8 @@ function App() {
           NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
         </footer>
       </main>
+      {reauthRequired && <SessionRecovery onAuthenticated={sessionRecovered} />}
+
       {passwordSettingsOpen && (
         <PasswordSettings
           onClose={() => setPasswordSettingsOpen(false)}

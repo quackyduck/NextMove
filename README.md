@@ -45,6 +45,12 @@ Configure `AGENT_API_TOKEN` in your private `.env` and restart the server. Reque
 
 Outreach is both a stage and a lasting fact: entering Outreach marks **Outreach made**, which stays visible on the table and board after you progress. The checkbox in intake/details lets you record past outreach or correct it; saving a contact alone does not mark it. The schema-2 upgrade preserves evidenced outreach from existing stage history. See the [operations notes](docs/OPERATIONS.md#outreach-badge-release--schema-2) before upgrading an existing workspace.
 
+## Expired sign-in sessions
+
+If your session expires or another tab changes it, a sign-in dialog opens over the current workspace. Unsaved form values and selected files remain in memory in that tab; refreshing or closing it still discards them. After signing back in, retry your action explicitly. The app never automatically repeats a save, job creation or upload. Session lifetime and server-side authentication/CSRF protection are unchanged.
+
+The browser test launcher gives each spec file separate disposable storage and a fresh persistent login budget. This lets recovery tests exercise real failed/repeated logins without exhausting the unrelated workflow suite's limiter; production limits remain enabled.
+
 ## Change your password
 
 Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.
