@@ -22,7 +22,9 @@ Do not claim a role was applied to or a recruiter contacted merely because a res
 | Method | Path | Use |
 | --- | --- | --- |
 | GET | /jobs | List jobs in `{jobs: [...]}` |
-| POST | /jobs | Create a manual job (201) |
+| POST | /jobs | Create a job (201) |
+| POST | /jobs/extract | Start background extraction (202); does not create a role |
+| GET | /extractions/{id} | Poll preview status and extracted fields |
 | GET | /jobs/{id} | Read current job |
 | PATCH | /jobs/{id} | Update fields, optionally checking version |
 | GET | /jobs/{id}/activities | Read `{activities: [...]}` |
@@ -47,7 +49,7 @@ The tool only uploads the file. It deliberately leaves progress changes to the c
 
 ## Not implemented in the first manual demo
 
-Queued extraction, extraction review, scoped token management, OpenAPI generation and spreadsheet import are later milestones in PLAN.md. The API accepts manually entered descriptions now; adding a URL does not yet fetch it.
+Queued extraction, scoped token management, OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
 
 ## Outreach badge
 
@@ -60,3 +62,17 @@ Contacts are people you may contact; adding one does not prove contact was made 
 `POST /auth/password` accepts exactly `{ "current_password": "...", "new_password": "...", "confirm_password": "..." }`. A valid browser session and its `X-CSRF-Token` are required; even valid bearer tokens receive 403. New passwords must contain 8–128 characters and match confirmation. Wrong current password/invalid input returns 400; the persistent shared sign-in attempt budget also applies to password verification (429/Retry-After).
 
 Success returns `{ "authenticated": true, "csrf_token": "...", "message": "Password updated. Other sessions have been signed out." }`. Replace the client's CSRF token with this value. Other browser cookies are invalidated by a stored session generation; the current session is rotated and retained. A concurrent change returns 409 and clears the stale session; unavailable credential storage returns 503 and never falls back to the environment verifier. No password/hash/session generation is exposed in responses or job history. Agent token authority is unchanged by browser password changes.
+
+## URL extraction preview
+
+`POST /jobs/extract` accepts only `{ "url": "https://company.example/careers/role" }` with normal session/CSRF or bearer authorization. It returns **202** with `{ "id": "...", "status": "running" }`, a `Location` status URL, and `Retry-After: 1`, before any DNS, fetch, or parsing work. Invalid syntax returns 400; capacity exhaustion returns 429.
+
+Authenticated `GET /extractions/{id}` returns the task's `id` and `status`:
+
+- `running`: extraction is in progress.
+- `succeeded`: includes `fields` (`title`, `company`, `url`, `salary`, `notes`, `description`) and a `warnings` array. Missing fields are empty strings. Qualifications go into notes; the submitted URL is retained through redirects.
+- `failed`: includes a user-facing `error`. Private destinations, fetch/parse errors, and ambiguous multi-role pages fail the task. Task failures return HTTP 200; missing/expired previews return 404.
+
+Review/edit `fields`, then `POST /jobs` to save. Extraction never creates a pipeline role. The UI polls every 750 ms, pauses for sign-in recovery, and offers retry after a status-request failure.
+
+Fetching uses public HTTP(S) destinations on standard ports, validates all DNS answers and redirects, pins connections to validated IPs, and verifies TLS against the original hostname. It does not execute JavaScript or authenticate to job boards. Extraction prefers Schema.org JobPosting JSON-LD, with best-effort HTML fallback. See [operations](OPERATIONS.md#quick-capture-release--schema-4) for concurrency, fetch limits, expiry, and restart behavior.

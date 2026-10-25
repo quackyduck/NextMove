@@ -87,3 +87,12 @@ Existing coordinated SQLite + uploads snapshots include the verifier/session gen
 Administrator recovery uses the hidden interactive `flask --app jobtracker reset-workspace-password` command in the actual service runtime/configuration, under the correct data identity. Do not source the environment file into a shell, print secrets, pass a new password in command arguments, or run the command against a different database. Recovery is compare-and-swap protected and revokes all sessions. UI changes deliberately do not rewrite the root-owned environment file or any saved local password record; those older records are no longer authoritative once the user changes their password.
 
 This PR is independent of the session-expiry recovery PR (#3). Merge/rebase as needed; do not deploy a feature-branch artifact. No hosted password, local personal database, or production configuration was changed while implementing/testing it.
+
+
+## Quick capture release — schema 4
+
+Stop writers and take the usual database/uploads backup before upgrading. Schema 4 adds `extraction_tasks` and its creation-time index; existing records are preserved. Rollback to a schema-3 binary requires its matching database checkpoint. Migration tests verify preservation of existing role notes.
+
+The web worker runs at most two extractions in daemon threads, with private previews shared through SQLite. Limits: 2 MiB pages, four redirects, five-second socket timeouts, and a 20-second network-read budget. DNS uses the OS resolver; per-process thread slots stay bounded if it stalls. Interrupted/stale tasks fail after 60 seconds on polling or submission. Retry is explicit. Previews expire after one day and are pruned on subsequent submissions.
+
+No Redis/Celery service, dependency, or environment variable is required. The existing preloaded Gunicorn worker starts threads only after fork, on submission. Use a dedicated durable queue if execution must survive process restarts or scale beyond this single-user workspace. Previews contain page text and retain the workspace's private storage and authenticated/no-store API protections.

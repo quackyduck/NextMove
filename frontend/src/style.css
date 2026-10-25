@@ -849,3 +849,19 @@ nav {
 .password-settings p {
   line-height: 1.6;
 }
+
+.quick-capture {
+  max-width: 640px;
+  margin-inline: auto;
+}
+.quick-capture .form-footer {
+  flex-direction: column;
+}
+@media (max-width: 760px) {
+  .sidebar nav { flex-wrap: wrap; }
+  .sidebar .nav-button { flex: 1 1 auto; min-height: 44px; margin: 0; }
+  .quick-capture .form-control { font-size: 16px; min-height: 48px; }
+  .quick-capture .btn { min-height: 48px; }
+  .quick-capture .page-header { margin-bottom: 20px; }
+  .quick-capture .form-panel { padding: 20px 16px; }
+}

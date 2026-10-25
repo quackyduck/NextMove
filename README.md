@@ -2,7 +2,7 @@
 
 Private, single-user job search tracker: Flask + SQLAlchemy/SQLite API, React + Bootstrap interface, password session login, and bearer-token agent access. The first demo supports manual intake, spreadsheet/board views, stage/outcome updates, notes and next actions, contacts, versioned resume uploads, and activity history.
 
-URL extraction, Celery/Redis, Numbers import, and DigitalOcean deployment are future milestones. A posting URL is stored as a reference today; paste the description during intake.
+Use **Quick capture** to paste a posting URL, review the extracted company, title, salary, and qualifications, and save a potential role. Key qualifications are saved in notes, and the extracted description is retained. The compact view works on phones; manual intake remains available. Celery/Redis and Numbers import are future milestones.
 
 ## Run the local demo
 
@@ -56,3 +56,11 @@ The browser test launcher gives each spec file separate disposable storage and a
 Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.
 
 The configured `APP_PASSWORD_HASH` is bootstrap-only after the credential is initialized. For administrator recovery, run `.venv/bin/flask --app jobtracker reset-workspace-password` in the intended runtime with its configuration/data access; it prompts without echo and revokes all browser sessions. Do not pass a password as a shell argument or delete the database to reset access. Production recovery must use the service's data ownership/configuration, not the local development `.env`.
+
+## Quick capture from a URL
+
+Select **Quick capture**, paste a posting URL, and choose **Extract role details**. Review/edit the company, title, URL, salary, and qualifications, then **Save potential role**. Saving creates an **Interesting** role; qualifications go into notes and the description is retained. Extraction alone creates no pipeline record.
+
+Extraction runs in the background. You can navigate away and return; previews and edits survive navigation and sign-in recovery, but not a page refresh. It prefers [Schema.org JobPosting](https://schema.org/JobPosting) data, with an HTML fallback. Missing fields stay blank with a notice. Review the result, and use a direct posting URL for pages containing multiple roles.
+
+Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter details manually** preserves the URL for manual intake. No new dependency, API key, or Redis service is required. See the [API contract](docs/API.md#url-extraction-preview) for extraction details and [schema-4 operations notes](docs/OPERATIONS.md#quick-capture-release--schema-4) before upgrading.

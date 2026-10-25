@@ -169,7 +169,7 @@ def test_v2_upgrade_preserves_workspace_and_seeds_existing_bootstrap_once(app, c
     assert fresh.get('/api/v1/jobs').json['jobs'][0]['id'] == job['id']
     with upgraded.app_context():
         assert credentials.read().session_version == 1
-        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == 3
+        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
     # Pre-upgrade cookies have no generation and must be explicitly reauthenticated.
     with fresh.session_transaction() as state: state.pop('session_version')
     assert fresh.get('/api/v1/auth/session').json['authenticated'] is False
