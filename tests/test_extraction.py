@@ -1,6 +1,7 @@
 import json
 import socket
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -120,38 +121,45 @@ class Response:
 
 @pytest.fixture
 def network(monkeypatch):
+    network = SimpleNamespace(responses=[], connections=[], requests=[], tls_hosts=[])
     class Sock:
         def __init__(self, *args):
-            self.connected = None
+            pass
         def settimeout(self, value):
             pass
         def connect(self, address):
             self.connected = address
+            network.connections.append(address)
         def close(self):
             pass
+    class Context:
+        def wrap_socket(self, sock, server_hostname):
+            network.tls_hosts.append(server_hostname)
+            return sock
     class Connection:
-        sock = None
-        def __init__(self, *args, **kwargs):
-            pass
+        def __init__(self, hostname, port):
+            self.hostname, self.port = hostname, port
         def request(self, method, path, headers):
-            assert self.sock.connected == ('93.184.216.34', 80)
+            assert self.sock.connected == ('93.184.216.34', self.port)
+            network.requests.append((self.hostname, self.port, method, path, headers))
         def getresponse(self):
-            return responses.pop(0)
+            return network.responses.pop(0)
         def close(self):
             pass
-    responses = []
-    monkeypatch.setattr(socket, 'getaddrinfo', lambda host, *a, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1' if host == 'localhost' else '93.184.216.34', 80))])
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda host, port, **kw: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1' if host == 'localhost' else '93.184.216.34', port))])
     monkeypatch.setattr(socket, 'socket', Sock)
+    monkeypatch.setattr(extraction.ssl, 'create_default_context', Context)
     monkeypatch.setattr(extraction.http.client, 'HTTPConnection', Connection)
-    return responses
+    return network
 
 
 def test_fetch_and_redirect_private_rejection(network):
-    network.append(Response())
+    network.responses.append(Response())
     assert extraction.fetch_page('http://example.com') == '<h1>Engineer</h1>'
     redirect = Response(headers={'Location': 'http://localhost/internal'})
     redirect.status = 302
-    network.append(redirect)
+    network.responses.append(redirect)
     with pytest.raises(ServiceError, match='public'):
         extraction.fetch_page('http://example.com')
 
@@ -159,30 +167,30 @@ def test_fetch_and_redirect_private_rejection(network):
 def test_redirect_limit_and_relative_redirect(network):
     redirect = Response(headers={'Location': '/new'})
     redirect.status = 301
-    network.extend([redirect, Response()])
+    network.responses.extend([redirect, Response()])
     assert 'Engineer' in extraction.fetch_page('http://example.com/old')
-    network.extend([redirect] * 5)
+    network.responses.extend([redirect] * 5)
     with pytest.raises(ServiceError, match='too many'):
         extraction.fetch_page('http://example.com')
 
 
 def test_fetch_size_type_status_and_timeout(network, monkeypatch):
     monkeypatch.setattr(extraction, 'MAX_BYTES', 100)
-    network.append(Response(b'x' * 101))
+    network.responses.append(Response(b'x' * 101))
     with pytest.raises(ServiceError, match='too large'):
         extraction.fetch_page('http://example.com')
-    network.append(Response(headers={'Content-Type': 'application/pdf'}))
+    network.responses.append(Response(headers={'Content-Type': 'application/pdf'}))
     with pytest.raises(ServiceError, match='HTML'):
         extraction.fetch_page('http://example.com')
     response = Response()
     response.status = 403
-    network.append(response)
+    network.responses.append(response)
     with pytest.raises(ServiceError, match='block automated access'):
         extraction.fetch_page('http://example.com')
     class TimedOut(Response):
         def read1(self, size):
             raise TimeoutError()
-    network.append(TimedOut())
+    network.responses.append(TimedOut())
     with pytest.raises(ServiceError, match='could not be loaded'):
         extraction.fetch_page('http://example.com')
 
@@ -245,7 +253,7 @@ def test_async_failures_expiry_and_authorized_polling(client, app, monkeypatch):
         ])
         session.commit()
     assert client.get('/api/v1/extractions/interrupted').json['status'] == 'failed'
-    extraction_tasks.finish(app, 'interrupted', 'succeeded', {'fields': {}})
+    extraction_tasks.finish(app.extensions['jobtracker_db']['engine'], 'interrupted', 'succeeded', {'fields': {}})
     assert client.get('/api/v1/extractions/interrupted').json['status'] == 'failed'
     assert client.get('/api/v1/extractions/old').status_code == 404
     assert client.get('/api/v1/extractions/missing').status_code == 404
@@ -273,37 +281,11 @@ def test_v3_migration_preserves_jobs_and_adds_preview_storage(app, client):
     assert fresh.get(f'/api/v1/jobs/{job["id"]}').json['notes'] == 'Keep me'
 
 
-def test_https_pins_ip_but_verifies_original_hostname(monkeypatch):
-    from urllib.parse import urlsplit
-    connected, verified = [], []
-    class Sock:
-        def __init__(self, *args):
-            pass
-        def settimeout(self, value):
-            pass
-        def connect(self, address):
-            connected.append(address)
-        def close(self):
-            pass
-    class Context:
-        def wrap_socket(self, sock, server_hostname):
-            verified.append(server_hostname)
-            return sock
-    class Connection:
-        def __init__(self, hostname, port):
-            assert (hostname, port) == ('careers.example', 443)
-        def request(self, method, path, headers):
-            assert path == '/role?q=1'
-            assert 'Authorization' not in headers and 'Cookie' not in headers
-        def getresponse(self):
-            return Response()
-        def close(self):
-            pass
-    monkeypatch.setattr(extraction, 'public_target', lambda url: (
-        urlsplit(url), 'careers.example', (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', 443))))
-    monkeypatch.setattr(socket, 'socket', Sock)
-    monkeypatch.setattr(extraction.ssl, 'create_default_context', Context)
-    monkeypatch.setattr(extraction.http.client, 'HTTPConnection', Connection)
+def test_https_pins_ip_but_verifies_original_hostname(network):
+    network.responses.append(Response())
     assert 'Engineer' in extraction.fetch_page('https://careers.example/role?q=1')
-    assert connected == [('93.184.216.34', 443)]
-    assert verified == ['careers.example']
+    assert network.connections == [('93.184.216.34', 443)]
+    assert network.tls_hosts == ['careers.example']
+    hostname, port, method, path, headers = network.requests[0]
+    assert (hostname, port, method, path) == ('careers.example', 443, 'GET', '/role?q=1')
+    assert 'Authorization' not in headers and 'Cookie' not in headers

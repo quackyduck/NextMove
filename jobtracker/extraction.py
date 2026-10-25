@@ -86,24 +86,23 @@ def fetch_page(url):
                 raise ServiceError('This URL does not return an HTML job posting', 422)
             if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
                 raise ServiceError('The site returned an unsupported encoding. Enter details manually.', 422)
-            chunks, size = [], 0
+            body = bytearray()
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError()
                 sock.settimeout(min(5, remaining))
-                chunk = response.read1(min(65536, MAX_BYTES + 1 - size))
+                chunk = response.read1(min(65536, MAX_BYTES + 1 - len(body)))
                 if not chunk:
                     break
-                chunks.append(chunk)
-                size += len(chunk)
-                if size > MAX_BYTES:
+                body.extend(chunk)
+                if len(body) > MAX_BYTES:
                     raise ServiceError('This page is too large to import. Enter details manually.', 422)
             charset = response.headers.get_content_charset() or 'utf-8'
             try:
-                return b''.join(chunks).decode(charset, errors='replace')
+                return body.decode(charset, errors='replace')
             except LookupError:
-                return b''.join(chunks).decode('utf-8', errors='replace')
+                return body.decode('utf-8', errors='replace')
         except (OSError, http.client.HTTPException) as exc:
             raise ServiceError('The posting could not be loaded. Try again or enter details manually.', 422) from exc
         finally:
@@ -111,6 +110,9 @@ def fetch_page(url):
             if sock is not None:
                 sock.close()
     raise ServiceError('The posting redirected too many times. Use the direct posting URL.', 422)
+
+
+BLOCK_TAGS = {'p', 'div', 'li', 'section', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol'}
 
 
 class PageParser(HTMLParser):
@@ -132,7 +134,7 @@ class PageParser(HTMLParser):
             self.stack.append(tag)
             if tag == 'script' and attrs.get('type', '').lower().split(';')[0] == 'application/ld+json':
                 self.script = []
-        if not self.stack and tag in {'p', 'div', 'li', 'br', 'section', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol'}:
+        if not self.stack and tag in BLOCK_TAGS | {'br'}:
             self.text.append('\n')
         if tag in {'h1', 'title'} and not self.stack:
             self.stack.append(tag)
@@ -143,9 +145,8 @@ class PageParser(HTMLParser):
             if tag == 'script' and self.script is not None:
                 self.scripts.append(''.join(self.script))
                 self.script = None
-        if not self.stack:
-            if tag in {'p', 'div', 'li', 'section', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol'}:
-                self.text.append('\n')
+        if not self.stack and tag in BLOCK_TAGS:
+            self.text.append('\n')
 
     def handle_data(self, data):
         if self.stack:
@@ -212,12 +213,10 @@ def qualification_section(text):
     for line in text.splitlines():
         if QUALIFICATION_HEADING.match(line):
             collecting = True
+        elif re.match(r'^(?:responsibilities|benefits|compensation|salary|about (?:us|the company)|what (?:we offer|you(?:\x27|’)ll do)|equal opportunity)\b', line, re.I):
+            collecting = False
+        if collecting:
             result.append(line)
-        elif collecting:
-            if re.match(r'^(?:responsibilities|benefits|compensation|salary|about (?:us|the company)|what (?:we offer|you(?:\x27|’)ll do)|equal opportunity)\b', line, re.I):
-                collecting = False
-            else:
-                result.append(line)
     return '\n'.join(result)[:20000]
 
 

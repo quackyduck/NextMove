@@ -88,6 +88,7 @@ test("background polling keeps navigation usable and resumes after sign-in", asy
   await page.route("**/api/v1/jobs/extract", route => route.fulfill({ status: 202, json: { id: "slow-preview", status: "running" } }));
   let state = "running";
   await page.route("**/api/v1/extractions/slow-preview", route => {
+    if (state === "unavailable") return route.fulfill({ status: 503, json: { error: "Temporary status failure" } });
     if (state === "expired") return route.fulfill({ status: 401, json: { error: "Authentication required" } });
     return route.fulfill({ json: { id: "slow-preview", status: state, ...(state === "succeeded" ? { fields, warnings: [] } : {}) } });
   });
@@ -97,6 +98,11 @@ test("background polling keeps navigation usable and resumes after sign-in", asy
   await page.getByRole("button", { name: "Your pipeline", exact: false }).first().click();
   await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
   await page.getByRole("button", { name: "Quick capture", exact: false }).click();
+  state = "unavailable";
+  await expect(page.getByRole("alert")).toContainText("Temporary status failure");
+  state = "running";
+  await page.getByRole("button", { name: "Check extraction status" }).click();
+  await expect(page.getByRole("status")).toContainText("background");
   state = "expired";
   await expect(page.getByRole("dialog")).toBeVisible();
   state = "succeeded";
