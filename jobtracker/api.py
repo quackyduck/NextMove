@@ -36,6 +36,27 @@ def jobs_create():
     return jsonify(services.create_job(payload())), 201
 
 
+@api.post('/jobs/extract')
+@require_auth
+def jobs_extract():
+    from .extraction_tasks import start_extraction
+    data = payload()
+    services._payload(data, {'url'})
+    result = start_extraction(data.get('url'))
+    response = jsonify(result)
+    response.status_code = 202
+    response.headers['Location'] = request.script_root + '/api/v1/extractions/' + result['id']
+    response.headers['Retry-After'] = '1'
+    return response
+
+
+@api.get('/extractions/<task_id>')
+@require_auth
+def extraction_status(task_id):
+    from .extraction_tasks import get_extraction
+    return jsonify(get_extraction(task_id))
+
+
 @api.get('/jobs/<job_id>')
 @require_auth
 def jobs_get(job_id):

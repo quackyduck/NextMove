@@ -90,3 +90,11 @@ class WorkspaceCredential(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ExtractionTask(Base):
+    __tablename__ = "extraction_tasks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)

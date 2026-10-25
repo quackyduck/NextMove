@@ -9,6 +9,8 @@ import { Field, JobFields, OutreachBadge } from "./components.jsx";
 
 import { SessionRecovery } from "./SessionRecovery.jsx";
 
+import { QuickCapture } from "./QuickCapture.jsx";
+
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
 function App() {
@@ -304,6 +306,12 @@ function App() {
             <span className="nav-count">{jobs.length}</span>
           </button>
           <button
+            className={`nav-button ${page === "quick" ? "active" : ""}`}
+            onClick={() => { navigate("quick"); setError(""); setNotice(""); }}
+          >
+            ↗ <span>Quick capture</span>
+          </button>
+          <button
             className={`nav-button ${page === "intake" ? "active" : ""}`}
             onClick={() => {
               navigate("intake");
@@ -374,6 +382,9 @@ function App() {
             {notice}
           </div>
         )}
+        <QuickCapture hidden={page !== "quick"} busy={busy} run={run} reauthRequired={reauthRequired}
+          onSaved={async (job) => { await refresh({ showLoading: false }); await details(job); }}
+          onManual={(url) => { setDraft((current) => ({ ...current, url: url.trim() })); navigate("intake"); setError(""); }} />
         {page === "pipeline" && (
           <>
             <header className="page-header">
@@ -622,8 +633,7 @@ function App() {
             </header>
             <form className="form-panel" onSubmit={create}>
               <div className="manual-note">
-                ✎ &nbsp; Manual capture is ready. Paste the posting details
-                below; automatic extraction is coming later.
+                Paste the posting details below, or use Quick capture to extract a role from its URL.
               </div>
               <JobFields values={draft} set={setDraft} />
               <h2 className="section-heading">
