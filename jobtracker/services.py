@@ -1,15 +1,15 @@
 """Transactional domain operations shared by HTTP and future ingestion workers."""
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 import re
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm.exc import StaleDataError
 
 from .db import get_session
-from .models import Activity, Contact, Job, Resume, OUTCOMES, PRIORITIES, STAGES, now
+from .models import Activity, Contact, IngestionRequest, Job, Resume, OUTCOMES, PRIORITIES, STAGES, now
 
 
 class ServiceError(Exception):
@@ -118,8 +118,7 @@ def _activity(job_id, kind, message, details=None):
     get_session().add(Activity(job_id=job_id, kind=kind, message=message, details=details or {}))
 
 
-@transaction
-def create_job(data):
+def _create_job(data):
     _payload(data, JOB_FIELDS)
     if data.get("found_date") in (None, ""):
         data = {key: value for key, value in data.items() if key != "found_date"}
@@ -135,6 +134,29 @@ def create_job(data):
     get_session().flush()
     _activity(job.id, "created", "Job added")
     return serialize(job)
+
+
+@transaction
+def create_job(data):
+    return _create_job(data)
+
+
+@transaction
+def complete_ingestion(identifier, fields, warnings):
+    from .extraction_tasks import TASK_SECONDS
+    session = get_session()
+    # Claim under the write lock: an expired task cannot create a late role.
+    claimed = session.execute(update(IngestionRequest).where(
+        IngestionRequest.id == identifier, IngestionRequest.status == 'running',
+        IngestionRequest.created_at >= now() - timedelta(seconds=TASK_SECONDS)
+    ).values(status='saving')).rowcount
+    if not claimed:
+        return
+    task = session.get(IngestionRequest, identifier)
+    job = _create_job(fields)
+    task.status = 'succeeded'
+    task.result = {'job_id': job['id'], 'warnings': warnings}
+    # Role, activity, and idempotent success are committed together.
 
 
 def list_jobs():

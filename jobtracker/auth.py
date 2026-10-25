@@ -1,5 +1,7 @@
 """Single-user browser sessions, password changes and agent authentication."""
 from functools import wraps
+import hashlib
+import re
 import hmac
 import secrets
 
@@ -67,6 +69,25 @@ def require_auth(view):
                 expected = session.get('csrf_token', '')
                 if not supplied or not expected or not hmac.compare_digest(supplied.encode('utf-8'), expected.encode('utf-8')):
                     return error('Invalid CSRF token', 403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def require_ingest_token(view):
+    """Dedicated write-only integration credential; browser/agent access is separate."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_app.config['APP_ENV'] != 'development' and not request.is_secure:
+            return error('HTTPS required', 403)
+        expected = current_app.config.get('INGEST_API_TOKEN_SHA256') or ''
+        authorization = request.headers.get('Authorization', '')
+        scheme, _, token = authorization.partition(' ')
+        valid = (scheme.lower() == 'bearer' and 32 <= len(token) <= 256
+                 and re.fullmatch(r'[0-9a-f]{64}', expected))
+        if not valid or not hmac.compare_digest(hashlib.sha256(token.encode('utf-8')).hexdigest(), expected):
+            response, status = error('Authentication required', 401)
+            response.headers['WWW-Authenticate'] = 'Bearer realm="URL ingestion"'
+            return response, status
         return view(*args, **kwargs)
     return wrapped
 

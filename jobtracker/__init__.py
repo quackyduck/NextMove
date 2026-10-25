@@ -19,6 +19,7 @@ def create_app(test_config=None):
         SECRET_KEY=os.getenv('SECRET_KEY'),
         APP_PASSWORD_HASH=os.getenv('APP_PASSWORD_HASH'),
         AGENT_API_TOKEN=os.getenv('AGENT_API_TOKEN'),
+        INGEST_API_TOKEN_SHA256=os.getenv('INGEST_API_TOKEN_SHA256'),
         DATABASE_URL=os.getenv('DATABASE_URL', f'sqlite:///{Path(app.instance_path) / "jobtracker.sqlite3"}'),
         UPLOAD_FOLDER=os.getenv('UPLOAD_FOLDER', str(Path(app.instance_path) / 'resumes')),
         FRONTEND_DIST=os.getenv('FRONTEND_DIST', str(Path(__file__).resolve().parent.parent / 'frontend' / 'dist')),

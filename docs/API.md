@@ -76,3 +76,10 @@ Authenticated `GET /extractions/{id}` returns the task's `id` and `status`:
 Review/edit `fields`, then `POST /jobs` to save. Extraction never creates a pipeline role. The UI polls every 750 ms, pauses for sign-in recovery, and offers retry after a status-request failure.
 
 Fetching uses public HTTP(S) destinations on standard ports, validates all DNS answers and redirects, pins connections to validated IPs, and verifies TLS against the original hostname. It does not execute JavaScript or authenticate to job boards. Extraction prefers Schema.org JobPosting JSON-LD, with best-effort HTML fallback. See [operations](OPERATIONS.md#quick-capture-release--schema-4) for concurrency, fetch limits, expiry, and restart behavior.
+
+
+## Proposed URL ingestion API (draft; unavailable in production)
+
+See [the URL ingestion proposal](URL_INGESTION_PROPOSAL.md) for the security model, contract, retry semantics, setup, and rollout decisions. The draft adds `POST /ingestions` with `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns `running`, `succeeded` with `job_id`/warnings, or `failed` with an error. Successful extraction automatically saves an Interesting role, with qualifications in notes.
+
+These routes accept only a dedicated bearer token whose SHA-256 matches `INGEST_API_TOKEN_SHA256`; they reject browser sessions and the broad agent token. The credential does not grant other API access. It is disabled by default. Use `scripts/ingest_url.py --help` for the secure client example. Schema 5 is required; the implementation and activation remain subject to review.

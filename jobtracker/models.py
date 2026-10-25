@@ -98,3 +98,13 @@ class ExtractionTask(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class IngestionRequest(Base):
+    __tablename__ = "ingestion_requests"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
