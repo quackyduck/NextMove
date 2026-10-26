@@ -69,3 +69,6 @@ Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter d
 ## Draft: URL ingestion integration
 
 [Review the secure ingestion proposal](docs/URL_INGESTION_PROPOSAL.md) for an API that accepts one URL and saves the extracted role in the background. The draft includes an **Agent access** screen for creating named, expiring tokens, one-time secret display/copy, setup instructions, connection testing, last-used metadata, and revocation. `scripts/ingest_url.py --test-connection` tests a token from the agent’s machine without saving a role. No environment edit or restart is needed; no token exists until you create one. The draft has not been merged or deployed.
+### Read-only role search (draft)
+
+`GET /api/v1/jobs/search` finds explainable duplicate candidates using company, title, and/or URL. It supports an optional, separately scoped hashed bearer credential. See [the contract, secure calling examples, and matching tradeoffs](docs/saved-role-search-api.md). With the configured path mount, call `/nextmove/api/v1/jobs/search`.
