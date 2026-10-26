@@ -130,3 +130,16 @@ broad tokens retain their prior access. Revocation/expiry applies on the next
 request; an already authorized upload may finish. Existing validation and private
 storage remain in place: invalid/missing files return 400, unknown roles 404,
 oversized requests 413, and invalid/expired/revoked/wrong-scope tokens 401.
+
+## Not Interested outcome
+
+Job creation and updates accept `outcome: "not_interested"`, displayed as
+**Not Interested** in the outcome selector, role summaries, and pipeline filter.
+All existing outcome values remain valid: `active`, `rejected`, `withdrawn`,
+`closed`, and `accepted`. New roles still default to `active`.
+
+Changing an outcome does not change stage, outreach completion, contacts, or
+attachments. Normal version checks and activity history apply. Not Interested
+roles are excluded from the default Active filter and active-role counts; choose
+Not Interested or All outcomes to see them. Search summaries return the new value
+like other outcomes. This requires schema 8; see the operations migration notes.

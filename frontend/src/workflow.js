@@ -11,12 +11,14 @@ export const stages = [
 ];
 export const outcomes = [
   "active",
+  "not_interested",
   "rejected",
   "withdrawn",
   "closed",
   "accepted",
 ];
 export const label = (value) =>
+  (value === "not_interested" ? "Not Interested" : null) ||
   stages.find(([key]) => key === value)?.[1] ||
   value?.replaceAll("_", " ") ||
   "—";
