@@ -71,6 +71,37 @@ def require_auth(view):
     return wrapped
 
 
+def require_browser_auth(view):
+    @require_auth
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_app.config['APP_ENV'] != 'development' and not request.is_secure:
+            return error('HTTPS required', 403)
+        if g.auth_type != 'session':
+            return error('Browser sign-in required', 403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def require_agent_token(view=None, *, permission='roles:ingest'):
+    if view is None:
+        return lambda target: require_agent_token(target, permission=permission)
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        from .agent_tokens import authenticate
+        if current_app.config['APP_ENV'] != 'development' and not request.is_secure:
+            return error('HTTPS required', 403)
+        scheme, _, raw = request.headers.get('Authorization', '').partition(' ')
+        token = authenticate(raw, permission) if scheme.lower() == 'bearer' else None
+        if token is None:
+            response, status = error('Authentication required', 401)
+            response.headers['WWW-Authenticate'] = 'Bearer realm="NextMove agents"'
+            return response, status
+        g.agent_token = token
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @auth.get('/auth/session')
 def session_status():
     try:

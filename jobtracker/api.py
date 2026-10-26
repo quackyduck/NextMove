@@ -5,9 +5,9 @@ from pathlib import Path
 import uuid
 import zipfile
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, g, jsonify, request, send_file
 from . import services
-from .auth import require_auth
+from .auth import require_auth, require_browser_auth, require_agent_token
 from .search_access import require_search_access
 
 api = Blueprint('api', __name__)
@@ -63,6 +63,55 @@ def jobs_extract():
 def extraction_status(task_id):
     from .extraction_tasks import get_extraction
     return jsonify(get_extraction(task_id))
+
+
+@api.get('/agent-tokens')
+@require_browser_auth
+def agent_tokens_list():
+    from .agent_tokens import list_tokens
+    return jsonify(tokens=list_tokens())
+
+
+@api.post('/agent-tokens')
+@require_browser_auth
+def agent_tokens_create():
+    from .agent_tokens import create_token
+    return jsonify(create_token(payload())), 201
+
+
+@api.post('/agent-tokens/<token_id>/revoke')
+@require_browser_auth
+def agent_tokens_revoke(token_id):
+    from .agent_tokens import revoke_token
+    return jsonify(agent_token=revoke_token(token_id))
+
+
+@api.get('/agent-connection')
+@require_agent_token(permission=None)
+def agent_connection():
+    return jsonify(connected=True, agent_token=g.agent_token)
+
+
+@api.post('/ingestions')
+@require_agent_token
+def ingestions_create():
+    from .ingestion import start_ingestion
+    data = payload()
+    services._payload(data, {'url'})
+    result = start_ingestion(data.get('url'), request.headers.get('Idempotency-Key'))
+    response = jsonify(result)
+    response.status_code = 202 if result['status'] == 'running' else 200
+    response.headers['Location'] = request.script_root + '/api/v1/ingestions/' + result['id']
+    response.headers['Retry-After'] = '1'
+    return response
+
+
+@api.get('/ingestions/<task_id>')
+@require_agent_token
+def ingestions_status(task_id):
+    from .extraction_tasks import get_extraction
+    from .models import IngestionRequest
+    return jsonify(get_extraction(task_id, IngestionRequest, owner_id=g.agent_token['id']))
 
 
 @api.get('/jobs/<job_id>')

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
 
-STAGES = ("interesting", "resume_updated", "outreach", "applied", "recruiter_interview", "hiring_manager_interview", "panel_interview", "offer")
+STAGES = ("needs_review", "interesting", "resume_updated", "outreach", "applied", "recruiter_interview", "hiring_manager_interview", "panel_interview", "offer")
 OUTCOMES = ("active", "rejected", "withdrawn", "closed", "accepted")
 PRIORITIES = ("low", "medium", "high")
 
@@ -24,7 +24,7 @@ def new_id():
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        CheckConstraint("stage IN ('interesting','resume_updated','outreach','applied','recruiter_interview','hiring_manager_interview','panel_interview','offer')"),
+        CheckConstraint("stage IN ('needs_review','interesting','resume_updated','outreach','applied','recruiter_interview','hiring_manager_interview','panel_interview','offer')"),
         CheckConstraint("outcome IN ('active','rejected','withdrawn','closed','accepted')"),
         CheckConstraint("priority IN ('low','medium','high')"),
         CheckConstraint("version > 0"),
@@ -98,3 +98,27 @@ class ExtractionTask(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class IngestionRequest(Base):
+    __tablename__ = "ingestion_requests"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    token_id: Mapped[str | None] = mapped_column(ForeignKey("agent_tokens.id"), nullable=True, index=True)
+    url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class AgentToken(Base):
+    __tablename__ = "agent_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(80))
+    prefix: Mapped[str] = mapped_column(String(18))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    permissions: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

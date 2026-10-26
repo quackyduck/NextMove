@@ -865,3 +865,17 @@ nav {
   .quick-capture .page-header { margin-bottom: 20px; }
   .quick-capture .form-panel { padding: 20px 16px; }
 }
+
+.agent-access { max-width: 760px; margin-inline: auto; }
+.agent-access p, .agent-access li { font-size: 13px; line-height: 1.7; }
+.agent-access pre { padding: 14px; background: #f1f4ea; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.agent-url { overflow-wrap: anywhere; }
+.agent-token { padding: 20px 0; border-top: 1px solid #dfe5d9; }
+.agent-token h3 { font-size: 17px; overflow-wrap: anywhere; }
+.agent-token-status { font-size: 12px; font-weight: normal; }
+.agent-token dl { display: grid; grid-template-columns: 80px 1fr; gap: 4px 12px; font-size: 12px; }
+.agent-token dd { margin: 0; }
+@media (max-width: 760px) {
+  .agent-access .form-control, .agent-access .form-select { font-size: 16px; min-height: 48px; }
+  .agent-access .btn { min-height: 44px; }
+}

@@ -65,6 +65,12 @@ Extraction runs in the background. You can navigate away and return; previews an
 
 Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter details manually** preserves the URL for manual intake. No new dependency, API key, or Redis service is required. See the [API contract](docs/API.md#url-extraction-preview) for extraction details and [schema-4 operations notes](docs/OPERATIONS.md#quick-capture-release--schema-4) before upgrading.
 
-### Read-only role search (draft)
+
+## URL ingestion integration
+
+[Review the secure ingestion proposal](docs/URL_INGESTION_PROPOSAL.md) for an API that accepts one URL and saves the extracted role in the background. The feature includes an **Agent access** screen for creating named, expiring tokens, one-time secret display/copy, setup instructions, connection testing, last-used metadata, and revocation. `scripts/ingest_url.py --test-connection` tests a token from the agent’s machine without saving a role. No environment edit or restart is needed; no token exists until you create one. PR #6 is ready for review and has not been merged or deployed.
+### Read-only role search
 
 `GET /api/v1/jobs/search` finds explainable duplicate candidates using company, title, and/or URL. It supports an optional, separately scoped hashed bearer credential. See [the contract, secure calling examples, and matching tradeoffs](docs/saved-role-search-api.md). With the configured path mount, call `/nextmove/api/v1/jobs/search`.
+
+Follow the [agent setup walkthrough](docs/AGENT_SETUP.md) for secure token storage, the reusable intake skill, duplicate checking and submission. API submissions start **Needs review**; manual entries and Quick capture start **Interesting**.

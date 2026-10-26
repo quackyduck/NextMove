@@ -96,3 +96,14 @@ Stop writers and take the usual database/uploads backup before upgrading. Schema
 The web worker runs at most two extractions in daemon threads, with private previews shared through SQLite. Limits: 2 MiB pages, four redirects, five-second socket timeouts, and a 20-second network-read budget. DNS uses the OS resolver; per-process thread slots stay bounded if it stalls. Interrupted/stale tasks fail after 60 seconds on polling or submission. Retry is explicit. Previews expire after one day and are pruned on subsequent submissions.
 
 No Redis/Celery service, dependency, or environment variable is required. The existing preloaded Gunicorn worker starts threads only after fork, on submission. Use a dedicated durable queue if execution must survive process restarts or scale beyond this single-user workspace. Previews contain page text and retain the workspace's private storage and authenticated/no-store API protections.
+
+
+## API onboarding — schema 7 (not deployed)
+
+The ingestion API adds schema 5 receipts and schema 6 managed `agent_tokens` plus nullable receipt ownership. Use the standard stopped-writer database/uploads checkpoint before any eventual deployment; an older binary requires the matching checkpoint for rollback. Existing roles, credentials, previews and receipts remain intact. Pre-onboarding receipts have no owner, so new tokens cannot read them. Stored keys still prevent accidental duplicate creation.
+
+Tokens are created/revoked through browser-only, CSRF-protected Agent access; creation re-verifies the current workspace password with the shared persistent attempt budget. Only hashes and safe lifecycle metadata persist. Managed tokens do not use `INGEST_API_TOKEN_SHA256`; remove obsolete draft settings when deploying, and leave the unrelated broad agent token disabled. No tokens are seeded during migration, and no configuration restart is needed for later creation/revocation. The single-user API becomes usable when the owner creates the first token after deployment.
+
+Revocation/expiry rejects future calls while leaving other tokens and roles intact; accepted work may finish. Workspace password changes do not revoke tokens. SQLite snapshots now include verifier hashes, token lifecycle metadata and receipt ownership; treat them as private. For replacement, create a fresh token, configure/test the agent, then revoke the original. Keep the original idempotency key when retrying with the original token; a new token cannot claim the old token's key or receipt. Client-side connection checks and UI checks are non-mutating except for last-used metadata.
+
+Schema 7 rebuilds the jobs table transactionally to add the `needs_review` CHECK value. It preserves IDs, stages, versions and child records, defers foreign keys only during replacement, explicitly validates all references before commit, and retains FK enforcement. Stop writers and take the usual matching database/uploads backup before upgrading.
