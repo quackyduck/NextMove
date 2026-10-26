@@ -4,7 +4,7 @@ import json
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def upgrade_v1_to_v2(connection):
@@ -54,7 +54,7 @@ def upgrade_v5_to_v6(connection):
     connection.execute(text('UPDATE schema_version SET version=6'))
 
 
-def upgrade_v6_to_v7(connection):
+def rebuild_jobs(connection):
     from sqlalchemy import MetaData
     from sqlalchemy.schema import CreateTable
     from .models import Job
@@ -68,9 +68,18 @@ def upgrade_v6_to_v7(connection):
     connection.exec_driver_sql('DROP TABLE jobs')
     connection.exec_driver_sql('ALTER TABLE jobs_new RENAME TO jobs')
     if connection.exec_driver_sql('PRAGMA foreign_key_check').fetchall():
-        raise RuntimeError('Foreign key validation failed during review-stage migration')
+        raise RuntimeError('Foreign key validation failed during jobs migration')
     connection.exec_driver_sql('PRAGMA defer_foreign_keys=OFF')
+
+
+def upgrade_v6_to_v7(connection):
+    rebuild_jobs(connection)
     connection.execute(text('UPDATE schema_version SET version=7'))
+
+
+def upgrade_v7_to_v8(connection):
+    rebuild_jobs(connection)
+    connection.execute(text('UPDATE schema_version SET version=8'))
 
 
 def migrate(connection, versions):
@@ -92,5 +101,8 @@ def migrate(connection, versions):
     if versions == [6]:
         upgrade_v6_to_v7(connection)
         versions = [7]
+    if versions == [7]:
+        upgrade_v7_to_v8(connection)
+        versions = [8]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

@@ -107,3 +107,23 @@ Tokens are created/revoked through browser-only, CSRF-protected Agent access; cr
 Revocation/expiry rejects future calls while leaving other tokens and roles intact; accepted work may finish. Workspace password changes do not revoke tokens. SQLite snapshots now include verifier hashes, token lifecycle metadata and receipt ownership; treat them as private. For replacement, create a fresh token, configure/test the agent, then revoke the original. Keep the original idempotency key when retrying with the original token; a new token cannot claim the old token's key or receipt. Client-side connection checks and UI checks are non-mutating except for last-used metadata.
 
 Schema 7 rebuilds the jobs table transactionally to add the `needs_review` CHECK value. It preserves IDs, stages, versions and child records, defers foreign keys only during replacement, explicitly validates all references before commit, and retains FK enforcement. Stop writers and take the usual matching database/uploads backup before upgrading.
+
+## Not Interested outcome — schema 8
+
+Schema 7 → 8 expands the jobs outcome CHECK constraint to accept
+`not_interested`. SQLite requires a transactional rebuild of the jobs table;
+existing rows (including outcome, stage, version, timestamps, and notes), child
+records, and attachments remain intact. Foreign keys are deferred during the
+rebuild and checked before commit. No existing roles are reclassified. A failed
+migration rolls back the table, rows, constraint, and schema version.
+
+Before deployment, stop all writers and retain the normal coordinated database
+and uploads checkpoint. Deploy only after merge from latest `origin/main`. This
+feature does not require credentials, services, or dependencies. A schema-7 binary
+refuses schema 8: rollback requires the matching pre-upgrade checkpoint in new
+storage and can discard later changes. Do not remove the outcome from live data
+or relabel the schema version to force a downgrade.
+
+Tests cover migration preservation/rollback, database and API validation, outcome
+history, unchanged stage, restart persistence, and filtering in table/board views
+with disposable storage. Building this feature does not modify hosted records.
