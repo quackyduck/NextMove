@@ -33,6 +33,7 @@ def init_app(app):
     path.chmod(0o600)
     with closing(sqlite3.connect(path, timeout=5)) as connection:
         connection.execute('CREATE TABLE IF NOT EXISTS attempts (timestamp REAL NOT NULL)')
+        connection.execute('CREATE TABLE IF NOT EXISTS search_attempts (timestamp REAL NOT NULL)')
         connection.commit()
     app.extensions['login_throttle_path'] = path
 

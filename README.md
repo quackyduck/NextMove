@@ -64,3 +64,7 @@ Select **Quick capture**, paste a posting URL, and choose **Extract role details
 Extraction runs in the background. You can navigate away and return; previews and edits survive navigation and sign-in recovery, but not a page refresh. It prefers [Schema.org JobPosting](https://schema.org/JobPosting) data, with an HTML fallback. Missing fields stay blank with a notice. Review the result, and use a direct posting URL for pages containing multiple roles.
 
 Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter details manually** preserves the URL for manual intake. No new dependency, API key, or Redis service is required. See the [API contract](docs/API.md#url-extraction-preview) for extraction details and [schema-4 operations notes](docs/OPERATIONS.md#quick-capture-release--schema-4) before upgrading.
+
+### Read-only role search (draft)
+
+`GET /api/v1/jobs/search` finds explainable duplicate candidates using company, title, and/or URL. It supports an optional, separately scoped hashed bearer credential. See [the contract, secure calling examples, and matching tradeoffs](docs/saved-role-search-api.md). With the configured path mount, call `/nextmove/api/v1/jobs/search`.
