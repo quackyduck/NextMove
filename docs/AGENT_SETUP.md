@@ -131,7 +131,9 @@ python3 scripts/agent_example.py 'ROLE_UUID' '/absolute/path/resume.pdf' \
 ```
 
 Hosted agents may omit `--token-file` to use `NEXTMOVE_INGEST_TOKEN`. PDF, DOCX, and
-UTF-8 TXT are supported; keep files under 10 MB. Each upload adds a version and
+UTF-8 TXT are supported; keep files under 10 MB. The upload client preserves the
+file’s basename for display and downloads (without exposing its local directory).
+Names containing control characters are rejected. Each upload adds a version and
 leaves the role's stage unchanged. Creation and upload are two API calls. Keep the
 upload receipt; check in the browser before retrying an uncertain upload, because
 retries can add duplicate attachment versions. Tokens still cannot list/download

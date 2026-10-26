@@ -47,7 +47,11 @@ def main():
         parser.error("Resume file does not exist")
     if args.resume.stat().st_size > 10_000_000:
         parser.error("Resume exceeds 10 MB (leave room for multipart overhead)")
-    # Never interpolate a user-provided filename into multipart headers.
+    # Send only the basename; reject header controls and escape quoted-string syntax.
+    filename = args.resume.name
+    if any(ord(char) < 32 or ord(char) == 127 for char in filename):
+        parser.error('Resume filename must not contain control characters')
+    filename = filename.replace('\\', '\\\\').replace('"', '\\"')
     extension = args.resume.suffix.lower()
     media_types = {".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".txt": "text/plain"}
     if extension not in media_types:
@@ -59,7 +63,7 @@ def main():
         parser.error("job_id must be a UUID")
     boundary = "jobtracker-" + secrets.token_hex(24)
     body = (
-        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="revised-resume{extension}"\r\n'
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         f'Content-Type: {media_types[extension]}\r\n\r\n'
     ).encode() + args.resume.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
     request = Request(
