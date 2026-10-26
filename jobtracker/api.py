@@ -8,6 +8,7 @@ import zipfile
 from flask import Blueprint, current_app, jsonify, request, send_file
 from . import services
 from .auth import require_auth
+from .search_access import require_search_access
 
 api = Blueprint('api', __name__)
 
@@ -22,6 +23,13 @@ def payload():
     if not isinstance(value, dict):
         raise services.ServiceError('A JSON object is required', 400)
     return value
+
+
+@api.get('/jobs/search')
+@require_search_access
+def jobs_search():
+    from .search import search
+    return jsonify(search(request.args))
 
 
 @api.get('/jobs')
