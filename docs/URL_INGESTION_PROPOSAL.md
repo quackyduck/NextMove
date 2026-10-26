@@ -1,12 +1,12 @@
 # Proposal: secure URL ingestion API
 
-**Draft for review. Not merged or deployed. No production token or configuration has been changed.**
+**Ready for review. Not merged or deployed. No production token or configuration has been changed.**
 
 ## Recommendation
 
 Create a named, expiring **256-bit bearer token** in **Agent access** for each personal integration. Send the posting URL in a JSON body over HTTPS, with the token in the `Authorization` header. Keep this credential separate from your browser password and the existing broad agent token.
 
-The draft includes self-service token creation, setup instructions, connection testing, expiry, last-used metadata, and revocation. Choose **search saved roles** (`roles:search`), **add roles from URLs** (`roles:ingest`), or both. The UI defaults to both; API creation defaults to ingestion only. See the [step-by-step agent setup and reusable skill](AGENT_SETUP.md). HTTPS and header-based credentials follow [OWASP REST security guidance](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html) and the [bearer-token header convention](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1). This is an opaque API key, not an OAuth authorization server.
+The feature includes self-service token creation, setup instructions, connection testing, expiry, last-used metadata, and revocation. Choose **search saved roles** (`roles:search`), **add roles from URLs** (`roles:ingest`), or both. The UI defaults to both; API creation defaults to ingestion only. See the [step-by-step agent setup and reusable skill](AGENT_SETUP.md). HTTPS and header-based credentials follow [OWASP REST security guidance](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html) and the [bearer-token header convention](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1). This is an opaque API key, not an OAuth authorization server.
 
 ## What one request does
 
@@ -77,7 +77,7 @@ Restrict local token files with `chmod 600`. For hosted agents, put the token in
 
 `GET /api/v1/agent-connection`, authenticated with the token, returns `{ "connected": true, "agent_token": { ...metadata... } }`. It updates last-used time but creates no ingestion or role. The submit client's default API base includes `/nextmove`; setup instructions derive their URL from the actual app location. HTTPS is required outside local development.
 
-The server stores only the token's SHA-256 digest, a short display prefix, permissions, and lifecycle metadata in SQLite. The full secret is returned once, in the no-store creation response, and remains only in the current screen's memory until dismissed. No environment-file edit or server restart is needed to create or revoke tokens. The former draft `INGEST_API_TOKEN_SHA256` setting is no longer used, and broad agent access stays disabled. No managed tokens exist until a signed-in user creates one.
+The server stores only the token's SHA-256 digest, a short display prefix, permissions, and lifecycle metadata in SQLite. The full secret is returned once, in the no-store creation response, and remains only in the current screen's memory until dismissed. No environment-file edit or server restart is needed to create or revoke tokens. Production management requires HTTPS; browser and CLI connection tests refuse redirects. Invalid credentials avoid database writer locks; successful authentication rechecks revocation atomically. The former draft `INGEST_API_TOKEN_SHA256` setting is no longer used, and broad agent access stays disabled. No managed tokens exist until a signed-in user creates one.
 
 ## Limits and rollout
 
@@ -89,6 +89,6 @@ Schema **5** adds ingestion receipts; schema **6** adds managed tokens and recei
 
 Before merging, review the defaults: automatic saving, separate named tokens with 90-day expiry, a maximum of 20 active tokens, 30 new requests/hour, and permanent retry receipts. Then choose the first trusted caller. Production continues running the existing release until a separate merge/deployment decision.
 
-## Validation for this draft
+## Validation
 
-196 Python tests and 19 Chromium browser tests pass using disposable storage. The three onboarding/review browser tests also pass under `/nextmove/`; root and prefixed builds and the isolated production Gunicorn smoke pass. Tests cover search-to-ingestion, independent token scopes, one-time secrets, revocation, manual defaults, review promotion, and migration with existing contacts, resumes and history. No production records or credentials were used.
+200 Python tests and 20 Chromium browser tests pass using disposable storage. The four onboarding/review browser tests also pass under `/nextmove/`; root and prefixed builds and the isolated production Gunicorn smoke pass. Tests cover search-to-ingestion, independent token scopes, one-time secrets, revocation, manual defaults, review promotion, and migration with existing contacts, resumes and history. No production records or credentials were used.

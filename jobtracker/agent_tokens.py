@@ -83,17 +83,22 @@ def authenticate(raw, permission='roles:ingest'):
     if not isinstance(raw, str) or not 32 <= len(raw) <= 256:
         return None
     digest = hashlib.sha256(raw.encode()).hexdigest()
+    table = AgentToken.__table__
+    valid = (table.c.token_hash == digest, table.c.revoked_at.is_(None))
+    engine = current_app.extensions['jobtracker_db']['engine']
     try:
-        with current_app.extensions['jobtracker_db']['engine'].begin() as connection:
-            if connection.dialect.name == 'sqlite':
-                connection.exec_driver_sql('BEGIN IMMEDIATE')
-            row = connection.execute(select(AgentToken.__table__).where(
-                AgentToken.token_hash == digest, AgentToken.revoked_at.is_(None), AgentToken.expires_at > now()
-            )).mappings().first()
-            if row is None or not set(row['permissions']).intersection(PERMISSIONS) or (permission is not None and permission not in row['permissions']):
-                return None
-            used = now()
-            connection.execute(update(AgentToken).where(AgentToken.id == row['id']).values(last_used_at=used))
-            return metadata({**row, 'last_used_at': used})
+        # Invalid credentials need no writer lock. Scopes are immutable after creation.
+        with engine.connect() as connection:
+            row = connection.execute(select(table).where(*valid, table.c.expires_at > now())).mappings().first()
+        if row is None:
+            return None
+        allowed = set(row['permissions']).intersection(PERMISSIONS)
+        if not allowed or (permission is not None and permission not in allowed):
+            return None
+        with engine.begin() as connection:
+            # Recheck revocation/expiry atomically: a revoke between read and write wins.
+            row = connection.execute(update(table).where(*valid, table.c.expires_at > now())
+                                     .values(last_used_at=now()).returning(table)).mappings().first()
+            return metadata(row) if row else None
     except SQLAlchemyError as exc:
         raise services.ServiceError('Agent access temporarily unavailable', 503) from exc

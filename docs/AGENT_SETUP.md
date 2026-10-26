@@ -1,7 +1,7 @@
 # Set up your job intake agent
 
-This walkthrough describes draft PR #6. Use it after the PR is reviewed, merged,
-and deployed. PR #7 supplies the duplicate search; this draft connects it to
+This walkthrough describes PR #6. Use it after the PR is reviewed, merged,
+and deployed. PR #7 supplies the duplicate search; this feature connects it to
 self-service tokens. No MCP server is required: a scoped token and this client
 provide the workflow. MCP can be added later for agents that require tool discovery.
 

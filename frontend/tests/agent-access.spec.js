@@ -107,3 +107,21 @@ test("review-stage roles appear before Interesting and can be promoted", async (
   await expect(page.getByRole("status")).toContainText("Changes saved");
   await expect(page.getByLabel("Stage", { exact: true })).toHaveValue("interesting");
 });
+
+test("connection testing refuses redirects before forwarding the bearer token", async ({ page }) => {
+  await openAccess(page);
+  let forwarded = false;
+  await page.route(`**${api}/redirect-target`, route => {
+    forwarded = true;
+    return route.fulfill({ json: { connected: true, agent_token: { name: "Redirected" } } });
+  });
+  await page.route(`**${api}/agent-connection`, route => route.fulfill({
+    status: 307, headers: { Location: `${api}/redirect-target` }, body: "",
+  }));
+  await page.getByLabel("Token to test", { exact: true }).fill("disposable-test-token-" + "x".repeat(32));
+  await page.getByRole("button", { name: "Test saved token", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByLabel("Token to test", { exact: true })).toHaveValue("");
+  expect(forwarded).toBe(false);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});

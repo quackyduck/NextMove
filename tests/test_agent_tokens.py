@@ -234,3 +234,58 @@ def test_stage_upgrade_preserves_children_versions_and_foreign_key_enforcement(c
     promoted = client.patch(f"/api/v1/jobs/{job['id']}", json={'stage': 'interesting', 'version': updated.json['version']}, headers=browser)
     assert promoted.status_code == 200
     assert client.get(f"/api/v1/resumes/{resume['id']}/download").data == b'resume'
+
+
+def test_production_management_requires_https_even_with_a_valid_session(client, app):
+    browser = login(client)
+    created = create(client, browser)
+    identifier = created.json['agent_token']['id']
+    app.config['APP_ENV'] = 'production'
+    assert client.get('/api/v1/agent-tokens').status_code == 403
+    assert create(client, browser, name='Insecure').status_code == 403
+    path = f'/api/v1/agent-tokens/{identifier}/revoke'
+    assert client.post(path, headers=browser).status_code == 403
+    secure = {'base_url': 'https://localhost', 'headers': browser}
+    listed = client.get('/api/v1/agent-tokens', **secure)
+    assert listed.status_code == 200 and len(listed.json['tokens']) == 1
+    assert listed.json['tokens'][0]['status'] == 'active'
+    assert client.post(path, **secure).status_code == 200
+
+
+def test_search_uses_shared_bearer_checks_and_requires_https(client, app):
+    token = create(client, login(client), permissions=['roles:search'])
+    headers = {'Authorization': 'bEaReR ' + token.json['token']}
+    assert client.get('/api/v1/jobs/search?company=Example', headers=headers).status_code == 200
+    app.config['APP_ENV'] = 'production'
+    assert client.get('/api/v1/jobs/search?company=Example', headers=headers).status_code == 403
+    assert client.get('/api/v1/jobs/search?company=Example', headers=headers, base_url='https://localhost').status_code == 200
+
+
+def test_invalid_tokens_do_not_wait_for_the_workspace_writer_lock(client, app):
+    engine = app.extensions['jobtracker_db']['engine']
+    with engine.connect() as writer:
+        writer.exec_driver_sql('BEGIN IMMEDIATE')
+        response = client.get('/api/v1/agent-connection', headers={'Authorization': 'Bearer nm_ingest_' + 'x' * 43})
+        assert response.status_code == 401
+        writer.rollback()
+
+
+def test_revocation_between_token_lookup_and_last_used_update_wins(client, app):
+    from sqlalchemy import event
+    created = create(client, login(client))
+    engine = app.extensions['jobtracker_db']['engine']
+    revoked = False
+
+    def revoke_before_update(connection, cursor, statement, parameters, context, many):
+        nonlocal revoked
+        if statement.startswith('UPDATE agent_tokens SET last_used_at') and not revoked:
+            revoked = True
+            with engine.begin() as other:
+                other.execute(update(AgentToken).where(AgentToken.id == created.json['agent_token']['id']).values(revoked_at=now()))
+
+    event.listen(engine, 'before_cursor_execute', revoke_before_update)
+    try:
+        assert client.get('/api/v1/agent-connection', headers=bearer(created)).status_code == 401
+        assert revoked
+    finally:
+        event.remove(engine, 'before_cursor_execute', revoke_before_update)

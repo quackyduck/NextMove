@@ -98,9 +98,9 @@ The web worker runs at most two extractions in daemon threads, with private prev
 No Redis/Celery service, dependency, or environment variable is required. The existing preloaded Gunicorn worker starts threads only after fork, on submission. Use a dedicated durable queue if execution must survive process restarts or scale beyond this single-user workspace. Previews contain page text and retain the workspace's private storage and authenticated/no-store API protections.
 
 
-## Draft API onboarding — schema 7 (not deployed)
+## API onboarding — schema 7 (not deployed)
 
-The ingestion draft adds schema 5 receipts and schema 6 managed `agent_tokens` plus nullable receipt ownership. Use the standard stopped-writer database/uploads checkpoint before any eventual deployment; an older binary requires the matching checkpoint for rollback. Existing roles, credentials, previews and receipts remain intact. Pre-onboarding receipts have no owner, so new tokens cannot read them. Stored keys still prevent accidental duplicate creation.
+The ingestion API adds schema 5 receipts and schema 6 managed `agent_tokens` plus nullable receipt ownership. Use the standard stopped-writer database/uploads checkpoint before any eventual deployment; an older binary requires the matching checkpoint for rollback. Existing roles, credentials, previews and receipts remain intact. Pre-onboarding receipts have no owner, so new tokens cannot read them. Stored keys still prevent accidental duplicate creation.
 
 Tokens are created/revoked through browser-only, CSRF-protected Agent access; creation re-verifies the current workspace password with the shared persistent attempt budget. Only hashes and safe lifecycle metadata persist. Managed tokens do not use `INGEST_API_TOKEN_SHA256`; remove obsolete draft settings when deploying, and leave the unrelated broad agent token disabled. No tokens are seeded during migration, and no configuration restart is needed for later creation/revocation. The single-user API becomes usable when the owner creates the first token after deployment.
 

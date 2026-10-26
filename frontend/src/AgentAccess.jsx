@@ -19,6 +19,8 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
   const [notice, setNotice] = useState("");
   const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
 
+  const command = (args) => `python3 scripts/ingest_url.py ${args} --token-file /path/to/private/token --base-url ${base}`;
+
   async function refresh() {
     setTokens((await api("/agent-tokens")).tokens);
   }
@@ -59,7 +61,7 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
       try {
         // Credential failures belong to the agent token, not the browser session.
         const response = await fetch(apiUrl("/agent-connection"), {
-          headers: { Authorization: `Bearer ${raw}` }, credentials: "omit", cache: "no-store",
+          headers: { Authorization: `Bearer ${raw}` }, credentials: "omit", cache: "no-store", redirect: "error",
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Connection failed");
@@ -134,11 +136,11 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
         </ol>
         <p>API base URL: <code className="agent-url">{base}/api/v1</code></p>
         <p>Local client, from the project folder:</p>
-        <pre>{`python3 scripts/ingest_url.py --token-file /path/to/private/token --base-url ${base} --test-connection`}</pre>
+        <pre>{command("--test-connection")}</pre>
         <p>Check duplicates first (review possible matches before submitting):</p>
-        <pre>{`python3 scripts/ingest_url.py "POSTING_URL" --search --token-file /path/to/private/token --base-url ${base}`}</pre>
+        <pre>{command('"POSTING_URL" --search')}</pre>
         <p>Then submit a new posting for review:</p>
-        <pre>{`python3 scripts/ingest_url.py "POSTING_URL" --token-file /path/to/private/token --base-url ${base} --wait`}</pre>
+        <pre>{command('"POSTING_URL" --wait')}</pre>
         <p className="form-text mb-0">For hosted agents, inject the secret as <code>NEXTMOVE_INGEST_TOKEN</code>. Connection test: <code>GET /agent-connection</code>. Submit: <code>POST /ingestions</code> with a URL and a fresh <code>Idempotency-Key</code>; reuse that key if the request must be retried.</p>
       </section>
       <form className="form-panel mb-4" onSubmit={event => { event.preventDefault(); test(testToken); }}>

@@ -19,7 +19,7 @@ def start_ingestion(url, key):
     if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,128}', key):
         raise services.ServiceError('Idempotency-Key must contain 16–128 letters, digits, hyphens or underscores')
     url = url.strip()
-    token_id = g.ingest_token['id']
+    token_id = g.agent_token['id']
     app = current_app._get_current_object()
     engine = app.extensions['jobtracker_db']['engine']
     acquired = False
