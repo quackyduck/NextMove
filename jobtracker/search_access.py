@@ -35,6 +35,13 @@ def require_search_access(view):
             response.headers['Retry-After'] = '60'
             return response, status
         authorization = request.headers.get('Authorization', '')
+        if authorization.startswith('Bearer nm_ingest_'):
+            from .agent_tokens import authenticate
+            if current_app.config['APP_ENV'] != 'development' and not request.is_secure:
+                return error('HTTPS required', 403)
+            if authenticate(authorization[7:], 'roles:search') is None:
+                return error('Authentication required', 401)
+            return view(*args, **kwargs)
         verifier = current_app.config.get('ROLE_SEARCH_TOKEN_SHA256')
         if verifier and re.fullmatch(r'[0-9a-f]{64}', verifier) and authorization.startswith('Bearer '):
             token = authorization[7:]

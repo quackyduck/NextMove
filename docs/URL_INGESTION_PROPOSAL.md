@@ -6,14 +6,14 @@
 
 Create a named, expiring **256-bit bearer token** in **Agent access** for each personal integration. Send the posting URL in a JSON body over HTTPS, with the token in the `Authorization` header. Keep this credential separate from your browser password and the existing broad agent token.
 
-The draft includes self-service token creation, setup instructions, connection testing, expiry, last-used metadata, and revocation. The current permission is **add roles from URLs** (`roles:ingest`); search permissions belong to the separate role-search proposal. HTTPS and header-based credentials follow [OWASP REST security guidance](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html) and the [bearer-token header convention](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1). This is an opaque API key, not an OAuth authorization server.
+The draft includes self-service token creation, setup instructions, connection testing, expiry, last-used metadata, and revocation. Choose **search saved roles** (`roles:search`), **add roles from URLs** (`roles:ingest`), or both. The UI defaults to both; API creation defaults to ingestion only. See the [step-by-step agent setup and reusable skill](AGENT_SETUP.md). HTTPS and header-based credentials follow [OWASP REST security guidance](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html) and the [bearer-token header convention](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1). This is an opaque API key, not an OAuth authorization server.
 
 ## What one request does
 
 1. Authenticate, validate the URL/key, and record an ingestion request.
 2. Return **202 Accepted** immediately, before DNS or page fetching.
 3. Extract company, title, URL, salary, description, and qualifications in the background.
-4. Save one **Interesting** role, with qualifications in notes, then persist success and its `job_id` in the same database transaction.
+4. Save one **Needs review** role, with qualifications in notes, then persist success and its `job_id` in the same database transaction.
 
 Unlike mobile Quick capture, this endpoint **automatically saves** after successful extraction. It does not apply, mark outreach, or contact anyone. Missing fields stay blank, and extraction warnings are returned. Extraction failure creates no role. HTML extraction remains best effort: a readable page is not proof that the URL represents a genuine job. Review saved roles in the app.
 
@@ -38,7 +38,7 @@ The initial response contains `{ "id": "...", "status": "running" }`, a `Locatio
 
 A failed task returns `{ "id": "...", "status": "failed", "error": "..." }` with HTTP 200. Authentication fails with 401, insecure production transport with 403, bad input with 400, a reused key/different URL with 409, and exhausted capacity/rate limits with 429. An unknown status ID returns 404.
 
-The token permits only submission and reading ingestion status. It cannot list your pipeline, read existing notes/resumes, alter roles, or change your password. Responses expose ingestion IDs, saved-role IDs, warnings and errors rather than general workspace records. Browser sessions and the broad agent token do not authenticate these new routes. Each token can read only its own ingestion receipts; other tokens receive 404. Browser sessions manage tokens but do not authenticate ingestion calls.
+The ingestion permission permits submission and reading its own ingestion status. Optional search permission additionally exposes minimal matching role summaries. It cannot list your pipeline, read existing notes/resumes, alter roles, or change your password. Responses expose ingestion IDs, saved-role IDs, warnings and errors rather than general workspace records. Browser sessions and the broad agent token do not authenticate these new routes. Each token can read only its own ingestion receipts; other tokens receive 404. Browser sessions manage tokens but do not authenticate ingestion calls.
 
 ## Retry and duplicate behavior
 
@@ -65,7 +65,7 @@ python3 scripts/ingest_url.py --token-file ~/.config/nextmove/ingest-token \
   --test-connection
 ```
 
-Then submit a posting:
+Use `--search` with the URL and any known `--company`/`--title` first; skip duplicates and ask before possible matches. Then submit a new posting:
 
 ```sh
 python3 scripts/ingest_url.py 'https://company.example/careers/role' \
@@ -85,6 +85,10 @@ The implementation shares the existing two-extraction capacity limit and adds a 
 
 The lightweight background runner still does not resume interrupted tasks after a process restart. Status checks or new submissions mark stale requests failed after 60 seconds; late workers cannot save expired tasks. Use a dedicated durable queue if automatic recovery becomes necessary. Receipt storage grows over time; future retention must preserve idempotency tombstones.
 
-Schema **5** adds ingestion receipts; schema **6** adds managed tokens and receipt ownership. Existing records and previews are preserved. Any pre-onboarding draft receipts remain stored with no token owner and cannot be read by newly created tokens; their saved roles are unaffected. Deployment would require the normal stopped-writer checkpoint, migration, and rollback plan. An older binary cannot use the upgraded database. No additional service, paid dependency, or new public port is proposed.
+Schema **5** adds ingestion receipts; schema **6** adds managed tokens and receipt ownership; schema **7** adds the Needs review stage while preserving existing stages and child records. Existing records and previews are preserved. Any pre-onboarding draft receipts remain stored with no token owner and cannot be read by newly created tokens; their saved roles are unaffected. Deployment would require the normal stopped-writer checkpoint, migration, and rollback plan. An older binary cannot use the upgraded database. No additional service, paid dependency, or new public port is proposed.
 
 Before merging, review the defaults: automatic saving, separate named tokens with 90-day expiry, a maximum of 20 active tokens, 30 new requests/hour, and permanent retry receipts. Then choose the first trusted caller. Production continues running the existing release until a separate merge/deployment decision.
+
+## Validation for this draft
+
+196 Python tests and 19 Chromium browser tests pass using disposable storage. The three onboarding/review browser tests also pass under `/nextmove/`; root and prefixed builds and the isolated production Gunicorn smoke pass. Tests cover search-to-ingestion, independent token scopes, one-time secrets, revocation, manual defaults, review promotion, and migration with existing contacts, resumes and history. No production records or credentials were used.

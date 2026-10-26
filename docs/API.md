@@ -80,9 +80,9 @@ Fetching uses public HTTP(S) destinations on standard ports, validates all DNS a
 
 ## Proposed URL ingestion and managed tokens (draft)
 
-[The proposal](URL_INGESTION_PROPOSAL.md) covers onboarding, agent setup, retries, and rollout. `POST /ingestions` accepts `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns running, success with `job_id`/warnings, or failure. Successful extraction automatically saves an Interesting role, with qualifications in notes. Keys remain unique across tokens; another token cannot reuse an existing key or read its receipt.
+[The proposal](URL_INGESTION_PROPOSAL.md) covers onboarding, agent setup, retries, and rollout. `POST /ingestions` accepts `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns running, success with `job_id`/warnings, or failure. Successful extraction automatically saves a Needs review role, with qualifications in notes. Keys remain unique across tokens; another token cannot reuse an existing key or read its receipt.
 
-Only unexpired, unrevoked managed tokens with `roles:ingest` permission authenticate ingestion and connection-test calls. Browser sessions and broad agent tokens do not. `GET /agent-connection` returns connected status and safe token metadata, updates last-used time, and creates no role or ingestion. The client supports `--test-connection` without a posting URL.
+Only unexpired, unrevoked managed tokens with `roles:ingest` permission authenticate ingestion calls. `roles:search` grants `/jobs/search`; either permission allows connection testing. Browser sessions and broad agent tokens do not. `GET /agent-connection` returns connected status and safe token metadata, updates last-used time, and creates no role or ingestion. The client supports `--test-connection` without a posting URL.
 
 Browser-session-only management (CSRF required on POST):
 
@@ -94,4 +94,6 @@ Browser-session-only management (CSRF required on POST):
 
 Names are trimmed and limited to 80 characters. Creation requires current-password verification, shares the sign-in throttle, and permits at most 20 active tokens. Metadata includes `id`, `name`, `prefix`, `permissions`, `status`, `created_at`, `expires_at`, `last_used_at`, and `revoked_at`. Status is active, expired, or revoked. Missing token IDs return 404; malformed creation input or wrong passwords return 400; stale password verification or the active-token limit returns 409; throttling returns 429. APIs use no-store responses, including the one-time creation response.
 
-No token environment setting is needed. Schema 6 is required; earlier draft environment credentials are not migrated or accepted. Existing unowned receipts remain stored but inaccessible to new tokens. This draft remains unmerged and undeployed.
+No token environment setting is needed. Schema 7 is required; earlier draft environment credentials are not migrated or accepted. Existing unowned receipts remain stored but inaccessible to new tokens. This draft remains unmerged and undeployed.
+
+Token creation accepts optional `permissions`: a nonempty array of `roles:search` and/or `roles:ingest` (default ingestion only). See [agent setup](AGENT_SETUP.md). Manual creation defaults to `interesting`; ingestion always starts `needs_review`.

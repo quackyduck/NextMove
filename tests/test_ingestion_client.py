@@ -84,3 +84,33 @@ def test_connection_mode_checks_token_without_submitting_or_printing_secret(monk
     output = capsys.readouterr()
     assert TOKEN not in output.out + output.err
     assert 'connected' in output.out and 'Idempotency-Key' not in output.err
+
+
+def test_search_mode_follows_pages_without_submitting_or_printing_secret(monkeypatch, capsys):
+    monkeypatch.setenv('NEXTMOVE_INGEST_TOKEN', TOKEN)
+    monkeypatch.setattr('sys.argv', ['ingest_url.py', 'https://example.com/job?jobId=123', '--search', '--company', 'Example'])
+    requests = []
+    results = [{'matches': [{'id': 'first'}], 'next_offset': 100, 'pagination_capped': False},
+               {'matches': [{'id': 'second'}], 'next_offset': None, 'pagination_capped': False}]
+    class Opener:
+        def open(self, request, timeout):
+            requests.append(request)
+            return io.StringIO(json.dumps(results.pop(0)))
+    monkeypatch.setattr(ingest_url, 'build_opener', lambda *args: Opener())
+    assert ingest_url.main() == 0
+    assert len(requests) == 2 and all(req.data is None for req in requests)
+    assert 'offset=100' in requests[1].full_url
+    output = capsys.readouterr()
+    assert json.loads(output.out)['total'] == 2
+    assert TOKEN not in output.out + output.err and 'Idempotency-Key' not in output.err
+
+
+def test_capped_search_fails_without_partial_success(monkeypatch, capsys):
+    monkeypatch.setenv('NEXTMOVE_INGEST_TOKEN', TOKEN)
+    monkeypatch.setattr('sys.argv', ['ingest_url.py', '--search', '--company', 'Example'])
+    class Opener:
+        def open(self, request, timeout):
+            return io.StringIO(json.dumps({'matches': [], 'next_offset': None, 'pagination_capped': True}))
+    monkeypatch.setattr(ingest_url, 'build_opener', lambda *args: Opener())
+    assert ingest_url.main() == 1
+    assert not capsys.readouterr().out

@@ -7,6 +7,7 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
   const [tokens, setTokens] = useState([]);
   const [name, setName] = useState("");
   const [days, setDays] = useState("90");
+  const [permissions, setPermissions] = useState(["roles:search", "roles:ingest"]);
   const [password, setPassword] = useState("");
   const [created, setCreated] = useState(null);
   const secret = created?.token || "";
@@ -45,7 +46,7 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
     run(async () => {
       try {
         const data = await api("/agent-tokens", { method: "POST", body: {
-          name, expires_in_days: Number(days), current_password: password,
+          name, expires_in_days: Number(days), current_password: password, permissions,
         } });
         setCreated(data);
         setName("");
@@ -114,10 +115,13 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
             <select id="agent-expiry" className="form-select mb-3" value={days} onChange={e => setDays(e.target.value)}>
               <option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option>
             </select>
-            <p className="form-text">Access: add roles from URLs and check ingestion status for this token. It cannot read your pipeline, notes, or resumes, or manage tokens.</p>
+            <fieldset className="mb-3"><legend className="form-label">Permissions</legend>
+              {[["roles:search", "Search saved roles for duplicates"], ["roles:ingest", "Add roles from URLs for review"]].map(([scope, text]) => <label className="d-block" key={scope}><input type="checkbox" checked={permissions.includes(scope)} onChange={event => setPermissions(event.target.checked ? [...permissions, scope] : permissions.filter(item => item !== scope))} /> {text}</label>)}
+            </fieldset>
+            <p className="form-text">Search returns matching role summaries. Tokens cannot read notes or resumes, change existing roles, or manage tokens. New submissions start as Needs review.</p>
             <label className="form-label" htmlFor="agent-password">Current workspace password</label>
             <input id="agent-password" className="form-control mb-3" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} />
-            <button className="btn btn-primary" disabled={busy}>{busy ? "Working…" : "Create token"}</button>
+            <button className="btn btn-primary" disabled={busy || !permissions.length}>{busy ? "Working…" : "Create token"}</button>
           </fieldset>
         </form>
       )}
@@ -131,7 +135,9 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
         <p>API base URL: <code className="agent-url">{base}/api/v1</code></p>
         <p>Local client, from the project folder:</p>
         <pre>{`python3 scripts/ingest_url.py --token-file /path/to/private/token --base-url ${base} --test-connection`}</pre>
-        <p>Then submit a posting:</p>
+        <p>Check duplicates first (review possible matches before submitting):</p>
+        <pre>{`python3 scripts/ingest_url.py "POSTING_URL" --search --token-file /path/to/private/token --base-url ${base}`}</pre>
+        <p>Then submit a new posting for review:</p>
         <pre>{`python3 scripts/ingest_url.py "POSTING_URL" --token-file /path/to/private/token --base-url ${base} --wait`}</pre>
         <p className="form-text mb-0">For hosted agents, inject the secret as <code>NEXTMOVE_INGEST_TOKEN</code>. Connection test: <code>GET /agent-connection</code>. Submit: <code>POST /ingestions</code> with a URL and a fresh <code>Idempotency-Key</code>; reuse that key if the request must be retried.</p>
       </section>
@@ -148,7 +154,7 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
         {tokens.map(token => (
           <article className="agent-token" key={token.id}>
             <h3>{token.name} <span className="agent-token-status">{token.status}</span></h3>
-            <p><code>{token.prefix}…</code> · Add roles</p>
+            <p><code>{token.prefix}…</code> · {token.permissions.map(scope => scope === "roles:search" ? "Search roles" : "Add roles").join(", ")}</p>
             <dl><dt>Created</dt><dd>{formatDate(token.created_at)}</dd><dt>Expires</dt><dd>{formatDate(token.expires_at)}</dd><dt>Last used</dt><dd>{formatDate(token.last_used_at)}</dd></dl>
             {token.revoked_at ? <p className="form-text">Revoked {formatDate(token.revoked_at)}</p> : revoke === token.id ? (
               <div role="group" aria-label={`Confirm revocation of ${token.name}`}>

@@ -153,7 +153,7 @@ def complete_ingestion(identifier, fields, warnings):
     if not claimed:
         return
     task = session.get(IngestionRequest, identifier)
-    job = _create_job(fields)
+    job = _create_job({**fields, 'stage': 'needs_review'})
     task.status = 'succeeded'
     task.result = {'job_id': job['id'], 'warnings': warnings}
     # Role, activity, and idempotent success are committed together.

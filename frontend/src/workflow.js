@@ -1,4 +1,5 @@
 export const stages = [
+  ["needs_review", "Needs review"],
   ["interesting", "Interesting"],
   ["resume_updated", "Resume updated"],
   ["outreach", "Outreach"],

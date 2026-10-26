@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 from urllib.request import build_opener, HTTPRedirectHandler, Request
 from uuid import uuid4
 
@@ -25,12 +25,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('url', nargs='?', help='Job posting URL')
     parser.add_argument('--test-connection', action='store_true', help='Verify the token without creating a role')
+    parser.add_argument('--search', action='store_true', help='Search saved roles without submitting')
+    parser.add_argument('--company', help='Company search signal')
+    parser.add_argument('--title', help='Title search signal')
     parser.add_argument('--base-url', default='https://nicolasmelo.com/nextmove')
     parser.add_argument('--token-file', type=Path, help='Mode-0600 file containing only the token')
     parser.add_argument('--idempotency-key', default=None, help='Reuse this key for retries; default: new UUID')
     parser.add_argument('--wait', action='store_true', help='Poll until the role is saved or ingestion fails')
     args = parser.parse_args()
-    if not args.url and not args.test_connection:
+    if not args.url and not args.test_connection and not (args.search and (args.company or args.title)):
         parser.error('Provide a posting URL or --test-connection')
     target = urlsplit(args.base_url)
     if (not target.hostname or target.username is not None or target.password is not None
@@ -46,7 +49,7 @@ def main():
     if not 32 <= len(token) <= 256 or not token.isascii() or any(char.isspace() for char in token):
         parser.error('Provide a token using --token-file or NEXTMOVE_INGEST_TOKEN')
     key = args.idempotency_key or str(uuid4())
-    if not args.test_connection:
+    if not args.test_connection and not args.search:
         print('Idempotency-Key: ' + key, file=sys.stderr)
     endpoint = args.base_url.rstrip('/') + '/api/v1/ingestions'
     opener = build_opener(NoRedirect())
@@ -61,6 +64,20 @@ def main():
             return json.load(response)
 
     try:
+        if args.search:
+            query = {key: value for key, value in {'url': args.url, 'company': args.company, 'title': args.title}.items() if value}
+            matches = []
+            offset = 0
+            while True:
+                result = request(args.base_url.rstrip('/') + '/api/v1/jobs/search?' + urlencode({**query, 'offset': offset, 'limit': 100}))
+                matches.extend(result['matches'])
+                if result['pagination_capped']:
+                    raise ValueError('Refine the search: pagination is capped')
+                if result['next_offset'] is None:
+                    break
+                offset = result['next_offset']
+            print(json.dumps({'matches': matches, 'total': len(matches)}, indent=2))
+            return 0
         if args.test_connection:
             result = request(args.base_url.rstrip('/') + '/api/v1/agent-connection')
             print(json.dumps(result, indent=2))
@@ -80,7 +97,8 @@ def main():
         hint = 'Check the token, expiry and revocation status.' if args.test_connection else 'Check the request and reuse the same Idempotency-Key when retrying.'
         print(f'API request failed ({error.code}). {hint}', file=sys.stderr)
     except (URLError, OSError, ValueError, KeyError):
-        print('Request did not complete. Check the base URL/network and reuse the same Idempotency-Key.', file=sys.stderr)
+        hint = 'Search/check failed; do not submit until it succeeds.' if args.search or args.test_connection else 'Reuse the same Idempotency-Key when retrying.'
+        print('Request did not complete. Check the base URL/network or refine the search. ' + hint, file=sys.stderr)
     return 1
 
 

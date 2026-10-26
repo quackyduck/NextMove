@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
 
-STAGES = ("interesting", "resume_updated", "outreach", "applied", "recruiter_interview", "hiring_manager_interview", "panel_interview", "offer")
+STAGES = ("needs_review", "interesting", "resume_updated", "outreach", "applied", "recruiter_interview", "hiring_manager_interview", "panel_interview", "offer")
 OUTCOMES = ("active", "rejected", "withdrawn", "closed", "accepted")
 PRIORITIES = ("low", "medium", "high")
 
@@ -24,7 +24,7 @@ def new_id():
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        CheckConstraint("stage IN ('interesting','resume_updated','outreach','applied','recruiter_interview','hiring_manager_interview','panel_interview','offer')"),
+        CheckConstraint("stage IN ('needs_review','interesting','resume_updated','outreach','applied','recruiter_interview','hiring_manager_interview','panel_interview','offer')"),
         CheckConstraint("outcome IN ('active','rejected','withdrawn','closed','accepted')"),
         CheckConstraint("priority IN ('low','medium','high')"),
         CheckConstraint("version > 0"),

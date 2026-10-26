@@ -81,14 +81,16 @@ def require_browser_auth(view):
     return wrapped
 
 
-def require_ingest_token(view):
+def require_ingest_token(view=None, *, permission='roles:ingest'):
+    if view is None:
+        return lambda target: require_ingest_token(target, permission=permission)
     @wraps(view)
     def wrapped(*args, **kwargs):
         from .agent_tokens import authenticate
         if current_app.config['APP_ENV'] != 'development' and not request.is_secure:
             return error('HTTPS required', 403)
         scheme, _, raw = request.headers.get('Authorization', '').partition(' ')
-        token = authenticate(raw) if scheme.lower() == 'bearer' else None
+        token = authenticate(raw, permission) if scheme.lower() == 'bearer' else None
         if token is None:
             response, status = error('Authentication required', 401)
             response.headers['WWW-Authenticate'] = 'Bearer realm="URL ingestion"'

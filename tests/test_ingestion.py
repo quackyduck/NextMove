@@ -97,7 +97,7 @@ def test_saves_role_and_replays_across_restart_and_age(client, app, headers):
     jobs = client.get('/api/v1/jobs', headers={'Authorization': 'Bearer test-agent-token'}).json['jobs']
     assert len(jobs) == 1 and jobs[0]['id'] == result['job_id']
     assert all(jobs[0][field] == value for field, value in FIELDS.items())
-    assert jobs[0]['stage'] == 'interesting'
+    assert jobs[0]['stage'] == 'needs_review'
     with app.app_context():
         assert len(db.get_session().scalars(select(Activity)).all()) == 1
         db.get_session().execute(update(IngestionRequest).values(created_at=now() - timedelta(days=2)))
@@ -239,3 +239,22 @@ def test_prefixed_ingestion_location(client, app, headers):
             return
         time.sleep(0.01)
     pytest.fail('Prefixed ingestion did not finish')
+
+
+def test_named_token_search_then_ingest_then_find_duplicate(client):
+    browser = login(client)
+    created = client.post('/api/v1/agent-tokens', headers=browser, json={
+        'name': 'Intake agent', 'current_password': 'test-password',
+        'permissions': ['roles:search', 'roles:ingest'],
+    })
+    assert created.status_code == 201
+    headers = {'Authorization': 'Bearer ' + created.json['token'], 'Idempotency-Key': KEY}
+    query = {'url': FIELDS['url'], 'company': FIELDS['company'], 'title': FIELDS['title']}
+    assert client.get('/api/v1/jobs/search', query_string=query, headers=headers).json['matches'] == []
+    task = submit(client, headers).json
+    result = wait(client, headers, task['id'])
+    assert result['status'] == 'succeeded'
+    matches = client.get('/api/v1/jobs/search', query_string=query, headers=headers).json['matches']
+    assert matches[0]['classification'] == 'duplicate'
+    assert matches[0]['id'] == result['job_id'] and matches[0]['stage'] == 'needs_review'
+    assert 'notes' not in matches[0]

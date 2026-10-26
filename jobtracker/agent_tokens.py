@@ -11,7 +11,7 @@ from werkzeug.security import check_password_hash
 from . import services, throttle
 from .models import AgentToken, WorkspaceCredential, new_id, now
 
-PERMISSIONS = ['roles:ingest']
+PERMISSIONS = ['roles:search', 'roles:ingest']
 
 
 def metadata(row):
@@ -29,13 +29,17 @@ def list_tokens():
 
 
 def create_token(data):
-    services._payload(data, {'name', 'expires_in_days', 'current_password'})
+    services._payload(data, {'name', 'expires_in_days', 'current_password', 'permissions'})
     name = services._text(data.get('name', ''), 'name', 80)
     days = data.get('expires_in_days', 90)
     if not name:
         raise services.ServiceError('Give this token a name')
     if type(days) is not int or not 1 <= days <= 365:
         raise services.ServiceError('Expiry must be 1–365 days')
+    permissions = data.get('permissions', ['roles:ingest'])
+    if not isinstance(permissions, list) or not permissions or any(p not in PERMISSIONS for p in permissions):
+        raise services.ServiceError('Choose search and/or ingestion permission')
+    permissions = sorted(set(permissions))
     password = data.get('current_password')
     if not isinstance(password, str) or not 1 <= len(password) <= 128:
         raise services.ServiceError('Enter your current workspace password')
@@ -49,7 +53,7 @@ def create_token(data):
         raise services.ServiceError('Current password is incorrect')
     raw = 'nm_ingest_' + secrets.token_urlsafe(32)
     values = dict(id=new_id(), name=name, prefix=raw[:18], token_hash=hashlib.sha256(raw.encode()).hexdigest(),
-                  permissions=PERMISSIONS.copy(), created_at=now(), expires_at=now() + timedelta(days=days),
+                  permissions=permissions, created_at=now(), expires_at=now() + timedelta(days=days),
                   last_used_at=None, revoked_at=None)
     with current_app.extensions['jobtracker_db']['engine'].begin() as connection:
         if connection.dialect.name == 'sqlite':
@@ -86,7 +90,7 @@ def authenticate(raw, permission='roles:ingest'):
             row = connection.execute(select(AgentToken.__table__).where(
                 AgentToken.token_hash == digest, AgentToken.revoked_at.is_(None), AgentToken.expires_at > now()
             )).mappings().first()
-            if row is None or permission not in row['permissions']:
+            if row is None or not set(row['permissions']).intersection(PERMISSIONS) or (permission is not None and permission not in row['permissions']):
                 return None
             used = now()
             connection.execute(update(AgentToken).where(AgentToken.id == row['id']).values(last_used_at=used))

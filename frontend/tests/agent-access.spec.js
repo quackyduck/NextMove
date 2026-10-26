@@ -86,3 +86,24 @@ test("failed creation and expired sessions do not create or lose track of tokens
   await expect(page.getByLabel("New token", { exact: true })).toBeVisible();
   expect((await (await page.request.get(`${api}/agent-tokens`)).json()).tokens).toHaveLength(initialCount + 1);
 });
+
+test("review-stage roles appear before Interesting and can be promoted", async ({ page }) => {
+  await openAccess(page);
+  const session = await (await page.request.get(`${api}/auth/session`)).json();
+  const headers = { "X-CSRF-Token": session.csrf_token };
+  const manual = await (await page.request.post(`${api}/jobs`, { headers, data: { title: "Manual opportunity" } })).json();
+  expect(manual.stage).toBe("interesting");
+  await page.request.post(`${api}/jobs`, { headers, data: { title: "Agent opportunity", stage: "needs_review" } });
+  await page.reload();
+  await page.getByRole("button", { name: "Board", exact: true }).click();
+  const columns = page.locator(".board-column");
+  await expect(columns.first().getByRole("heading")).toContainText("Needs review");
+  await expect(columns.first()).toContainText("Agent opportunity");
+  await expect(columns.nth(1)).toContainText("Manual opportunity");
+  await page.getByRole("button", { name: /Agent opportunity/ }).click();
+  await expect(page.getByLabel("Stage", { exact: true })).toHaveValue("needs_review");
+  await page.getByLabel("Stage", { exact: true }).selectOption("interesting");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Changes saved");
+  await expect(page.getByLabel("Stage", { exact: true })).toHaveValue("interesting");
+});

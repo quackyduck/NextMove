@@ -85,9 +85,7 @@ with urllib.request.urlopen(request, timeout=15) as response:
 The scoped secret authorizes only this GET/HEAD endpoint. It cannot list full
 jobs, access a job detail, download a resume, or write anything. Browser sessions
 and the existing explicitly configured broad agent token retain their existing
-behavior; browser mutations still need CSRF. An ingestion token from another PR
-does not gain search access: future integration must use a separate search secret
-or an explicitly reviewed scope change. Avoid reusing secrets across credentials.
+behavior; browser mutations still need CSRF. In the integrated PR #6 draft, named managed tokens explicitly granted `roles:search` also authenticate this endpoint. Create, test, expire and revoke them in Agent access; ingestion-only tokens remain rejected. The optional legacy environment search verifier remains supported independently. See [agent setup](AGENT_SETUP.md).
 
 A persistent workspace-wide budget of 120 search requests/minute applies before
 authentication, including invalid credentials and HEAD requests, across workers

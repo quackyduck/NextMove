@@ -173,7 +173,64 @@ def test_v5_upgrade_preserves_legacy_receipts_jobs_and_password(client, app):
     fresh = create_app(dict(app.config))
     with fresh.app_context():
         assert credentials.read() == before
-        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == 6
+        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
         old = db.get_session().get(IngestionRequest, 'old')
         assert old.result['job_id'] == saved['id'] and old.token_id is None
         assert db.get_session().scalar(select(AgentToken.id)) is None
+
+
+@pytest.mark.parametrize('scopes', [['roles:search'], ['roles:ingest'], ['roles:search', 'roles:ingest']])
+def test_managed_permissions_are_independent_and_revocation_covers_search(client, scopes):
+    browser = login(client)
+    created = create(client, browser, permissions=scopes)
+    assert created.status_code == 201
+    headers = bearer(created)
+    assert client.get('/api/v1/agent-connection', headers=headers).status_code == 200
+    expected = 200 if 'roles:search' in scopes else 401
+    assert client.get('/api/v1/jobs/search?company=Example', headers=headers).status_code == expected
+    # Valid ingestion permission reaches payload validation; search-only stops at auth.
+    assert client.post('/api/v1/ingestions', headers=headers, json={}).status_code == (400 if 'roles:ingest' in scopes else 401)
+    assert client.get('/api/v1/jobs', headers=headers).status_code == 401
+    path = '/api/v1/agent-tokens/' + created.json['agent_token']['id'] + '/revoke'
+    assert client.post(path, headers=browser).status_code == 200
+    assert client.get('/api/v1/jobs/search?company=Example', headers=headers).status_code == 401
+
+
+def test_stage_upgrade_preserves_children_versions_and_foreign_key_enforcement(client, app):
+    import io
+    from sqlalchemy.exc import IntegrityError
+    browser = login(client)
+    job = client.post('/api/v1/jobs', json={'title': 'Preserved'}, headers=browser).json
+    assert job['stage'] == 'interesting'
+    contact = client.post(f"/api/v1/jobs/{job['id']}/contacts", json={'name': 'Pat'}, headers=browser).json
+    resume = client.post(f"/api/v1/jobs/{job['id']}/resumes", data={'file': (io.BytesIO(b'resume'), 'resume.txt')}, headers=browser).json
+    engine = app.extensions['jobtracker_db']['engine']
+    with engine.begin() as connection:
+        connection.exec_driver_sql('BEGIN IMMEDIATE')
+        # Recreate the actual old CHECK constraint, rather than only relabeling a new schema.
+        schema = connection.exec_driver_sql("SELECT sql FROM sqlite_master WHERE name='jobs'").scalar()
+        old_schema = schema.replace('CREATE TABLE jobs', 'CREATE TABLE jobs_old').replace("'needs_review',", '')
+        connection.exec_driver_sql('PRAGMA defer_foreign_keys=ON')
+        connection.exec_driver_sql(old_schema)
+        connection.exec_driver_sql('INSERT INTO jobs_old SELECT * FROM jobs')
+        connection.exec_driver_sql('DROP TABLE jobs')
+        connection.exec_driver_sql('ALTER TABLE jobs_old RENAME TO jobs')
+        assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
+        connection.exec_driver_sql('PRAGMA defer_foreign_keys=OFF')
+        connection.execute(text('UPDATE schema_version SET version=6'))
+        snapshots = {table: connection.execute(text(f'SELECT * FROM {table} ORDER BY id')).all()
+                     for table in ['jobs', 'contacts', 'resumes', 'activities']}
+    fresh = create_app(dict(app.config))
+    with fresh.extensions['jobtracker_db']['engine'].connect() as connection:
+        for table, rows in snapshots.items():
+            assert connection.execute(text(f'SELECT * FROM {table} ORDER BY id')).all() == rows
+        assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
+        assert connection.exec_driver_sql('PRAGMA foreign_keys').scalar() == 1
+        with pytest.raises(IntegrityError):
+            connection.execute(text("UPDATE contacts SET job_id='missing' WHERE id=:id"), {'id': contact['id']})
+        connection.rollback()
+    updated = client.patch(f"/api/v1/jobs/{job['id']}", json={'stage': 'needs_review', 'version': job['version']}, headers=browser)
+    assert updated.status_code == 200
+    promoted = client.patch(f"/api/v1/jobs/{job['id']}", json={'stage': 'interesting', 'version': updated.json['version']}, headers=browser)
+    assert promoted.status_code == 200
+    assert client.get(f"/api/v1/resumes/{resume['id']}/download").data == b'resume'

@@ -72,3 +72,5 @@ Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter d
 ### Read-only role search (draft)
 
 `GET /api/v1/jobs/search` finds explainable duplicate candidates using company, title, and/or URL. It supports an optional, separately scoped hashed bearer credential. See [the contract, secure calling examples, and matching tradeoffs](docs/saved-role-search-api.md). With the configured path mount, call `/nextmove/api/v1/jobs/search`.
+
+Follow the [agent setup walkthrough](docs/AGENT_SETUP.md) for secure token storage, the reusable intake skill, duplicate checking and submission. API submissions start **Needs review**; manual entries and Quick capture start **Interesting**.
