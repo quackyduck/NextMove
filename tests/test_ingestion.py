@@ -9,18 +9,22 @@ import pytest
 from sqlalchemy import select, text, update
 
 from jobtracker import create_app, db, ingestion, services
-from jobtracker.models import Activity, IngestionRequest, now
+from jobtracker.models import Activity, AgentToken, IngestionRequest, now
 from test_api import app, client, login  # noqa: F401
 
 TOKEN = 'disposable-ingest-token-' + 'x' * 32
 KEY = 'request-id-' + 'a' * 24
+TOKEN_ID = '11111111-1111-4111-8111-111111111111'
 FIELDS = {'title': 'Engineer', 'company': 'Acme', 'url': 'https://example.com/job',
           'salary': 'USD 150000 / year', 'notes': 'Key qualifications\nPython', 'description': 'Build systems.'}
 
 
 @pytest.fixture
 def headers(app):
-    app.config['INGEST_API_TOKEN_SHA256'] = hashlib.sha256(TOKEN.encode()).hexdigest()
+    with app.app_context():
+        db.get_session().add(AgentToken(id=TOKEN_ID, name='Test agent', prefix=TOKEN[:18],
+            token_hash=hashlib.sha256(TOKEN.encode()).hexdigest(), permissions=['roles:ingest'], expires_at=now() + timedelta(days=90)))
+        db.get_session().commit()
     return {'Authorization': 'Bearer ' + TOKEN, 'Idempotency-Key': KEY}
 
 
@@ -45,9 +49,6 @@ def wait(client, headers, identifier):
 
 
 def test_token_disabled_by_default_and_separate_from_other_auth(client, app, headers):
-    app.config['INGEST_API_TOKEN_SHA256'] = ''
-    assert submit(client, headers).status_code == 401
-    app.config['INGEST_API_TOKEN_SHA256'] = hashlib.sha256(TOKEN.encode()).hexdigest()
     assert submit(client, {'Idempotency-Key': KEY}).status_code == 401
     assert submit(client, {**headers, 'Authorization': 'Bearer wrong'}).status_code == 401
     assert submit(client, {**headers, 'Authorization': 'Bearer test-agent-token'}).status_code == 401
@@ -153,7 +154,7 @@ def test_hourly_limit_is_persistent_and_does_not_block_replay(client, app, heade
     with app.app_context():
         session = db.get_session()
         for index in range(30):
-            session.add(IngestionRequest(idempotency_key=KEY + str(index), url=FIELDS['url'], status='failed', result={'error': 'Example failure'}))
+            session.add(IngestionRequest(token_id=TOKEN_ID, idempotency_key=KEY + str(index), url=FIELDS['url'], status='failed', result={'error': 'Example failure'}))
         session.commit()
     assert submit(client, headers).status_code == 429
     assert submit(client, {**headers, 'Idempotency-Key': KEY + '0'}).status_code == 200
@@ -220,7 +221,7 @@ def test_schema_four_upgrade_preserves_jobs_and_preview_tasks(client, app):
         connection.execute(text('UPDATE schema_version SET version=4'))
     fresh = create_app(dict(app.config))
     with fresh.app_context():
-        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == 5
+        assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
         assert services.get_job(job['id'])['title'] == 'Keep this role'
         assert db.get_session().scalar(text('SELECT count(*) FROM ingestion_requests')) == 0
 

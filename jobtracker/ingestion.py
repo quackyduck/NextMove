@@ -3,7 +3,7 @@ from datetime import timedelta
 import re
 import threading
 
-from flask import current_app
+from flask import current_app, g
 from sqlalchemy import func, select
 
 from . import extraction_tasks as tasks
@@ -19,6 +19,7 @@ def start_ingestion(url, key):
     if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,128}', key):
         raise services.ServiceError('Idempotency-Key must contain 16–128 letters, digits, hyphens or underscores')
     url = url.strip()
+    token_id = g.ingest_token['id']
     app = current_app._get_current_object()
     engine = app.extensions['jobtracker_db']['engine']
     acquired = False
@@ -30,6 +31,8 @@ def start_ingestion(url, key):
             existing = connection.execute(select(IngestionRequest.__table__).where(
                 IngestionRequest.idempotency_key == key)).mappings().first()
             if existing:
+                if existing['token_id'] != token_id:
+                    raise services.ServiceError('This retry key belongs to another token. Check its result in the app.', 409)
                 if existing['url'] != url:
                     raise services.ServiceError('This Idempotency-Key was already used for a different URL', 409)
                 return {'id': existing['id'], 'status': existing['status'], **existing['result']}
@@ -42,7 +45,7 @@ def start_ingestion(url, key):
                 raise services.ServiceError(tasks.BUSY, 429)
             identifier = new_id()
             connection.execute(IngestionRequest.__table__.insert().values(
-                id=identifier, idempotency_key=key, url=url, status='running', result={}, created_at=now()))
+                id=identifier, idempotency_key=key, token_id=token_id, url=url, status='running', result={}, created_at=now()))
         try:
             threading.Thread(target=run_ingestion, args=(app, identifier, url), daemon=True,
                              name='url-ingestion').start()

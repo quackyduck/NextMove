@@ -81,9 +81,11 @@ def run_extraction(engine, identifier, url):
         SLOTS.release()
 
 
-def get_extraction(identifier, model=ExtractionTask):
+def get_extraction(identifier, model=ExtractionTask, owner_id=None):
     session = get_session()
     task = session.get(model, identifier)
+    if task is not None and model is IngestionRequest and task.token_id != owner_id:
+        task = None
     if task is None or (model is ExtractionTask and task.created_at.replace(tzinfo=timezone.utc) < now() - timedelta(days=1)):
         raise ServiceError('Extraction preview expired or was not found. Extract the URL again.', 404)
     if task.status == 'running' and task.created_at.replace(tzinfo=timezone.utc) < now() - timedelta(seconds=TASK_SECONDS):

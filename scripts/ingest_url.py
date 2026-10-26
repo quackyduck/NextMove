@@ -23,12 +23,15 @@ class NoRedirect(HTTPRedirectHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('url', help='Job posting URL')
+    parser.add_argument('url', nargs='?', help='Job posting URL')
+    parser.add_argument('--test-connection', action='store_true', help='Verify the token without creating a role')
     parser.add_argument('--base-url', default='https://nicolasmelo.com/nextmove')
     parser.add_argument('--token-file', type=Path, help='Mode-0600 file containing only the token')
     parser.add_argument('--idempotency-key', default=None, help='Reuse this key for retries; default: new UUID')
     parser.add_argument('--wait', action='store_true', help='Poll until the role is saved or ingestion fails')
     args = parser.parse_args()
+    if not args.url and not args.test_connection:
+        parser.error('Provide a posting URL or --test-connection')
     target = urlsplit(args.base_url)
     if (not target.hostname or target.username is not None or target.password is not None
             or target.query or target.fragment or not (
@@ -43,19 +46,25 @@ def main():
     if not 32 <= len(token) <= 256 or not token.isascii() or any(char.isspace() for char in token):
         parser.error('Provide a token using --token-file or NEXTMOVE_INGEST_TOKEN')
     key = args.idempotency_key or str(uuid4())
-    print('Idempotency-Key: ' + key, file=sys.stderr)
+    if not args.test_connection:
+        print('Idempotency-Key: ' + key, file=sys.stderr)
     endpoint = args.base_url.rstrip('/') + '/api/v1/ingestions'
     opener = build_opener(NoRedirect())
 
     def request(url, body=None):
-        headers = {'Authorization': 'Bearer ' + token, 'Idempotency-Key': key}
+        headers = {'Authorization': 'Bearer ' + token}
         if body is not None:
             headers['Content-Type'] = 'application/json'
+            headers['Idempotency-Key'] = key
         req = Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
         with opener.open(req, timeout=10) as response:
             return json.load(response)
 
     try:
+        if args.test_connection:
+            result = request(args.base_url.rstrip('/') + '/api/v1/agent-connection')
+            print(json.dumps(result, indent=2))
+            return 0
         result = request(endpoint, {'url': args.url})
         deadline = time.monotonic() + 70
         while args.wait and result['status'] == 'running':
@@ -68,7 +77,8 @@ def main():
         print(json.dumps(result, indent=2))
         return 1 if result['status'] == 'failed' else 0
     except HTTPError as error:
-        print(f'API request failed ({error.code}). Reuse the same Idempotency-Key when retrying.', file=sys.stderr)
+        hint = 'Check the token, expiry and revocation status.' if args.test_connection else 'Check the request and reuse the same Idempotency-Key when retrying.'
+        print(f'API request failed ({error.code}). {hint}', file=sys.stderr)
     except (URLError, OSError, ValueError, KeyError):
         print('Request did not complete. Check the base URL/network and reuse the same Idempotency-Key.', file=sys.stderr)
     return 1

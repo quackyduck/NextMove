@@ -5,9 +5,9 @@ from pathlib import Path
 import uuid
 import zipfile
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, g, jsonify, request, send_file
 from . import services
-from .auth import require_auth, require_ingest_token
+from .auth import require_auth, require_browser_auth, require_ingest_token
 
 api = Blueprint('api', __name__)
 
@@ -57,6 +57,33 @@ def extraction_status(task_id):
     return jsonify(get_extraction(task_id))
 
 
+@api.get('/agent-tokens')
+@require_browser_auth
+def agent_tokens_list():
+    from .agent_tokens import list_tokens
+    return jsonify(tokens=list_tokens())
+
+
+@api.post('/agent-tokens')
+@require_browser_auth
+def agent_tokens_create():
+    from .agent_tokens import create_token
+    return jsonify(create_token(payload())), 201
+
+
+@api.post('/agent-tokens/<token_id>/revoke')
+@require_browser_auth
+def agent_tokens_revoke(token_id):
+    from .agent_tokens import revoke_token
+    return jsonify(agent_token=revoke_token(token_id))
+
+
+@api.get('/agent-connection')
+@require_ingest_token
+def agent_connection():
+    return jsonify(connected=True, agent_token=g.ingest_token)
+
+
 @api.post('/ingestions')
 @require_ingest_token
 def ingestions_create():
@@ -76,7 +103,7 @@ def ingestions_create():
 def ingestions_status(task_id):
     from .extraction_tasks import get_extraction
     from .models import IngestionRequest
-    return jsonify(get_extraction(task_id, IngestionRequest))
+    return jsonify(get_extraction(task_id, IngestionRequest, owner_id=g.ingest_token['id']))
 
 
 @api.get('/jobs/<job_id>')

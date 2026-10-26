@@ -11,6 +11,8 @@ import { SessionRecovery } from "./SessionRecovery.jsx";
 
 import { QuickCapture } from "./QuickCapture.jsx";
 
+import { AgentAccess } from "./AgentAccess.jsx";
+
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
 function App() {
@@ -321,6 +323,10 @@ function App() {
           >
             ＋ <span>Capture a role</span>
           </button>
+          <button className={`nav-button ${page === "agent-access" ? "active" : ""}`}
+            onClick={() => { navigate("agent-access"); setError(""); setNotice(""); }}>
+            <span>Agent access</span>
+          </button>
           <button
             className="nav-button"
             disabled={busy}
@@ -385,6 +391,7 @@ function App() {
         <QuickCapture hidden={page !== "quick"} busy={busy} run={run} reauthRequired={reauthRequired}
           onSaved={async (job) => { await refresh({ showLoading: false }); await details(job); }}
           onManual={(url) => { setDraft((current) => ({ ...current, url: url.trim() })); navigate("intake"); setError(""); }} />
+        {page === "agent-access" && <AgentAccess reauthRequired={reauthRequired} onBusyChange={setBusy} />}
         {page === "pipeline" && (
           <>
             <header className="page-header">

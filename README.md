@@ -68,4 +68,4 @@ Sites requiring sign-in, JavaScript, or bot challenges may not import. **Enter d
 
 ## Draft: URL ingestion integration
 
-[Review the secure ingestion proposal](docs/URL_INGESTION_PROPOSAL.md) for an API that accepts one URL and saves the extracted role in the background. The draft includes a limited-token design and `scripts/ingest_url.py` client. It is disabled by default and has not been activated in production.
+[Review the secure ingestion proposal](docs/URL_INGESTION_PROPOSAL.md) for an API that accepts one URL and saves the extracted role in the background. The draft includes an **Agent access** screen for creating named, expiring tokens, one-time secret display/copy, setup instructions, connection testing, last-used metadata, and revocation. `scripts/ingest_url.py --test-connection` tests a token from the agent’s machine without saving a role. No environment edit or restart is needed; no token exists until you create one. The draft has not been merged or deployed.

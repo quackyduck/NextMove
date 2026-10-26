@@ -78,8 +78,20 @@ Review/edit `fields`, then `POST /jobs` to save. Extraction never creates a pipe
 Fetching uses public HTTP(S) destinations on standard ports, validates all DNS answers and redirects, pins connections to validated IPs, and verifies TLS against the original hostname. It does not execute JavaScript or authenticate to job boards. Extraction prefers Schema.org JobPosting JSON-LD, with best-effort HTML fallback. See [operations](OPERATIONS.md#quick-capture-release--schema-4) for concurrency, fetch limits, expiry, and restart behavior.
 
 
-## Proposed URL ingestion API (draft; unavailable in production)
+## Proposed URL ingestion and managed tokens (draft)
 
-See [the URL ingestion proposal](URL_INGESTION_PROPOSAL.md) for the security model, contract, retry semantics, setup, and rollout decisions. The draft adds `POST /ingestions` with `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns `running`, `succeeded` with `job_id`/warnings, or `failed` with an error. Successful extraction automatically saves an Interesting role, with qualifications in notes.
+[The proposal](URL_INGESTION_PROPOSAL.md) covers onboarding, agent setup, retries, and rollout. `POST /ingestions` accepts `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns running, success with `job_id`/warnings, or failure. Successful extraction automatically saves an Interesting role, with qualifications in notes. Keys remain unique across tokens; another token cannot reuse an existing key or read its receipt.
 
-These routes accept only a dedicated bearer token whose SHA-256 matches `INGEST_API_TOKEN_SHA256`; they reject browser sessions and the broad agent token. The credential does not grant other API access. It is disabled by default. Use `scripts/ingest_url.py --help` for the secure client example. Schema 5 is required; the implementation and activation remain subject to review.
+Only unexpired, unrevoked managed tokens with `roles:ingest` permission authenticate ingestion and connection-test calls. Browser sessions and broad agent tokens do not. `GET /agent-connection` returns connected status and safe token metadata, updates last-used time, and creates no role or ingestion. The client supports `--test-connection` without a posting URL.
+
+Browser-session-only management (CSRF required on POST):
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | /agent-tokens | List metadata; no secrets or hashes |
+| POST | /agent-tokens | Accept `name`, `current_password`, optional `expires_in_days` (1–365, default 90); return `token` once and `agent_token` metadata (201) |
+| POST | /agent-tokens/{id}/revoke | Revoke immediately for future requests; idempotent |
+
+Names are trimmed and limited to 80 characters. Creation requires current-password verification, shares the sign-in throttle, and permits at most 20 active tokens. Metadata includes `id`, `name`, `prefix`, `permissions`, `status`, `created_at`, `expires_at`, `last_used_at`, and `revoked_at`. Status is active, expired, or revoked. Missing token IDs return 404; malformed creation input or wrong passwords return 400; stale password verification or the active-token limit returns 409; throttling returns 429. APIs use no-store responses, including the one-time creation response.
+
+No token environment setting is needed. Schema 6 is required; earlier draft environment credentials are not migrated or accepted. Existing unowned receipts remain stored but inaccessible to new tokens. This draft remains unmerged and undeployed.
