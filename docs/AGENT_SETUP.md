@@ -1,21 +1,23 @@
 # Set up your job intake agent
 
-This walkthrough describes PR #6. Use it after the PR is reviewed, merged,
-and deployed. PR #7 supplies the duplicate search; this feature connects it to
-self-service tokens. No MCP server is required: a scoped token and this client
+This walkthrough covers named tokens for duplicate search, URL intake, and
+resume uploads. Use the deployed version with the permissions described below. No MCP server is required: a scoped token and this client
 provide the workflow. MCP can be added later for agents that require tool discovery.
 
 ## 1. Create access on the site
 
 Sign in, open **Agent access**, name the token for the agent, choose an expiry,
-and keep **Search saved roles for duplicates** and **Add roles from URLs for
-review** checked. Enter the current workspace password and select **Create token**.
+and keep **Search saved roles for duplicates** and **Add roles from URLs and
+upload resumes** checked. Enter the current workspace password and select
+**Create token**.
 Copy the secret once, save it, then select **Test connection**. This browser test
 creates no role. **I've saved my token** hides it; leaving/reloading also discards
 it. A lost secret cannot be recovered: revoke it and create a replacement.
 
 Search-only tokens are available by unchecking Add roles. Tokens cannot read
-private notes or resumes, edit existing roles, or administer access.
+private notes or existing resumes, edit role fields, or administer access.
+Add roles tokens can also append resume versions to any saved role; existing tokens
+with that permission work without being replaced.
 
 ## 2. Store the token on the agent's machine
 
@@ -110,9 +112,27 @@ Existing roles retain their current stages; no roles are reclassified during upg
 ## 6. Revoke or rotate access
 
 In **Agent access**, find the named token and select Revoke, then Confirm revoke.
-New searches, connection checks, submissions and receipt reads fail immediately.
+New searches, connection checks, submissions, resume uploads, and receipt reads fail immediately.
 Already accepted work may finish; saved roles remain. Remove the local secret or
 hosted secret configuration. To rotate, create/test a replacement, configure the
 agent with it, then revoke the old token. Old ingestion receipts belong to the old
 token; do not replay unresolved submissions using a replacement and a fresh key.
 Password changes revoke browser sessions but do not revoke agent tokens.
+
+## Attach a resume after saving a role
+
+Use the saved role ID (`job_id` from a successful ingestion receipt) with the same
+Add roles token:
+
+```sh
+python3 scripts/agent_example.py 'ROLE_UUID' '/absolute/path/resume.pdf' \
+  --token-file "$HOME/.config/nextmove/agent-token" \
+  --base-url https://nicolasmelo.com/nextmove
+```
+
+Hosted agents may omit `--token-file` to use `NEXTMOVE_INGEST_TOKEN`. PDF, DOCX, and
+UTF-8 TXT are supported; keep files under 10 MB. Each upload adds a version and
+leaves the role's stage unchanged. Creation and upload are two API calls. Keep the
+upload receipt; check in the browser before retrying an uncertain upload, because
+retries can add duplicate attachment versions. Tokens still cannot list/download
+existing attachments or read role notes.

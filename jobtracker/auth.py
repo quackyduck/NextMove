@@ -102,6 +102,20 @@ def require_agent_token(view=None, *, permission='roles:ingest'):
     return wrapped
 
 
+def require_resume_upload_access(view):
+    """Append attachments with ingestion authority; keep all read routes private."""
+    existing_access = require_auth(view)
+    managed_access = require_agent_token(view, permission='roles:ingest')
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        scheme, _, raw = request.headers.get('Authorization', '').partition(' ')
+        if scheme.lower() == 'bearer' and raw.startswith('nm_ingest_'):
+            return managed_access(*args, **kwargs)
+        return existing_access(*args, **kwargs)
+    return wrapped
+
+
 @auth.get('/auth/session')
 def session_status():
     try:

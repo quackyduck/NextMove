@@ -1,8 +1,10 @@
 # Agent collaboration API
 
 Base URL in development: `http://127.0.0.1:5001/api/v1`.
-Configure `AGENT_API_TOKEN` on the server and send `Authorization: Bearer <token>`.
-The initial token grants access to this single-user workspace; scoped/revocable tokens are a later milestone. Keep it out of source control, URLs and logs. Production requests must use HTTPS.
+Managed tokens use `Authorization: Bearer <token>` and the permissions described below.
+The legacy `AGENT_API_TOKEN`, if explicitly enabled, grants broad workspace access;
+it is disabled in the hosted deployment. Keep tokens out of source control, URLs and
+logs. Production requests must use HTTPS.
 
 Browser sessions use `/auth/login`, `/auth/session`, `/auth/logout` and a CSRF token returned by login/session. Send `X-CSRF-Token` on session-authenticated writes. Bearer clients do not need CSRF tokens.
 
@@ -38,18 +40,18 @@ Errors use `{ "error": "message" }` and an appropriate HTTP status. Unknown IDs 
 
 ## Upload example
 
-After creating a job, use the standard-library example:
+After saving a role, use an existing managed token with `roles:ingest` permission:
 
 ```sh
-JOBTRACKER_AGENT_TOKEN='<your configured AGENT_API_TOKEN>' \
-  .venv/bin/python scripts/agent_example.py '<job UUID>' '/absolute/path/revised-resume.pdf'
+python3 scripts/agent_example.py '<job UUID>' '/absolute/path/revised-resume.pdf' \
+  --token-file /path/to/private/token --base-url https://nicolasmelo.com/nextmove
 ```
 
 The tool only uploads the file. It deliberately leaves progress changes to the caller. Resume files are private and only served by authenticated download routes. Exact server-enforced limits are documented in the application configuration.
 
 ## Not implemented in the first manual demo
 
-Queued extraction, scoped token management, OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
+Queued extraction, OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
 
 ## Outreach badge
 
@@ -97,3 +99,34 @@ Names are trimmed and limited to 80 characters. Creation requires current-passwo
 No token environment setting is needed. Schema 7 is required; earlier draft environment credentials are not migrated or accepted. Existing unowned receipts remain stored but inaccessible to new tokens. PR #6 is ready for review; merging and deployment are separate steps.
 
 Token creation accepts optional `permissions`: a nonempty array of `roles:search` and/or `roles:ingest` (default ingestion only). See [agent setup](AGENT_SETUP.md). Manual creation defaults to `interesting`; ingestion always starts `needs_review`.
+
+## Resume uploads with managed tokens
+
+Existing, unexpired/unrevoked `roles:ingest` (Add roles) tokens may also call
+`POST /jobs/{id}/resumes` with multipart field `file`. No token replacement or
+permission migration is required. This is an explicit expansion of Add roles
+authority: tokens can append resume attachments to **any saved role** in this
+single-user workspace, including manually entered roles. Search-only tokens
+and the legacy search-only verifier remain read-only. The connection test reports
+the same `roles:ingest` scope; no new scope or secret is introduced.
+
+For URL intake, wait for the ingestion receipt to succeed and use its `job_id`.
+For manual API entry, save the role first and use its returned `id`. Creating a
+role and attaching a file are separate requests; the upload does not participate
+in the ingestion transaction and cannot attach to a still-running receipt.
+
+PDF, DOCX, and UTF-8 TXT are accepted. Keep files at 10 decimal MB or less: the
+10 MiB server request limit includes multipart overhead. A successful upload
+returns 201 with metadata for the new attachment only and adds a `resume_added`
+activity. Previous files remain intact; role fields, stage, outcome, and version
+are unchanged. Upload is **not idempotent**: retain the response; check in the
+browser before retrying an uncertain request, because another request creates
+another attachment version. No new list/download, notes, contact, role-editing,
+manual-creation, or token-management permissions are granted.
+
+Send bearer credentials over HTTPS; no CSRF header is needed for managed tokens.
+Browser uploads retain session/CSRF behavior, and explicitly configured legacy
+broad tokens retain their prior access. Revocation/expiry applies on the next
+request; an already authorized upload may finish. Existing validation and private
+storage remain in place: invalid/missing files return 400, unknown roles 404,
+oversized requests 413, and invalid/expired/revoked/wrong-scope tokens 401.

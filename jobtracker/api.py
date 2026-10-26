@@ -7,7 +7,7 @@ import zipfile
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 from . import services
-from .auth import require_auth, require_browser_auth, require_agent_token
+from .auth import require_auth, require_browser_auth, require_agent_token, require_resume_upload_access
 from .search_access import require_search_access
 
 api = Blueprint('api', __name__)
@@ -177,7 +177,7 @@ def validate_document(filename, data):
 
 
 @api.post('/jobs/<job_id>/resumes')
-@require_auth
+@require_resume_upload_access
 def resumes_create(job_id):
     services.get_job(job_id)
     upload = request.files.get('file')

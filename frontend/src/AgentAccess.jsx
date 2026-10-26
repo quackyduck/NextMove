@@ -118,9 +118,9 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
               <option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option>
             </select>
             <fieldset className="mb-3"><legend className="form-label">Permissions</legend>
-              {[["roles:search", "Search saved roles for duplicates"], ["roles:ingest", "Add roles from URLs for review"]].map(([scope, text]) => <label className="d-block" key={scope}><input type="checkbox" checked={permissions.includes(scope)} onChange={event => setPermissions(event.target.checked ? [...permissions, scope] : permissions.filter(item => item !== scope))} /> {text}</label>)}
+              {[["roles:search", "Search saved roles for duplicates"], ["roles:ingest", "Add roles from URLs and upload resumes"]].map(([scope, text]) => <label className="d-block" key={scope}><input type="checkbox" checked={permissions.includes(scope)} onChange={event => setPermissions(event.target.checked ? [...permissions, scope] : permissions.filter(item => item !== scope))} /> {text}</label>)}
             </fieldset>
-            <p className="form-text">Search returns matching role summaries. Tokens cannot read notes or resumes, change existing roles, or manage tokens. New submissions start as Needs review.</p>
+            <p className="form-text">Search returns matching role summaries. Add roles permission also allows adding resume versions to any saved role. Tokens cannot read notes or existing resumes, edit role fields, or manage tokens. New submissions start as Needs review.</p>
             <label className="form-label" htmlFor="agent-password">Current workspace password</label>
             <input id="agent-password" className="form-control mb-3" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} />
             <button className="btn btn-primary" disabled={busy || !permissions.length}>{busy ? "Working…" : "Create token"}</button>
@@ -141,6 +141,9 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
         <pre>{command('"POSTING_URL" --search')}</pre>
         <p>Then submit a new posting for review:</p>
         <pre>{command('"POSTING_URL" --wait')}</pre>
+        <p>After the role is saved, upload a resume using its returned job ID:</p>
+        <pre>{`python3 scripts/agent_example.py ROLE_UUID /path/to/resume.pdf --token-file /path/to/private/token --base-url ${base}`}</pre>
+        <p className="form-text">Existing Add roles tokens support uploads without replacement. Each upload adds a resume version; it does not change the role’s stage. Keep the upload receipt: retrying creates another version.</p>
         <p className="form-text mb-0">For hosted agents, inject the secret as <code>NEXTMOVE_INGEST_TOKEN</code>. Connection test: <code>GET /agent-connection</code>. Submit: <code>POST /ingestions</code> with a URL and a fresh <code>Idempotency-Key</code>; reuse that key if the request must be retried.</p>
       </section>
       <form className="form-panel mb-4" onSubmit={event => { event.preventDefault(); test(testToken); }}>
@@ -156,7 +159,7 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
         {tokens.map(token => (
           <article className="agent-token" key={token.id}>
             <h3>{token.name} <span className="agent-token-status">{token.status}</span></h3>
-            <p><code>{token.prefix}…</code> · {token.permissions.map(scope => scope === "roles:search" ? "Search roles" : "Add roles").join(", ")}</p>
+            <p><code>{token.prefix}…</code> · {token.permissions.map(scope => scope === "roles:search" ? "Search roles" : "Add roles and resumes").join(", ")}</p>
             <dl><dt>Created</dt><dd>{formatDate(token.created_at)}</dd><dt>Expires</dt><dd>{formatDate(token.expires_at)}</dd><dt>Last used</dt><dd>{formatDate(token.last_used_at)}</dd></dl>
             {token.revoked_at ? <p className="form-text">Revoked {formatDate(token.revoked_at)}</p> : revoke === token.id ? (
               <div role="group" aria-label={`Confirm revocation of ${token.name}`}>
