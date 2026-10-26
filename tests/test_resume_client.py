@@ -3,8 +3,11 @@ import json
 from urllib.error import HTTPError, URLError
 
 import pytest
+from werkzeug.http import parse_options_header
 
 from scripts import agent_example
+from test_api import app, client, login  # noqa: F401
+from test_agent_tokens import create
 
 TOKEN = 'nm_ingest_disposable-' + 'x' * 40
 ROLE = '00000000-0000-4000-8000-000000000001'
@@ -83,3 +86,46 @@ def test_rejects_public_token_file_and_redirect_forwarding(setup, tmp_path):
     assert error.value.code == 2
     with pytest.raises(ValueError, match='Redirect refused'):
         agent_example.NoRedirect().redirect_request(None, None, 307, '', {}, 'https://elsewhere.example')
+
+
+@pytest.mark.parametrize('filename', ['Nicolas_Melo_Acme_Backend.txt', 'Résumé – Acme.txt', 'Resume "Acme".txt'])
+def test_specific_filename_survives_client_upload_listing_and_download(setup, client, monkeypatch, capsys, filename):
+    resume, argv = setup
+    specific = resume.with_name(filename)
+    resume.rename(specific)
+    argv[2] = str(specific)
+    browser = login(client)
+    token = create(client, browser).json['token']
+    monkeypatch.setenv('NEXTMOVE_INGEST_TOKEN', token)
+    job = client.post('/api/v1/jobs', headers=browser, json={'title': 'New role'}).json
+    argv[1] = job['id']
+    class Opener:
+        def open(self, request, timeout):
+            assert str(specific.parent).encode() not in request.data
+            response = client.post(f"/api/v1/jobs/{job['id']}/resumes", data=request.data,
+                                   headers=dict(request.header_items()))
+            assert response.status_code == 201
+            return io.StringIO(response.get_data(as_text=True))
+    monkeypatch.setattr(agent_example, 'build_opener', lambda *args: Opener())
+    assert agent_example.main() == 0
+    attachment = json.loads(capsys.readouterr().out)
+    assert attachment['original_filename'] == filename
+    listed = client.get(f"/api/v1/jobs/{job['id']}/resumes").json['resumes']
+    assert listed[0]['original_filename'] == filename
+    downloaded = client.get('/api/v1/resumes/' + attachment['id'] + '/download')
+    assert downloaded.data == b'resume content'
+    assert parse_options_header(downloaded.headers['Content-Disposition'])[1]['filename'] == filename
+
+
+@pytest.mark.parametrize('control', ['\r', '\n', '\x01', '\x7f'])
+def test_rejects_filename_header_injection_before_upload(setup, monkeypatch, control):
+    resume, argv = setup
+    unsafe = resume.with_name('resume' + control + 'Injected.txt')
+    resume.rename(unsafe)
+    argv[2] = str(unsafe)
+    def no_network(*args):
+        pytest.fail('Unsafe filename reached network')
+    monkeypatch.setattr(agent_example, 'build_opener', no_network)
+    with pytest.raises(SystemExit) as error:
+        agent_example.main()
+    assert error.value.code == 2
