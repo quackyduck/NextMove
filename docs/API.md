@@ -2,11 +2,41 @@
 
 Base URL in development: `http://127.0.0.1:5001/api/v1`.
 Managed tokens use `Authorization: Bearer <token>` and the permissions described below.
-The legacy `AGENT_API_TOKEN`, if explicitly enabled, grants broad workspace access;
-it is disabled in the hosted deployment. Keep tokens out of source control, URLs and
+The legacy `AGENT_API_TOKEN`, if explicitly enabled, grants broad access to user #1's
+workspace (never other accounts); it is disabled in the hosted deployment. Keep tokens out of source control, URLs and
 logs. Production requests must use HTTPS.
 
-Browser sessions use `/auth/login`, `/auth/session`, `/auth/logout` and a CSRF token returned by login/session. Send `X-CSRF-Token` on session-authenticated writes. Bearer clients do not need CSRF tokens.
+Browser sessions use `/auth/signup`, `/auth/login`, `/auth/session`, `/auth/logout` and a CSRF token returned by signup/login/session. Send `X-CSRF-Token` on session-authenticated writes. Bearer clients do not need CSRF tokens.
+
+## Accounts and tenancy (schema 9)
+
+Every job, contact, resume (and its file), activity, agent token, extraction preview and ingestion receipt belongs to one account. Every request acts as exactly one account: the signed-in browser user, the user who created the managed token, or user #1 for the deprecated `AGENT_API_TOKEN` / `ROLE_SEARCH_TOKEN_SHA256`. Another account's IDs behave exactly like IDs that do not exist (404), and lists and search only include your own records. Nothing in the service sends email.
+
+| Method | Path | Body | Responses |
+| --- | --- | --- | --- |
+| GET | /auth/session | — | 200 `{authenticated, csrf_token, user: {id, email, created_at} \| null, signup: {enabled, invite_required}}` |
+| POST | /auth/signup | `{email, password, password_confirmation, invite_code}` | 201 `{authenticated: true, csrf_token, user}` and a session cookie; 400 `{error, field}` (`email`, `password`, `password_confirmation`); 403 `{error, field: "invite_code"}` for a missing, unknown, used or expired invite (or `{error}` when sign-up is closed); 409 `{error, field: "email"}`; 429 throttled |
+| POST | /auth/login | `{email, password}` | 200 `{authenticated: true, csrf_token, user}`; 401 `Invalid email or password` for every failure; 429 throttled |
+| POST | /auth/password | `{current_password, new_password, confirm_password}` | Changes only the signed-in account; see below |
+| POST | /auth/logout | — | 200 `{authenticated: false, csrf_token: null}` |
+
+- Emails are trimmed and lowercased; they are not verified. Passwords are 8–128 characters.
+- Invites are single-use and expire (default 7 days). Consuming the invite and creating the user happen in one transaction; a failed sign-up (duplicate email, bad input) never uses up the invite. `SIGNUP_REQUIRES_INVITE=0` opens sign-up without codes; `SIGNUP_ENABLED=0` closes it.
+- Signup and login reject cross-origin `Origin` headers (403).
+- Attempt budgets per five minutes: 10 per account (by email, including unknown emails), 30 per client IP, 200 in total; sign-up is also limited to 10 per IP. Over budget returns 429 with `Retry-After: 300`. Unknown emails take the same time as wrong passwords.
+- A password change signs out that account's other sessions only.
+
+Administrators manage accounts from the server shell (`flask --app jobtracker ...`); there is no admin API and no email:
+
+| Command | Effect |
+| --- | --- |
+| `invite create [--count N] [--expires-days D]` | Prints N new single-use codes (only hashes are stored). Share them however you like. |
+| `invite list` | Code prefix, status (unused / expired / used by user N) and expiry |
+| `user list` | ID, email and creation time |
+| `user reset-password EMAIL` | Prompts for a new password (never an argument) and signs that user out everywhere |
+| `user set-email ID EMAIL` | Changes a sign-in email, e.g. user #1's migration placeholder `owner@localhost` |
+| `reset-workspace-password` | Legacy alias for resetting user #1 |
+| `worker [--once]` | Runs the queue worker (same as `python -m jobtracker.worker`) |
 
 ## Typical collaboration
 
@@ -49,9 +79,9 @@ python3 scripts/agent_example.py '<job UUID>' '/absolute/path/revised-resume.pdf
 
 The tool only uploads the file. It deliberately leaves progress changes to the caller. Resume files are private and only served by authenticated download routes. Exact server-enforced limits are documented in the application configuration.
 
-## Not implemented in the first manual demo
+## Not implemented yet
 
-Queued extraction, OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
+OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
 
 ## Outreach badge
 
@@ -59,7 +89,7 @@ Job JSON includes `outreach_completed` (a JSON boolean, default `false`), accept
 
 Contacts are people you may contact; adding one does not prove contact was made and does not automatically mark outreach. A later pipeline stage also does not imply outreach occurred. The badge appears on table rows, board cards and job details while this field is true.
 
-## Workspace password (browser session only)
+## Account password (browser session only)
 
 `POST /auth/password` accepts exactly `{ "current_password": "...", "new_password": "...", "confirm_password": "..." }`. A valid browser session and its `X-CSRF-Token` are required; even valid bearer tokens receive 403. New passwords must contain 8–128 characters and match confirmation. Wrong current password/invalid input returns 400; the persistent shared sign-in attempt budget also applies to password verification (429/Retry-After).
 
@@ -67,7 +97,7 @@ Success returns `{ "authenticated": true, "csrf_token": "...", "message": "Passw
 
 ## URL extraction preview
 
-`POST /jobs/extract` accepts only `{ "url": "https://company.example/careers/role" }` with normal session/CSRF or bearer authorization. It returns **202** with `{ "id": "...", "status": "running" }`, a `Location` status URL, and `Retry-After: 1`, before any DNS, fetch, or parsing work. Invalid syntax returns 400; capacity exhaustion returns 429.
+`POST /jobs/extract` accepts only `{ "url": "https://company.example/careers/role" }` with normal session/CSRF or bearer authorization. It returns **202** with `{ "id": "...", "status": "running" }`, a `Location` status URL, and `Retry-After: 1`, before any DNS, fetch, or parsing work: the request only queues a task for the separate worker process (`python -m jobtracker.worker`). Invalid syntax returns 400; 429 means this account already has two postings being read, or the shared queue is full (20 pending tasks). If no worker is running, the preview fails after 60 seconds with a retryable error.
 
 Authenticated `GET /extractions/{id}` returns the task's `id` and `status`:
 
@@ -82,7 +112,7 @@ Fetching uses public HTTP(S) destinations on standard ports, validates all DNS a
 
 ## URL ingestion and managed tokens
 
-[The proposal](URL_INGESTION_PROPOSAL.md) covers onboarding, agent setup, retries, and rollout. `POST /ingestions` accepts `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns running, success with `job_id`/warnings, or failure. Successful extraction automatically saves a Needs review role, with qualifications in notes. Keys remain unique across tokens; another token cannot reuse an existing key or read its receipt.
+[The proposal](URL_INGESTION_PROPOSAL.md) covers onboarding, agent setup, retries, and rollout. `POST /ingestions` accepts `{ "url": "..." }` and a required `Idempotency-Key`, returning 202 and a status `Location`. `GET /ingestions/{id}` returns running, success with `job_id`/warnings, or failure. Successful extraction automatically saves a Needs review role, with qualifications in notes. Keys are unique within an account: another of your tokens cannot reuse an existing key or read its receipt, and keys used by other accounts are invisible (reusing one simply creates your own receipt). The 30-per-hour creation limit is per account. Extraction runs on the queue worker.
 
 Only unexpired, unrevoked managed tokens with `roles:ingest` permission authenticate ingestion calls. `roles:search` grants `/jobs/search`; either permission allows connection testing. Browser sessions and broad agent tokens do not. `GET /agent-connection` returns connected status and safe token metadata, updates last-used time, and creates no role or ingestion. The client supports `--test-connection` without a posting URL.
 

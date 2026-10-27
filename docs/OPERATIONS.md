@@ -127,3 +127,85 @@ or relabel the schema version to force a downgrade.
 Tests cover migration preservation/rollback, database and API validation, outcome
 history, unchanged stage, restart persistence, and filtering in table/board views
 with disposable storage. Building this feature does not modify hosted records.
+
+## Accounts, tenancy and queue worker — schema 9 (not deployed)
+
+Schema 8 → 9 turns the single workspace into user #1 of a multi-user app. It
+adds `users`, `invite_codes` and `queued_tasks`, rebuilds `jobs`, `contacts`,
+`resumes`, `activities`, `agent_tokens`, `extraction_tasks` and
+`ingestion_requests` with a NOT NULL `user_id` (children reference
+`jobs(id, user_id)`, so a contact or resume can never point at another
+account's role), and drops `workspace_credentials`. Every row keeps its ID,
+version and timestamps. User #1 keeps the existing password hash and session
+generation, so current sessions must sign in once more (the cookie now carries
+the account) but the password is unchanged. Its email comes from
+`BOOTSTRAP_ADMIN_EMAIL` at migration time, else the placeholder
+`owner@localhost`; change it with `flask --app jobtracker user set-email 1 you@example.com`.
+The whole schema change is one transaction: any failure, including a foreign-key
+check failure, leaves schema 8 untouched. A database that has records but no
+workspace credential refuses to upgrade rather than creating orphaned data.
+
+Resume files move from `UPLOAD_FOLDER/<file>` to `UPLOAD_FOLDER/<user_id>/<file>`
+(directories mode 0700) after the schema transaction commits. The move runs at
+every startup, is a same-filesystem `rename`, skips files already in place, and
+finishes on the next start if interrupted. Downloads only look inside the
+requesting account's directory.
+
+### Upgrade steps
+
+1. Stop the web service, the worker (if an older build has one) and every agent writer.
+2. Take the coordinated snapshot (`scripts/backup.py --maintenance backup ...`) and keep it.
+3. Add `BOOTSTRAP_ADMIN_EMAIL` (and optionally `SIGNUP_ENABLED`, `SIGNUP_REQUIRES_INVITE`,
+   `QUEUE_POLL_SECONDS`) to the environment file; see `deploy/production.env.example`.
+4. Start the web service once; it migrates and relocates files. Check
+   `flask --app jobtracker user list` shows user #1 with the expected email.
+5. Install and start `deploy/next-move-worker.service` (below).
+6. Smoke test: sign in with email + password, open a known role, download a resume,
+   extract a posting URL, and confirm a second account (signed up with
+   `flask --app jobtracker invite create`) sees none of user #1's data.
+
+### Rollback
+
+A schema-8 binary refuses schema 9. Roll back by stopping all services, restoring
+the step-2 snapshot into a new directory (`scripts/backup.py --maintenance restore`)
+and pointing the previous release at it; the snapshot holds the flat upload layout
+the old code expects. Changes made after the snapshot (including new accounts) are
+lost. Do not hand-edit `schema_version` or move files back by hand.
+
+### Queue worker
+
+URL extraction (`/jobs/extract`) and agent ingestion (`/ingestions`) no longer
+start threads in Gunicorn. The web request inserts the preview/receipt and a
+`queued_tasks` row in one transaction; `python -m jobtracker.worker` (unit
+`deploy/next-move-worker.service`, or `flask --app jobtracker worker`) claims one
+task at a time. Claims are leases (30 s) with a per-claim token, so a crashed
+worker's task is retried once by the next claim and a stale worker cannot
+overwrite a newer result. Finished tasks are pruned after 7 days. If the worker
+is down, previews fail after 60 seconds with a retryable message; nothing else
+in the app depends on it. Admission: two running previews/ingestions per account
+and 20 pending tasks overall (429 beyond that).
+
+Install beside the web unit (same code, environment file, data directory and
+dynamic user):
+
+```sh
+sudo install -m 0644 deploy/next-move-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now next-move-worker
+journalctl -u next-move-worker -f   # "Queue worker started"
+```
+
+`SIGTERM` lets the current task finish (network reads are capped at about 20 s)
+and exits 0; `TimeoutStopSec=45` covers it. The worker needs outbound HTTP(S);
+the web unit no longer does. Memory: WORKER_MEMORY_NOTE
+
+### Accounts administration
+
+No email is ever sent. Share invite codes yourself (`flask --app jobtracker invite create --count 1 --expires-days 7`;
+`invite list` shows status without the code). Forgotten passwords use
+`flask --app jobtracker user reset-password EMAIL` (prompts, signs that user out
+everywhere). Run these as the service's data identity with its environment, as
+for the existing password recovery. `SIGNUP_REQUIRES_INVITE=0` opens sign-up;
+`SIGNUP_ENABLED=0` closes it. Login attempt budgets (per account, per IP via
+`TRUST_PROXY=1` and nginx's overwritten `X-Forwarded-For`, and overall) persist
+in the throttle database as HMACs, never raw emails or addresses.

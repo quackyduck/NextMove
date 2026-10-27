@@ -1,0 +1,47 @@
+# Queue worker for Next Move (URL extraction). Template only; install beside
+# next-move.service. Same code, environment file, data directory and dynamic
+# user as the web unit (systemd shares a DynamicUser between units that use the
+# same User= name). Single-threaded: one task at a time keeps memory small.
+[Unit]
+Description=Next Move background task worker
+After=network.target next-move.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=next-move
+DynamicUser=yes
+WorkingDirectory=/opt/next-move/current
+EnvironmentFile=/etc/next-move/production.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+UnsetEnvironment=APP_PASSWORD AGENT_API_TOKEN
+ExecStart=/opt/next-move/current/.venv/bin/python -m jobtracker.worker
+Restart=on-failure
+RestartSec=5
+# SIGTERM finishes the current task (network reads are capped at ~20 s) and exits 0.
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=next-move
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/next-move
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Outbound HTTPS to job sites is required; SSRF checks live in extraction.py.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+TasksMax=8
+MemoryHigh=80M
+MemoryMax=112M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target
