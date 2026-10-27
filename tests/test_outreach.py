@@ -6,6 +6,8 @@ from flask import Flask
 import pytest
 from sqlalchemy import text
 
+from werkzeug.security import generate_password_hash
+
 from jobtracker import db, services
 
 
@@ -13,6 +15,8 @@ from jobtracker import db, services
 def app(tmp_path):
     app = Flask(__name__)
     app.config['DATABASE_URL'] = f'sqlite:///{tmp_path / "jobs.sqlite3"}'
+    # Seeds user #1 on a fresh database and when a v1/v2 database is upgraded.
+    app.config['APP_PASSWORD_HASH'] = generate_password_hash('outreach-password', method='pbkdf2:sha256:1000')
     db.init_app(app)
     return app
 
@@ -63,6 +67,8 @@ def legacy_database(app, malformed=False):
     engine = app.extensions['jobtracker_db']['engine']
     app.extensions['jobtracker_db']['sessions'].remove()
     engine.dispose()
+    from legacy import downgrade_to_v8
+    downgrade_to_v8(app)
     filename = app.config['DATABASE_URL'].removeprefix('sqlite:///')
     with sqlite3.connect(filename) as connection:
         connection.execute('DROP TABLE workspace_credentials')

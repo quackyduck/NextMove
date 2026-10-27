@@ -10,6 +10,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from jobtracker import db, services
 from jobtracker.models import Job
+from accounts import add_user
 
 
 @pytest.fixture
@@ -17,6 +18,7 @@ def app(tmp_path):
     app = Flask(__name__)
     app.config["DATABASE_URL"] = "sqlite:///" + str(tmp_path / "tracker.sqlite")
     db.init_app(app)
+    add_user(app, 'owner@localhost', user_id=1)
     return app
 
 

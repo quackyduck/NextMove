@@ -42,7 +42,7 @@ def test_existing_add_roles_tokens_can_append_versions_without_other_authority(c
             assert db.get_session().get(AgentToken, token.json['agent_token']['id']).last_used_at is not None
     else:
         assert client.get(path).json['resumes'] == []
-        assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+        assert [p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()] == []
     assert client.get('/api/v1/jobs/' + job['id']).json == job
     for endpoint in (path, '/api/v1/jobs', f"/api/v1/jobs/{job['id']}",
                      f"/api/v1/jobs/{job['id']}/contacts", f"/api/v1/jobs/{job['id']}/activities",
@@ -74,7 +74,7 @@ def test_invalid_upload_credentials_do_not_write_files(client, app, failure):
         app.config['ROLE_SEARCH_TOKEN_SHA256'] = hashlib.sha256(raw.encode()).hexdigest()
         headers = {'Authorization': 'Bearer ' + raw}
     assert upload(client, f"/api/v1/jobs/{job['id']}/resumes", headers).status_code == 401
-    assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+    assert [p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()] == []
 
 
 def test_managed_upload_preserves_file_validation_limits_and_csrf(client, app):
@@ -90,7 +90,7 @@ def test_managed_upload_preserves_file_validation_limits_and_csrf(client, app):
     assert upload(client, '/api/v1/jobs/missing/resumes', headers).status_code == 404
     app.config['MAX_CONTENT_LENGTH'] = 512
     assert upload(client, path, headers, b'x' * 1024).status_code == 413
-    assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+    assert [p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()] == []
 
 
 def test_managed_upload_requires_https_and_works_under_prefix(client, app):

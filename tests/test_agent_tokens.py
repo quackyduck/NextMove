@@ -81,7 +81,7 @@ def test_wrong_password_budget_and_password_change_race(client, app, monkeypatch
     assert create(client, browser, current_password='wrong').status_code == 400
     original = agent_tokens.check_password_hash
     def changed(stored, password):
-        observed = credentials.read()
+        observed = credentials.read(1)
         assert credentials.replace(observed, generate_password_hash('changed-password'))
         return original(stored, password)
     monkeypatch.setattr(agent_tokens, 'check_password_hash', changed)
@@ -137,7 +137,7 @@ def test_receipts_are_private_to_their_token_and_keys_cannot_be_reused_by_anothe
     browser = login(client)
     first, second = create(client, browser), create(client, browser, name='Second agent')
     with app.app_context():
-        task = IngestionRequest(token_id=first.json['agent_token']['id'], idempotency_key='private-retry-key-' + 'a' * 20,
+        task = IngestionRequest(user_id=1, token_id=first.json['agent_token']['id'], idempotency_key='private-retry-key-' + 'a' * 20,
                                 url='https://example.com/job', status='failed', result={'error': 'Private receipt'})
         db.get_session().add(task)
         db.get_session().commit()
@@ -152,7 +152,7 @@ def test_active_token_limit(client, app):
     browser = login(client)
     with app.app_context():
         for index in range(20):
-            db.get_session().add(AgentToken(name='Existing', prefix='nm_ingest_example', token_hash=hashlib.sha256(str(index).encode()).hexdigest(),
+            db.get_session().add(AgentToken(user_id=1, name='Existing', prefix='nm_ingest_example', token_hash=hashlib.sha256(str(index).encode()).hexdigest(),
                                           permissions=['roles:ingest'], expires_at=now() + timedelta(days=90)))
         db.get_session().commit()
     assert create(client, browser).status_code == 409
@@ -162,7 +162,9 @@ def test_v5_upgrade_preserves_legacy_receipts_jobs_and_password(client, app):
     browser = login(client)
     saved = client.post('/api/v1/jobs', json={'title': 'Preserved'}, headers=browser).json
     with app.app_context():
-        before = credentials.read()
+        before = credentials.read(1)
+    from legacy import downgrade_to_v8
+    downgrade_to_v8(app)
     engine = app.extensions['jobtracker_db']['engine']
     with engine.begin() as connection:
         connection.execute(text('DROP TABLE ingestion_requests'))
@@ -172,7 +174,8 @@ def test_v5_upgrade_preserves_legacy_receipts_jobs_and_password(client, app):
         connection.execute(text('UPDATE schema_version SET version=5'))
     fresh = create_app(dict(app.config))
     with fresh.app_context():
-        assert credentials.read() == before
+        after = credentials.read(1)
+        assert (after.email, after.password_hash, after.session_version) == (before.email, before.password_hash, before.session_version)
         assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
         old = db.get_session().get(IngestionRequest, 'old')
         assert old.result['job_id'] == saved['id'] and old.token_id is None
@@ -204,6 +207,8 @@ def test_stage_upgrade_preserves_children_versions_and_foreign_key_enforcement(c
     assert job['stage'] == 'interesting'
     contact = client.post(f"/api/v1/jobs/{job['id']}/contacts", json={'name': 'Pat'}, headers=browser).json
     resume = client.post(f"/api/v1/jobs/{job['id']}/resumes", data={'file': (io.BytesIO(b'resume'), 'resume.txt')}, headers=browser).json
+    from legacy import downgrade_to_v8, without_owner
+    downgrade_to_v8(app)
     engine = app.extensions['jobtracker_db']['engine']
     with engine.begin() as connection:
         connection.exec_driver_sql('BEGIN IMMEDIATE')
@@ -223,7 +228,7 @@ def test_stage_upgrade_preserves_children_versions_and_foreign_key_enforcement(c
     fresh = create_app(dict(app.config))
     with fresh.extensions['jobtracker_db']['engine'].connect() as connection:
         for table, rows in snapshots.items():
-            assert connection.execute(text(f'SELECT * FROM {table} ORDER BY id')).all() == rows
+            assert without_owner(connection.execute(text(f'SELECT * FROM {table} ORDER BY id'))) == [tuple(row) for row in rows]
         assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
         assert connection.exec_driver_sql('PRAGMA foreign_keys').scalar() == 1
         with pytest.raises(IntegrityError):

@@ -196,40 +196,34 @@ def test_fetch_size_type_status_and_timeout(network, monkeypatch):
 
 
 def wait_for_preview(client, identifier):
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline:
-        response = client.get('/api/v1/extractions/' + identifier)
-        if response.json['status'] != 'running':
-            return response
-        time.sleep(0.01)
-    pytest.fail('Background extraction did not finish')
+    """Run the queue worker in-process until idle, then read the preview."""
+    from jobtracker import taskqueue
+    taskqueue.drain(client.application)
+    response = client.get('/api/v1/extractions/' + identifier)
+    assert response.json['status'] != 'running', 'Background extraction did not finish'
+    return response
 
 
-def test_async_ack_is_under_one_second_while_extractor_is_blocked(client, monkeypatch):
-    import threading
+def test_async_ack_never_fetches_and_admission_is_bounded(client, monkeypatch):
     from jobtracker import extraction_tasks
-    entered, release = threading.Event(), threading.Event()
-    def slow(url):
-        entered.set()
-        assert release.wait(5)
+    calls = []
+    def tracked(url):
+        calls.append(url)
         return extraction.parse_posting(structured(), url)
-    monkeypatch.setattr(extraction_tasks, 'extract_posting', slow)
+    monkeypatch.setattr(extraction_tasks, 'extract_posting', tracked)
     headers = login(client)
-    try:
-        started = time.perf_counter()
-        response = client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/job'}, headers=headers)
-        elapsed = time.perf_counter() - started
-        print(f'Async acknowledgement with blocked extractor: {elapsed * 1000:.1f} ms')
-        assert response.status_code == 202
-        assert elapsed < 1
-        assert entered.wait(1)
-        assert client.get(response.headers['Location']).json['status'] == 'running'
-        assert client.get('/api/v1/jobs').json['jobs'] == []
-        second = client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/second'}, headers=headers)
-        assert second.status_code == 202
-        assert client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/third'}, headers=headers).status_code == 429
-    finally:
-        release.set()
+    started = time.perf_counter()
+    response = client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/job'}, headers=headers)
+    elapsed = time.perf_counter() - started
+    print(f'Queued acknowledgement: {elapsed * 1000:.1f} ms')
+    assert response.status_code == 202
+    assert elapsed < 1
+    assert calls == []  # The web request only enqueues; the worker process fetches.
+    assert client.get(response.headers['Location']).json['status'] == 'running'
+    assert client.get('/api/v1/jobs').json['jobs'] == []
+    second = client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/second'}, headers=headers)
+    assert second.status_code == 202
+    assert client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/third'}, headers=headers).status_code == 429
     assert wait_for_preview(client, response.json['id']).json['status'] == 'succeeded'
     assert wait_for_preview(client, second.json['id']).json['status'] == 'succeeded'
 
@@ -248,8 +242,8 @@ def test_async_failures_expiry_and_authorized_polling(client, app, monkeypatch):
     with app.app_context():
         session = db.get_session()
         session.add_all([
-            ExtractionTask(id='interrupted', status='running', result={}, created_at=now() - timedelta(seconds=61)),
-            ExtractionTask(id='old', status='succeeded', result={}, created_at=now() - timedelta(days=2)),
+            ExtractionTask(user_id=1, id='interrupted', status='running', result={}, created_at=now() - timedelta(seconds=61)),
+            ExtractionTask(user_id=1, id='old', status='succeeded', result={}, created_at=now() - timedelta(days=2)),
         ])
         session.commit()
     assert client.get('/api/v1/extractions/interrupted').json['status'] == 'failed'
@@ -267,6 +261,8 @@ def test_v3_migration_preserves_jobs_and_adds_preview_storage(app, client):
     from jobtracker import db
     headers = login(client)
     job = client.post('/api/v1/jobs', json={'title': 'Existing role', 'notes': 'Keep me'}, headers=headers).json
+    from legacy import downgrade_to_v8
+    downgrade_to_v8(app)
     engine = app.extensions['jobtracker_db']['engine']
     with engine.begin() as connection:
         connection.execute(text('DROP TABLE extraction_tasks'))

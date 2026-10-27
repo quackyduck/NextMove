@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from jobtracker import create_app, migrations
+from legacy import downgrade_to_v8, without_owner
 from test_api import app, client, login  # noqa: F401
 
 
@@ -41,6 +42,7 @@ def prepare_v7(client, app):
     client.post(f"/api/v1/jobs/{saved['id']}/contacts", headers=browser, json={'name': 'Pat'})
     resume = client.post(f"/api/v1/jobs/{saved['id']}/resumes", headers=browser,
                          data={'file': (io.BytesIO(b'resume'), 'Specific_Resume.txt')}).json
+    downgrade_to_v8(app)
     engine = app.extensions['jobtracker_db']['engine']
     with engine.begin() as connection:
         connection.exec_driver_sql('BEGIN IMMEDIATE')
@@ -58,9 +60,13 @@ def prepare_v7(client, app):
     return saved['id'], resume
 
 
+# Tables that exist in both schema 7 and today's schema; user_id is added by schema 9.
+LEGACY_TABLES = ('jobs', 'contacts', 'resumes', 'activities', 'agent_tokens', 'extraction_tasks', 'ingestion_requests')
+
+
 def snapshot(connection):
-    names = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table' AND name!='schema_version'").scalars()
-    return {name: connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY rowid').all() for name in names}
+    return {name: without_owner(connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY id'))
+            for name in LEGACY_TABLES}
 
 
 def test_schema7_upgrade_preserves_all_rows_and_attachments(client, app):
@@ -74,7 +80,7 @@ def test_schema7_upgrade_preserves_all_rows_and_attachments(client, app):
     fresh = create_app(dict(app.config))
     with fresh.extensions['jobtracker_db']['engine'].begin() as connection:
         assert snapshot(connection) == before
-        assert connection.exec_driver_sql('SELECT version FROM schema_version').scalar() == 8
+        assert connection.exec_driver_sql('SELECT version FROM schema_version').scalar() == migrations.SCHEMA_VERSION
         assert connection.exec_driver_sql('PRAGMA foreign_keys').scalar() == 1
         assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
         connection.execute(text("UPDATE jobs SET outcome='not_interested' WHERE id=:id"), {'id': job_id})

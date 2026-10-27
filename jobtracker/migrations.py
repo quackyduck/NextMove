@@ -39,19 +39,19 @@ def upgrade_v2_to_v3(connection, bootstrap_hash=None):
 
 def upgrade_v3_to_v4(connection):
     connection.execute(text(
-        'CREATE TABLE extraction_tasks (id VARCHAR(36) NOT NULL PRIMARY KEY, status VARCHAR(20) NOT NULL, '
+        'CREATE TABLE IF NOT EXISTS extraction_tasks (id VARCHAR(36) NOT NULL PRIMARY KEY, status VARCHAR(20) NOT NULL, '
         'result JSON NOT NULL, created_at DATETIME NOT NULL)'))
-    connection.execute(text('CREATE INDEX ix_extraction_tasks_created_at ON extraction_tasks (created_at)'))
+    connection.execute(text('CREATE INDEX IF NOT EXISTS ix_extraction_tasks_created_at ON extraction_tasks (created_at)'))
     connection.execute(text('UPDATE schema_version SET version=4'))
 
 
 def upgrade_v4_to_v5(connection):
     # Historical DDL is frozen here: later model changes must not leak into old steps.
     connection.execute(text(
-        'CREATE TABLE ingestion_requests (id VARCHAR(36) NOT NULL PRIMARY KEY, '
+        'CREATE TABLE IF NOT EXISTS ingestion_requests (id VARCHAR(36) NOT NULL PRIMARY KEY, '
         'idempotency_key VARCHAR(128) NOT NULL UNIQUE, url TEXT NOT NULL, status VARCHAR(20) NOT NULL, '
         'result JSON NOT NULL, created_at DATETIME NOT NULL)'))
-    connection.execute(text('CREATE INDEX ix_ingestion_requests_created_at ON ingestion_requests (created_at)'))
+    connection.execute(text('CREATE INDEX IF NOT EXISTS ix_ingestion_requests_created_at ON ingestion_requests (created_at)'))
     connection.execute(text('UPDATE schema_version SET version=5'))
 
 
@@ -89,7 +89,12 @@ def rebuild_table(connection, model, defaults=None):
     table = model.__table__
     defaults = defaults or {}
     existing = {column['name'] for column in inspect(connection).get_columns(table.name)}
-    connection.execute(CreateTable(table.to_metadata(MetaData(), name=table.name + '_new')))
+    # Copy every table so the replacement's foreign keys resolve (DDL only).
+    metadata = MetaData()
+    for other in table.metadata.sorted_tables:
+        if other is not table:
+            other.to_metadata(metadata)
+    connection.execute(CreateTable(table.to_metadata(metadata, name=table.name + '_new')))
     targets, sources = [], []
     for column in table.columns:
         targets.append(f'"{column.name}"')
@@ -145,6 +150,10 @@ def upgrade_v8_to_v9(connection, admin_email=None):
         connection.execute(models.User.__table__.insert().values(
             id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
             session_version=credential.session_version, created_at=models.now()))
+    elif any(connection.exec_driver_sql(f'SELECT 1 FROM "{getattr(models, name).__tablename__}" LIMIT 1').first()
+             for name in TENANT_TABLES):
+        raise RuntimeError('Existing records have no workspace credential to become user #1; '
+                           'restore the credential or set APP_PASSWORD_HASH before upgrading')
 
     def rebuild():
         for name in TENANT_TABLES:

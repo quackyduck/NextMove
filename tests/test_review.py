@@ -61,7 +61,7 @@ def test_failed_resume_metadata_transaction_removes_file(app_factory, monkeypatc
     response = client.post(f'/api/v1/jobs/{job["id"]}/resumes', headers=headers,
                            data={'file': (io.BytesIO(b'Resume'), 'resume.txt')})
     assert response.status_code == 409
-    assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+    assert [p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()] == []
     assert client.get(f'/api/v1/jobs/{job["id"]}/resumes', headers=headers).json == {'resumes': []}
 
 

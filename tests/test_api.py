@@ -82,7 +82,7 @@ def test_resume_versions_download_and_private_storage(client, app):
     download = client.get(f'/api/v1/resumes/{results[0]["id"]}/download')
     assert download.data == b'Resume version 1'
     assert download.headers['Content-Disposition'].startswith('attachment;')
-    assert len(list(Path(app.config['UPLOAD_FOLDER']).iterdir())) == 2
+    assert len([p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()]) == 2
     assert client.post(endpoint, data={'file': (io.BytesIO(b'fake'), 'resume.pdf')}, headers=headers).status_code == 400
     assert client.post(endpoint, data={'file': (io.BytesIO(b'bad'), 'resume.exe')}, headers=headers).status_code == 400
     client.post('/api/v1/auth/logout', headers=headers)
@@ -110,7 +110,7 @@ def test_upload_rejections_and_bearer_unicode(client, app):
     assert client.post(endpoint, data={}, headers=headers).status_code == 400
     app.config['MAX_CONTENT_LENGTH'] = 512
     assert client.post(endpoint, data={'file': (io.BytesIO(b'A' * 1024), 'large.txt')}, headers=headers).status_code == 413
-    assert list(Path(app.config['UPLOAD_FOLDER']).iterdir()) == []
+    assert [p for p in Path(app.config['UPLOAD_FOLDER']).rglob('*') if p.is_file()] == []
 
 
 def test_outreach_badge_api_persistence_and_validation(client):

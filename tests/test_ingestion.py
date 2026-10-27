@@ -8,7 +8,7 @@ import time
 import pytest
 from sqlalchemy import select, text, update
 
-from jobtracker import create_app, db, ingestion, services
+from jobtracker import create_app, db, ingestion, services, taskqueue
 from jobtracker.models import Activity, AgentToken, IngestionRequest, now
 from test_api import app, client, login  # noqa: F401
 
@@ -22,7 +22,7 @@ FIELDS = {'title': 'Engineer', 'company': 'Acme', 'url': 'https://example.com/jo
 @pytest.fixture
 def headers(app):
     with app.app_context():
-        db.get_session().add(AgentToken(id=TOKEN_ID, name='Test agent', prefix=TOKEN[:18],
+        db.get_session().add(AgentToken(user_id=1, id=TOKEN_ID, name='Test agent', prefix=TOKEN[:18],
             token_hash=hashlib.sha256(TOKEN.encode()).hexdigest(), permissions=['roles:ingest'], expires_at=now() + timedelta(days=90)))
         db.get_session().commit()
     return {'Authorization': 'Bearer ' + TOKEN, 'Idempotency-Key': KEY}
@@ -38,14 +38,12 @@ def submit(client, headers, url=FIELDS['url']):
 
 
 def wait(client, headers, identifier):
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline:
-        response = client.get('/api/v1/ingestions/' + identifier, headers=headers)
-        assert response.status_code == 200
-        if response.json['status'] != 'running':
-            return response.json
-        time.sleep(0.01)
-    pytest.fail('Ingestion did not finish')
+    """Run the queue worker in-process until idle, then read the receipt."""
+    taskqueue.drain(client.application)
+    response = client.get('/api/v1/ingestions/' + identifier, headers=headers)
+    assert response.status_code == 200
+    assert response.json['status'] != 'running', 'Ingestion did not finish'
+    return response.json
 
 
 def test_token_disabled_by_default_and_separate_from_other_auth(client, app, headers):
@@ -68,14 +66,9 @@ def test_production_requires_https(client, app, headers):
     response = client.post('/api/v1/ingestions', base_url='https://localhost', json={'url': FIELDS['url']}, headers=headers)
     assert response.status_code == 202
     # Poll over HTTPS too; no browser cookie is needed.
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline:
-        result = client.get(response.headers['Location'], base_url='https://localhost', headers=headers)
-        if result.json['status'] != 'running':
-            assert result.json['status'] == 'succeeded'
-            return
-        time.sleep(0.01)
-    pytest.fail('Ingestion did not finish')
+    taskqueue.drain(app)
+    result = client.get(response.headers['Location'], base_url='https://localhost', headers=headers)
+    assert result.json['status'] == 'succeeded'
 
 
 @pytest.mark.parametrize('changes', [{'Idempotency-Key': ''}, {'Idempotency-Key': 'short'}, {'Idempotency-Key': 'x' * 129}])
@@ -108,44 +101,32 @@ def test_saves_role_and_replays_across_restart_and_age(client, app, headers):
     assert submit(restarted, headers, 'https://example.com/different').status_code == 409
 
 
-def test_concurrent_retries_share_one_worker_and_ack_does_not_wait(client, app, headers, monkeypatch):
-    release = threading.Event()
+def test_concurrent_retries_share_one_task_and_ack_does_not_fetch(client, app, headers, monkeypatch):
     calls = []
-    def slow(url):
+    def tracked(url):
         calls.append(url)
-        assert release.wait(5)
         return {'fields': FIELDS, 'warnings': []}
-    monkeypatch.setattr(ingestion, 'extract_posting', slow)
+    monkeypatch.setattr(ingestion, 'extract_posting', tracked)
     def request(_):
         return submit(app.test_client(), headers)
-    try:
-        started = time.monotonic()
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            responses = list(pool.map(request, range(2)))
-        assert time.monotonic() - started < 1
-        assert all(response.status_code == 202 for response in responses)
-        assert responses[0].json['id'] == responses[1].json['id']
-        assert len(calls) == 1
-    finally:
-        release.set()
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(request, range(2)))
+    assert time.monotonic() - started < 1
+    assert all(response.status_code == 202 for response in responses)
+    assert responses[0].json['id'] == responses[1].json['id']
+    assert calls == []  # The web request only enqueues; the worker fetches.
     assert wait(client, headers, responses[0].json['id'])['status'] == 'succeeded'
+    assert len(calls) == 1
 
 
-def test_shared_capacity_and_replay_when_full(client, headers, monkeypatch):
-    release = threading.Event()
-    def slow(url):
-        assert release.wait(5)
-        return {'fields': FIELDS, 'warnings': []}
-    monkeypatch.setattr(ingestion, 'extract_posting', slow)
-    try:
-        first = submit(client, headers)
-        second = submit(client, {**headers, 'Idempotency-Key': KEY + 'b'})
-        assert second.status_code == 202
-        assert submit(client, headers).json == first.json
-        assert submit(client, {**headers, 'Idempotency-Key': KEY + 'c'}).status_code == 429
-        assert client.post('/api/v1/jobs/extract', json={'url': FIELDS['url']}, headers={'Authorization': 'Bearer test-agent-token'}).status_code == 429
-    finally:
-        release.set()
+def test_shared_capacity_and_replay_when_full(client, headers):
+    first = submit(client, headers)
+    second = submit(client, {**headers, 'Idempotency-Key': KEY + 'b'})
+    assert second.status_code == 202
+    assert submit(client, headers).json == first.json
+    assert submit(client, {**headers, 'Idempotency-Key': KEY + 'c'}).status_code == 429
+    assert client.post('/api/v1/jobs/extract', json={'url': FIELDS['url']}, headers={'Authorization': 'Bearer test-agent-token'}).status_code == 429
     wait(client, headers, first.json['id'])
     wait(client, headers, second.json['id'])
 
@@ -154,7 +135,7 @@ def test_hourly_limit_is_persistent_and_does_not_block_replay(client, app, heade
     with app.app_context():
         session = db.get_session()
         for index in range(30):
-            session.add(IngestionRequest(token_id=TOKEN_ID, idempotency_key=KEY + str(index), url=FIELDS['url'], status='failed', result={'error': 'Example failure'}))
+            session.add(IngestionRequest(user_id=1, token_id=TOKEN_ID, idempotency_key=KEY + str(index), url=FIELDS['url'], status='failed', result={'error': 'Example failure'}))
         session.commit()
     assert submit(client, headers).status_code == 429
     assert submit(client, {**headers, 'Idempotency-Key': KEY + '0'}).status_code == 200
@@ -174,26 +155,14 @@ def test_creation_and_success_are_atomic(client, app, headers, monkeypatch):
 
 
 def test_expired_worker_cannot_create_late_role(client, app, headers, monkeypatch):
-    release, finished = threading.Event(), threading.Event()
-    original = ingestion.run_ingestion
-    def tracked(*args):
-        try:
-            original(*args)
-        finally:
-            finished.set()
-    monkeypatch.setattr(ingestion, 'run_ingestion', tracked)
     def slow(url):
-        assert release.wait(5)
-        return {'fields': FIELDS, 'warnings': []}
-    monkeypatch.setattr(ingestion, 'extract_posting', slow)
-    try:
-        response = submit(client, headers)
+        # The deadline passes while the worker is fetching the page.
         with app.app_context():
             db.get_session().execute(update(IngestionRequest).values(created_at=now() - timedelta(seconds=61)))
             db.get_session().commit()
-    finally:
-        release.set()
-    assert finished.wait(2)
+        return {'fields': FIELDS, 'warnings': []}
+    monkeypatch.setattr(ingestion, 'extract_posting', slow)
+    response = submit(client, headers)
     assert wait(client, headers, response.json['id'])['status'] == 'failed'
     # Also prove that retrying finalization cannot create a late role.
     with app.app_context():
@@ -215,6 +184,8 @@ def test_private_url_fails_without_saving(client, headers, monkeypatch):
 def test_schema_four_upgrade_preserves_jobs_and_preview_tasks(client, app):
     browser = login(client)
     job = client.post('/api/v1/jobs', json={'title': 'Keep this role'}, headers=browser).json
+    from legacy import downgrade_to_v8
+    downgrade_to_v8(app)
     engine = app.extensions['jobtracker_db']['engine']
     with engine.begin() as connection:
         connection.execute(text('DROP TABLE ingestion_requests'))
@@ -231,14 +202,9 @@ def test_prefixed_ingestion_location(client, app, headers):
     response = prefixed.post('/nextmove/api/v1/ingestions', base_url='http://localhost', json={'url': FIELDS['url']}, headers=headers)
     assert response.status_code == 202
     assert response.headers['Location'] == '/nextmove/api/v1/ingestions/' + response.json['id']
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline:
-        result = prefixed.get(response.headers['Location'], base_url='http://localhost', headers=headers)
-        if result.json['status'] != 'running':
-            assert result.json['status'] == 'succeeded'
-            return
-        time.sleep(0.01)
-    pytest.fail('Prefixed ingestion did not finish')
+    taskqueue.drain(app)
+    result = prefixed.get(response.headers['Location'], base_url='http://localhost', headers=headers)
+    assert result.json['status'] == 'succeeded'
 
 
 def test_named_token_search_then_ingest_then_find_duplicate(client):
