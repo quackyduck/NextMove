@@ -37,6 +37,8 @@ Configure `AGENT_API_TOKEN` in your private `.env` and restart the server. Reque
 
 ## Operations and next steps
 
+[Expansion roadmap](docs/ROADMAP.md) maps the current system and specifies onboarding, the agent API, resume tailoring, job crawl, the apply agent, independent deployment and donations, with eval and test plans for each.
+
 [Implementation plan and milestone checklist](docs/PLAN.md) describes the parallel agent roles and incremental demos. [Operations and deployment runbook](docs/OPERATIONS.md) includes verified local backup/restore and the gates for a future private DigitalOcean deployment. Nothing has been provisioned or deployed.
 
 [DigitalOcean deployment plan](docs/DEPLOYMENT_PLAN.md) provides the phased checklist for a private preview, production preparation, HTTPS cutover, recovery, and later Celery rollout.
