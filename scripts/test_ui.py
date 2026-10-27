@@ -24,11 +24,11 @@ def run_file(spec):
         environment = os.environ.copy()
         prefix = environment.get('APP_ROOT_PATH', '').rstrip('/')
         environment.update(APP_ENV='development', SECRET_KEY=secrets.token_hex(32),
-                           APP_PASSWORD='isolated-browser-test', APP_PASSWORD_HASH='',
+                           APP_PASSWORD='isolated-browser-test', APP_PASSWORD_HASH='', BOOTSTRAP_ADMIN_EMAIL='',
                            AGENT_API_TOKEN=secrets.token_hex(32), FLASK_DEBUG='0',
                            DATABASE_URL=f'sqlite:///{directory}/test.sqlite3',
                            UPLOAD_FOLDER=f'{directory}/resumes',
-                           E2E_BASE_URL=f'http://127.0.0.1:{port}', E2E_PASSWORD='isolated-browser-test')
+                           E2E_BASE_URL=f'http://127.0.0.1:{port}', E2E_PASSWORD='isolated-browser-test', E2E_EMAIL='owner@localhost')
         server = subprocess.Popen([sys.executable, '-m', 'flask', '--app', 'jobtracker:create_app',
                                    'run', '--host', '127.0.0.1', '--port', str(port),
                                    '--no-debugger', '--no-reload'], cwd=ROOT, env=environment)

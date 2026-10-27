@@ -5,6 +5,7 @@ const password = process.env.E2E_PASSWORD || "local-demo-only";
 
 async function login(page) {
   await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Workspace password").fill(password);
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(
@@ -58,7 +59,7 @@ test("expired session preserves unsaved job, contact and selected file; writes w
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Workspace password").fill("wrong-password");
   await dialog.getByRole("button", { name: "Sign back in" }).click();
-  await expect(dialog.getByRole("alert")).toHaveText("Invalid password");
+  await expect(dialog.getByRole("alert")).toHaveText("Invalid email or password");
   await recover(page);
   await expect(page.getByLabel("Your notes", { exact: true })).toHaveValue(
     "Unsaved notes must survive",
@@ -129,7 +130,7 @@ test("a changed session in another tab refreshes stale CSRF without dropping not
   // Another tab signs in, replacing this browser's session cookie and CSRF token.
   expect(
     (
-      await page.request.post(`${apiPath}/auth/login`, { data: { password } })
+      await page.request.post(`${apiPath}/auth/login`, { data: { email: process.env.E2E_EMAIL || "owner@localhost", password } })
     ).ok(),
   ).toBeTruthy();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();

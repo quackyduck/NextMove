@@ -9,6 +9,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   const title = `Platform engineer ${Date.now()}`;
   await page.goto(workspacePath === "/" ? "/" : workspacePath.slice(0, -1));
   expect(new URL(page.url()).pathname).toBe(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -93,9 +94,11 @@ test("invalid login and empty intake surface recoverable errors", async ({
   page,
 }) => {
   await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Workspace password").fill("incorrect-demo-password");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -115,6 +118,7 @@ test("partial intake retains failed contact and field labels stay distinct", asy
   page,
 }) => {
   await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -160,6 +164,7 @@ test("late detail response cannot replace pipeline after navigating back", async
   page,
 }) => {
   await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -207,6 +212,7 @@ test("outreach badge persists past its stage and can be corrected independently"
   page,
 }) => {
   await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");

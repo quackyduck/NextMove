@@ -6,6 +6,7 @@ const changed = "New-workspace-password-2026";
 
 async function login(page, password = original) {
   await page.goto(base);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Workspace password").fill(password);
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(
@@ -74,9 +75,11 @@ test("change password validates current/confirmation, revokes another browser, a
     await page.getByRole("button", { name: "Save opportunity" }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
     await page.getByLabel("Workspace password").fill(original);
     await page.getByRole("button", { name: "Open workspace" }).click();
-    await expect(page.getByRole("alert")).toContainText("Invalid password");
+    await expect(page.getByRole("alert")).toContainText("Invalid email or password");
+    await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
     await page.getByLabel("Workspace password").fill(changed);
     await page.getByRole("button", { name: "Open workspace" }).click();
     await expect(
