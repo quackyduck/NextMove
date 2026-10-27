@@ -4,7 +4,8 @@ import json
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
+PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
 def upgrade_v1_to_v2(connection):
@@ -22,72 +23,143 @@ def upgrade_v1_to_v2(connection):
     connection.execute(text('UPDATE schema_version SET version=2'))
 
 
-def upgrade_v2_to_v3(connection):
+def upgrade_v2_to_v3(connection, bootstrap_hash=None):
     connection.execute(text(
         'CREATE TABLE workspace_credentials ('
         'id INTEGER PRIMARY KEY CHECK (id=1), '
         'password_hash VARCHAR(512) NOT NULL, '
         'session_version INTEGER NOT NULL CHECK (session_version>0))'
     ))
+    if bootstrap_hash:
+        # Seeded once from configuration; schema 9 converts it into user #1.
+        connection.execute(text('INSERT INTO workspace_credentials (id,password_hash,session_version) '
+                                'VALUES (1,:password_hash,1)'), {'password_hash': bootstrap_hash})
     connection.execute(text('UPDATE schema_version SET version=3'))
 
 
 def upgrade_v3_to_v4(connection):
-    from .models import ExtractionTask
-    ExtractionTask.__table__.create(connection, checkfirst=True)
+    connection.execute(text(
+        'CREATE TABLE extraction_tasks (id VARCHAR(36) NOT NULL PRIMARY KEY, status VARCHAR(20) NOT NULL, '
+        'result JSON NOT NULL, created_at DATETIME NOT NULL)'))
+    connection.execute(text('CREATE INDEX ix_extraction_tasks_created_at ON extraction_tasks (created_at)'))
     connection.execute(text('UPDATE schema_version SET version=4'))
 
 
 def upgrade_v4_to_v5(connection):
-    from .models import IngestionRequest
-    IngestionRequest.__table__.create(connection, checkfirst=True)
+    # Historical DDL is frozen here: later model changes must not leak into old steps.
+    connection.execute(text(
+        'CREATE TABLE ingestion_requests (id VARCHAR(36) NOT NULL PRIMARY KEY, '
+        'idempotency_key VARCHAR(128) NOT NULL UNIQUE, url TEXT NOT NULL, status VARCHAR(20) NOT NULL, '
+        'result JSON NOT NULL, created_at DATETIME NOT NULL)'))
+    connection.execute(text('CREATE INDEX ix_ingestion_requests_created_at ON ingestion_requests (created_at)'))
     connection.execute(text('UPDATE schema_version SET version=5'))
 
 
 def upgrade_v5_to_v6(connection):
-    from .models import AgentToken, IngestionRequest
-    AgentToken.__table__.create(connection, checkfirst=True)
+    connection.execute(text(
+        'CREATE TABLE IF NOT EXISTS agent_tokens (id VARCHAR(36) NOT NULL PRIMARY KEY, name VARCHAR(80) NOT NULL, '
+        'prefix VARCHAR(18) NOT NULL, token_hash VARCHAR(64) NOT NULL UNIQUE, permissions JSON NOT NULL, '
+        'created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, last_used_at DATETIME, revoked_at DATETIME)'))
     if 'token_id' not in {column['name'] for column in inspect(connection).get_columns('ingestion_requests')}:
         connection.execute(text('ALTER TABLE ingestion_requests ADD COLUMN token_id VARCHAR(36) REFERENCES agent_tokens(id)'))
-    for index in IngestionRequest.__table__.indexes:
-        index.create(connection, checkfirst=True)
+    connection.execute(text('CREATE INDEX IF NOT EXISTS ix_ingestion_requests_token_id ON ingestion_requests (token_id)'))
     connection.execute(text('UPDATE schema_version SET version=6'))
 
 
-def rebuild_jobs(connection):
-    from sqlalchemy import MetaData
-    from sqlalchemy.schema import CreateTable
-    from .models import Job
-    # SQLite cannot alter CHECK constraints. Defer child references while replacing
-    # the parent, then validate every FK before clearing SQLite's deferred counter.
-    connection.exec_driver_sql('PRAGMA defer_foreign_keys=ON')
-    replacement = Job.__table__.to_metadata(MetaData(), name='jobs_new')
-    connection.execute(CreateTable(replacement))
-    columns = ', '.join('"' + column.name + '"' for column in Job.__table__.columns)
-    connection.exec_driver_sql(f'INSERT INTO jobs_new ({columns}) SELECT {columns} FROM jobs')
-    connection.exec_driver_sql('DROP TABLE jobs')
-    connection.exec_driver_sql('ALTER TABLE jobs_new RENAME TO jobs')
-    if connection.exec_driver_sql('PRAGMA foreign_key_check').fetchall():
-        raise RuntimeError('Foreign key validation failed during jobs migration')
-    connection.exec_driver_sql('PRAGMA defer_foreign_keys=OFF')
-
-
 def upgrade_v6_to_v7(connection):
-    rebuild_jobs(connection)
+    # Originally rebuilt jobs for the needs_review CHECK. Schema 9 rebuilds jobs
+    # from the current model, so older databases receive that constraint there.
     connection.execute(text('UPDATE schema_version SET version=7'))
 
 
 def upgrade_v7_to_v8(connection):
-    rebuild_jobs(connection)
+    # Originally rebuilt jobs for the not_interested CHECK; see upgrade_v6_to_v7.
     connection.execute(text('UPDATE schema_version SET version=8'))
 
 
-def migrate(connection, versions):
+def rebuild_table(connection, model, defaults=None):
+    """Replace a table with the current model definition, copying every row.
+
+    SQLite cannot add constrained columns or alter CHECK/UNIQUE constraints in
+    place. A column missing from the old table (or NULL there) takes the SQL
+    literal from `defaults`. Callers run inside one transaction with deferred FKs.
+    """
+    from sqlalchemy import MetaData
+    from sqlalchemy.schema import CreateTable
+    table = model.__table__
+    defaults = defaults or {}
+    existing = {column['name'] for column in inspect(connection).get_columns(table.name)}
+    connection.execute(CreateTable(table.to_metadata(MetaData(), name=table.name + '_new')))
+    targets, sources = [], []
+    for column in table.columns:
+        targets.append(f'"{column.name}"')
+        if column.name in existing:
+            sources.append(f'COALESCE("{column.name}", {defaults[column.name]})'
+                           if column.name in defaults else f'"{column.name}"')
+        elif column.name in defaults:
+            sources.append(defaults[column.name])
+        else:
+            raise RuntimeError(f'Cannot rebuild {table.name}: no value for new column {column.name}')
+    connection.exec_driver_sql(f'INSERT INTO "{table.name}_new" ({", ".join(targets)}) '
+                               f'SELECT {", ".join(sources)} FROM "{table.name}"')
+    connection.exec_driver_sql(f'DROP TABLE "{table.name}"')
+    connection.exec_driver_sql(f'ALTER TABLE "{table.name}_new" RENAME TO "{table.name}"')
+    for index in table.indexes:
+        index.create(connection)
+
+
+def with_deferred_foreign_keys(connection, step):
+    # Defer child references while replacing parents, then validate every FK
+    # before clearing SQLite's deferred counter. Enforcement stays on throughout.
+    connection.exec_driver_sql('PRAGMA defer_foreign_keys=ON')
+    step()
+    if connection.exec_driver_sql('PRAGMA foreign_key_check').fetchall():
+        raise RuntimeError('Foreign key validation failed during migration')
+    connection.exec_driver_sql('PRAGMA defer_foreign_keys=OFF')
+
+
+def bootstrap_email(value):
+    from .credentials import normalize_email
+    email = normalize_email(value) if value else PLACEHOLDER_ADMIN_EMAIL
+    if email is None:
+        raise RuntimeError('BOOTSTRAP_ADMIN_EMAIL is not a valid email address')
+    return email
+
+
+TENANT_TABLES = ('Job', 'Contact', 'Resume', 'Activity', 'AgentToken', 'ExtractionTask', 'IngestionRequest')
+
+
+def upgrade_v8_to_v9(connection, admin_email=None):
+    """Multi-user tenancy: the singleton workspace becomes user #1.
+
+    Every row keeps its ID, version and timestamps and gains user_id=1. Resume
+    files move under <uploads>/1/ after commit (see storage.relocate_legacy_files).
+    """
+    from . import models
+    models.User.__table__.create(connection)
+    models.InviteCode.__table__.create(connection)
+    models.QueuedTask.__table__.create(connection)
+    credential = connection.execute(text(
+        'SELECT password_hash, session_version FROM workspace_credentials WHERE id=1')).first()
+    if credential is not None:
+        connection.execute(models.User.__table__.insert().values(
+            id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
+            session_version=credential.session_version, created_at=models.now()))
+
+    def rebuild():
+        for name in TENANT_TABLES:
+            rebuild_table(connection, getattr(models, name), {'user_id': '1'})
+    with_deferred_foreign_keys(connection, rebuild)
+    connection.exec_driver_sql('DROP TABLE workspace_credentials')
+    connection.execute(text('UPDATE schema_version SET version=9'))
+
+
+def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
         versions = [2]
     if versions == [2]:
-        upgrade_v2_to_v3(connection)
+        upgrade_v2_to_v3(connection, bootstrap_hash)
         versions = [3]
     if versions == [3]:
         upgrade_v3_to_v4(connection)
@@ -104,5 +176,8 @@ def migrate(connection, versions):
     if versions == [7]:
         upgrade_v7_to_v8(connection)
         versions = [8]
+    if versions == [8]:
+        upgrade_v8_to_v9(connection, admin_email)
+        versions = [9]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

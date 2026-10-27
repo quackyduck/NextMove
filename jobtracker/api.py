@@ -6,7 +6,7 @@ import uuid
 import zipfile
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
-from . import services
+from . import services, storage
 from .auth import require_auth, require_browser_auth, require_agent_token, require_resume_upload_access
 from .search_access import require_search_access
 
@@ -29,19 +29,19 @@ def payload():
 @require_search_access
 def jobs_search():
     from .search import search
-    return jsonify(search(request.args))
+    return jsonify(search(g.user_id, request.args))
 
 
 @api.get('/jobs')
 @require_auth
 def jobs_list():
-    return jsonify(jobs=services.list_jobs())
+    return jsonify(jobs=services.list_jobs(g.user_id))
 
 
 @api.post('/jobs')
 @require_auth
 def jobs_create():
-    return jsonify(services.create_job(payload())), 201
+    return jsonify(services.create_job(g.user_id, payload())), 201
 
 
 @api.post('/jobs/extract')
@@ -50,7 +50,7 @@ def jobs_extract():
     from .extraction_tasks import start_extraction
     data = payload()
     services._payload(data, {'url'})
-    result = start_extraction(data.get('url'))
+    result = start_extraction(g.user_id, data.get('url'))
     response = jsonify(result)
     response.status_code = 202
     response.headers['Location'] = request.script_root + '/api/v1/extractions/' + result['id']
@@ -62,28 +62,28 @@ def jobs_extract():
 @require_auth
 def extraction_status(task_id):
     from .extraction_tasks import get_extraction
-    return jsonify(get_extraction(task_id))
+    return jsonify(get_extraction(g.user_id, task_id))
 
 
 @api.get('/agent-tokens')
 @require_browser_auth
 def agent_tokens_list():
     from .agent_tokens import list_tokens
-    return jsonify(tokens=list_tokens())
+    return jsonify(tokens=list_tokens(g.user_id))
 
 
 @api.post('/agent-tokens')
 @require_browser_auth
 def agent_tokens_create():
     from .agent_tokens import create_token
-    return jsonify(create_token(payload())), 201
+    return jsonify(create_token(g.user_id, payload())), 201
 
 
 @api.post('/agent-tokens/<token_id>/revoke')
 @require_browser_auth
 def agent_tokens_revoke(token_id):
     from .agent_tokens import revoke_token
-    return jsonify(agent_token=revoke_token(token_id))
+    return jsonify(agent_token=revoke_token(g.user_id, token_id))
 
 
 @api.get('/agent-connection')
@@ -98,7 +98,7 @@ def ingestions_create():
     from .ingestion import start_ingestion
     data = payload()
     services._payload(data, {'url'})
-    result = start_ingestion(data.get('url'), request.headers.get('Idempotency-Key'))
+    result = start_ingestion(g.user_id, data.get('url'), request.headers.get('Idempotency-Key'))
     response = jsonify(result)
     response.status_code = 202 if result['status'] == 'running' else 200
     response.headers['Location'] = request.script_root + '/api/v1/ingestions/' + result['id']
@@ -111,43 +111,43 @@ def ingestions_create():
 def ingestions_status(task_id):
     from .extraction_tasks import get_extraction
     from .models import IngestionRequest
-    return jsonify(get_extraction(task_id, IngestionRequest, owner_id=g.agent_token['id']))
+    return jsonify(get_extraction(g.user_id, task_id, IngestionRequest, owner_id=g.agent_token['id']))
 
 
 @api.get('/jobs/<job_id>')
 @require_auth
 def jobs_get(job_id):
-    return jsonify(services.get_job(job_id))
+    return jsonify(services.get_job(g.user_id, job_id))
 
 
 @api.patch('/jobs/<job_id>')
 @require_auth
 def jobs_update(job_id):
-    return jsonify(services.update_job(job_id, payload()))
+    return jsonify(services.update_job(g.user_id, job_id, payload()))
 
 
 @api.get('/jobs/<job_id>/activities')
 @require_auth
 def activities_list(job_id):
-    return jsonify(activities=services.list_activities(job_id))
+    return jsonify(activities=services.list_activities(g.user_id, job_id))
 
 
 @api.get('/jobs/<job_id>/contacts')
 @require_auth
 def contacts_list(job_id):
-    return jsonify(contacts=services.list_contacts(job_id))
+    return jsonify(contacts=services.list_contacts(g.user_id, job_id))
 
 
 @api.post('/jobs/<job_id>/contacts')
 @require_auth
 def contacts_create(job_id):
-    return jsonify(services.create_contact(job_id, payload())), 201
+    return jsonify(services.create_contact(g.user_id, job_id, payload())), 201
 
 
 @api.get('/jobs/<job_id>/resumes')
 @require_auth
 def resumes_list(job_id):
-    return jsonify(resumes=services.list_resumes(job_id))
+    return jsonify(resumes=services.list_resumes(g.user_id, job_id))
 
 
 def validate_document(filename, data):
@@ -179,7 +179,7 @@ def validate_document(filename, data):
 @api.post('/jobs/<job_id>/resumes')
 @require_resume_upload_access
 def resumes_create(job_id):
-    services.get_job(job_id)
+    services.get_job(g.user_id, job_id)
     upload = request.files.get('file')
     if upload is None or not upload.filename:
         raise services.ServiceError('A resume file is required', 400)
@@ -190,12 +190,12 @@ def resumes_create(job_id):
         raise services.ServiceError('Resume exceeds upload size limit', 413)
     suffix, media_type = validate_document(filename, data)
     stored = f'{uuid.uuid4().hex}{suffix}'
-    target = Path(current_app.config['UPLOAD_FOLDER']) / stored
+    target = storage.user_directory(current_app.config['UPLOAD_FOLDER'], g.user_id, create=True) / stored
     with target.open('xb') as stream:
         stream.write(data)
     target.chmod(0o600)
     try:
-        result = services.create_resume(job_id, {
+        result = services.create_resume(g.user_id, job_id, {
             'original_filename': filename,
             'stored_filename': stored,
             'media_type': media_type,
@@ -211,10 +211,10 @@ def resumes_create(job_id):
 @api.get('/resumes/<resume_id>/download')
 @require_auth
 def resumes_download(resume_id):
-    resume = services.get_resume(resume_id)
-    root = Path(current_app.config['UPLOAD_FOLDER']).resolve()
-    target = (root / resume['stored_filename']).resolve()
-    if target.parent != root or not target.is_file():
+    resume = services.get_resume(g.user_id, resume_id)
+    # Only the owner's directory is consulted; another account's file is unreachable.
+    target = storage.owned_path(current_app.config['UPLOAD_FOLDER'], g.user_id, resume['stored_filename'])
+    if target is None or not target.is_file():
         raise services.ServiceError('Resume file is unavailable', 404)
     return send_file(target, mimetype=resume['media_type'], as_attachment=True,
                      download_name=resume['original_filename'], conditional=False)

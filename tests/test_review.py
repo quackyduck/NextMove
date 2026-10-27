@@ -28,7 +28,7 @@ def app_factory(tmp_path):
 
 def test_forwarded_scheme_is_ignored_without_explicit_proxy_trust(app_factory):
     client = app_factory().test_client()
-    response = client.post('/api/v1/auth/login', json={'password': 'review-password'},
+    response = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'review-password'},
                            base_url='http://tracker.example',
                            headers={'Origin': 'https://tracker.example', 'X-Forwarded-Proto': 'https'})
     assert response.status_code == 403
@@ -36,12 +36,12 @@ def test_forwarded_scheme_is_ignored_without_explicit_proxy_trust(app_factory):
 
 def test_one_trusted_proxy_allows_https_login_without_trusting_forwarded_host(app_factory):
     client = app_factory(TRUST_PROXY=True).test_client()
-    response = client.post('/api/v1/auth/login', json={'password': 'review-password'},
+    response = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'review-password'},
                            base_url='http://tracker.example',
                            headers={'Origin': 'https://tracker.example', 'X-Forwarded-Proto': 'https'})
     assert response.status_code == 200
     assert 'Secure;' in response.headers['Set-Cookie']
-    forged = client.post('/api/v1/auth/login', json={'password': 'review-password'},
+    forged = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'review-password'},
                         base_url='http://tracker.example',
                         headers={'Origin': 'https://evil.example', 'X-Forwarded-Proto': 'https',
                                  'X-Forwarded-Host': 'evil.example'})

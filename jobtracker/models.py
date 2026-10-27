@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -28,8 +28,12 @@ class Job(Base):
         CheckConstraint("outcome IN ('active','rejected','withdrawn','closed','accepted','not_interested')"),
         CheckConstraint("priority IN ('low','medium','high')"),
         CheckConstraint("version > 0"),
+        # Children reference (id, user_id) so a row can never cross tenants.
+        UniqueConstraint("id", "user_id", name="uq_jobs_id_user"),
+        Index("ix_jobs_user_updated", "user_id", "updated_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(500))
     company: Mapped[str] = mapped_column(String(500), default="")
     url: Mapped[str] = mapped_column(Text, default="")
@@ -53,8 +57,10 @@ class Job(Base):
 
 class Contact(Base):
     __tablename__ = "contacts"
+    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_contacts_job_owner"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
     name: Mapped[str] = mapped_column(String(500), default="")
     email: Mapped[str] = mapped_column(String(500), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -63,9 +69,10 @@ class Contact(Base):
 
 class Resume(Base):
     __tablename__ = "resumes"
-    __table_args__ = (CheckConstraint("size >= 0"),)
+    __table_args__ = (CheckConstraint("size >= 0"), ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_resumes_job_owner"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
     original_filename: Mapped[str] = mapped_column(String(500))
     stored_filename: Mapped[str] = mapped_column(String(100), unique=True)
     media_type: Mapped[str] = mapped_column(String(200))
@@ -76,25 +83,45 @@ class Resume(Base):
 
 class Activity(Base):
     __tablename__ = "activities"
+    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_activities_job_owner"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
     kind: Mapped[str] = mapped_column(String(50))
     message: Mapped[str] = mapped_column(Text)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class WorkspaceCredential(Base):
-    __tablename__ = "workspace_credentials"
-    __table_args__ = (CheckConstraint("id = 1"), CheckConstraint("session_version > 0"))
+class User(Base):
+    """An account. Replaces the schema-3 singleton workspace credential (user #1)."""
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("session_version > 0"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Normalized (trimmed, lowercase) at every boundary; unique per account.
+    email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
-    session_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class InviteCode(Base):
+    """Single-use, expiring signup invitation. Only a SHA-256 of the code persists."""
+    __tablename__ = "invite_codes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class ExtractionTask(Base):
     __tablename__ = "extraction_tasks"
+    __table_args__ = (Index("ix_extraction_tasks_user_status", "user_id", "status"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
@@ -102,8 +129,14 @@ class ExtractionTask(Base):
 
 class IngestionRequest(Base):
     __tablename__ = "ingestion_requests"
+    __table_args__ = (
+        # Keys are scoped per account: another tenant's key is never an oracle.
+        UniqueConstraint("user_id", "idempotency_key", name="uq_ingestion_requests_user_key"),
+        Index("ix_ingestion_requests_user_created", "user_id", "created_at"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
     token_id: Mapped[str | None] = mapped_column(ForeignKey("agent_tokens.id"), nullable=True, index=True)
     url: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -114,6 +147,7 @@ class IngestionRequest(Base):
 class AgentToken(Base):
     __tablename__ = "agent_tokens"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(80))
     prefix: Mapped[str] = mapped_column(String(18))
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -122,3 +156,30 @@ class AgentToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+QUEUE_STATUSES = ("queued", "running", "succeeded", "failed")
+
+
+class QueuedTask(Base):
+    """Durable work item for the separate worker process (see queue.py)."""
+    __tablename__ = "queued_tasks"
+    __table_args__ = (
+        CheckConstraint("status IN ('queued','running','succeeded','failed')"),
+        CheckConstraint("attempts >= 0 AND max_attempts > 0"),
+        Index("ix_queued_tasks_claim", "status", "run_after"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    # A claim is a lease: a crashed worker's task is reclaimed after expiry.
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

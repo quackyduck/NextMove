@@ -34,7 +34,7 @@ def test_redirect_boundaries_assets_health_and_cookie_scope(prefixed):
     assert client.get('/nextmove/assets/app.js').data == b'/* app */'
     assert client.get('/nextmove/health').json == {'status': 'ok'}
     assert client.get('/nextmove/api/v1/jobs').status_code == 401
-    login = client.post('/nextmove/api/v1/auth/login', json={'password': 'prefix-test-password'},
+    login = client.post('/nextmove/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'prefix-test-password'},
                         base_url='http://nicolasmelo.com',
                         headers={'Origin': 'https://nicolasmelo.com', 'X-Forwarded-Proto': 'https'})
     assert login.status_code == 200
@@ -48,7 +48,7 @@ def test_prefixed_session_csrf_resume_and_logout(prefixed):
     client = prefixed.test_client()
     base = {'base_url': 'https://nicolasmelo.com'}
     endpoint = '/nextmove/api/v1'
-    login = client.post(endpoint + '/auth/login', json={'password': 'prefix-test-password'}, **base)
+    login = client.post(endpoint + '/auth/login', json={'email': 'owner@localhost', 'password': 'prefix-test-password'}, **base)
     headers = {'X-CSRF-Token': login.json['csrf_token']}
     assert client.post(endpoint + '/jobs', json={'title': 'Demo'}, **base).status_code == 403
     job = client.post(endpoint + '/jobs', json={'title': 'Demo'}, headers=headers, **base).json

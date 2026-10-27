@@ -24,17 +24,17 @@ def test_budget_survives_restart_and_ignores_forged_ip(build, monkeypatch):
     monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
     first = build().test_client()
     for _ in range(9):
-        assert first.post('/api/v1/auth/login', json={'password': 'wrong'}).status_code == 401
+        assert first.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'wrong'}).status_code == 401
     second = build().test_client()
-    assert second.post('/api/v1/auth/login', json={'password': 'test-password'}).status_code == 200
-    denied = first.post('/api/v1/auth/login', json={'password': 'test-password'},
+    assert second.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}).status_code == 200
+    denied = first.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'},
                         headers={'X-Forwarded-For': '203.0.113.123'})
     assert denied.status_code == 429
     assert denied.headers['Retry-After'] == '300'
     monkeypatch.setattr(throttle.time, 'time', lambda: 1299)
     assert second.post('/api/v1/auth/login', json={}).status_code == 429
     monkeypatch.setattr(throttle.time, 'time', lambda: 1300)
-    assert second.post('/api/v1/auth/login', json={'password': 'test-password'}).status_code == 200
+    assert second.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}).status_code == 200
 
 
 def test_reservations_are_atomic_across_instances(build):
@@ -58,7 +58,7 @@ def test_storage_failure_denies_login_without_details(build, monkeypatch):
         raise sqlite3.OperationalError('private database path')
 
     monkeypatch.setattr(throttle.sqlite3, 'connect', unavailable)
-    response = app.test_client().post('/api/v1/auth/login', json={'password': 'test-password'})
+    response = app.test_client().post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'})
     assert response.status_code == 503
     assert b'private database path' not in response.data
     assert response.headers['Cache-Control'] == 'no-store'

@@ -25,7 +25,7 @@ def app(config):
 
 
 def login(client, password='original-password'):
-    response = client.post('/api/v1/auth/login', json={'password': password})
+    response = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': password})
     assert response.status_code == 200
     return {'X-CSRF-Token': response.json['csrf_token']}
 
@@ -58,7 +58,7 @@ def test_change_persists_revokes_other_and_copied_sessions_and_rotates_csrf(app,
         assert record.password_hash != 'updated-password'
     # A restart with the original env bootstrap hash must not undo the change.
     fresh = create_app(config).test_client()
-    assert fresh.post('/api/v1/auth/login', json={'password': 'original-password'}).status_code == 401
+    assert fresh.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'original-password'}).status_code == 401
     login(fresh, 'updated-password')
     assert fresh.get('/api/v1/jobs').json['jobs'][0]['title'] == 'Engineer'
     assert Path(config['DATABASE_URL'].removeprefix('sqlite:///')).stat().st_mode & 0o777 == 0o600
@@ -112,7 +112,7 @@ def test_credential_read_failure_fails_closed(app, monkeypatch):
     monkeypatch.setattr(credentials, 'read', fail)
     assert client.get('/api/v1/jobs').status_code == 503
     assert client.get('/api/v1/auth/session').status_code == 503
-    assert client.post('/api/v1/auth/login', json={'password':'original-password'}).status_code == 503
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'original-password'}).status_code == 503
     assert client.post('/api/v1/auth/password', json=payload(), headers=headers).status_code == 503
 
 
@@ -139,7 +139,7 @@ def test_login_observing_old_hash_never_receives_new_session_generation(app, mon
             assert credentials.replace(credentials.read(), generate_password_hash('recovered-password'))
         return original_check(stored_hash, value)
     monkeypatch.setattr(auth_module, 'check_password_hash', concurrent_reset)
-    assert client.post('/api/v1/auth/login', json={'password':'original-password'}).status_code == 200
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'original-password'}).status_code == 200
     assert client.get('/api/v1/jobs').status_code == 401
 
 
@@ -192,7 +192,7 @@ def test_password_write_failure_preserves_old_credential_and_current_session(app
 def test_malformed_or_oversized_login_rejected_before_hashing(app, monkeypatch, password):
     def should_not_hash(*_args): raise AssertionError('Unexpected password hashing')
     monkeypatch.setattr(auth_module, 'check_password_hash', should_not_hash)
-    assert app.test_client().post('/api/v1/auth/login', json={'password': password}).status_code == 401
+    assert app.test_client().post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': password}).status_code == 401
 
 
 def test_missing_initialized_credential_never_reseeds_original_password(app, config):
@@ -202,7 +202,7 @@ def test_missing_initialized_credential_never_reseeds_original_password(app, con
     with app.app_context():
         db.get_session().execute(text('DELETE FROM workspace_credentials'))
         db.get_session().commit()
-    assert client.post('/api/v1/auth/login', json={'password':'original-password'}).status_code == 503
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'original-password'}).status_code == 503
     with pytest.raises(RuntimeError, match='credential is missing'):
         create_app(config)
     with app.app_context():

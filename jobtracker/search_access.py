@@ -7,7 +7,7 @@ import re
 import sqlite3
 import time
 
-from flask import current_app, request
+from flask import current_app, g, request
 
 from .auth import error, require_auth, require_agent_token
 
@@ -44,6 +44,9 @@ def require_search_access(view):
             token = authorization[7:]
             if 32 <= len(token) <= 512 and hmac.compare_digest(
                     hashlib.sha256(token.encode('utf-8')).hexdigest(), verifier):
-                return view(*args, **kwargs)
+                from .auth import LEGACY_TOKEN_USER_ID, legacy_owner
+                if legacy_owner():
+                    g.user_id = LEGACY_TOKEN_USER_ID
+                    return view(*args, **kwargs)
         return existing_access(*args, **kwargs)
     return wrapped

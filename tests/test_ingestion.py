@@ -197,7 +197,7 @@ def test_expired_worker_cannot_create_late_role(client, app, headers, monkeypatc
     assert wait(client, headers, response.json['id'])['status'] == 'failed'
     # Also prove that retrying finalization cannot create a late role.
     with app.app_context():
-        services.complete_ingestion(response.json['id'], FIELDS, [])
+        services.complete_ingestion(1, response.json['id'], FIELDS, [])
         assert db.get_session().scalar(text('SELECT count(*) FROM jobs')) == 0
 
 
@@ -222,7 +222,7 @@ def test_schema_four_upgrade_preserves_jobs_and_preview_tasks(client, app):
     fresh = create_app(dict(app.config))
     with fresh.app_context():
         assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
-        assert services.get_job(job['id'])['title'] == 'Keep this role'
+        assert services.get_job(1, job['id'])['title'] == 'Keep this role'
         assert db.get_session().scalar(text('SELECT count(*) FROM ingestion_requests')) == 0
 
 

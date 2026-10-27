@@ -24,7 +24,7 @@ def client(app):
 
 
 def login(client):
-    result = client.post('/api/v1/auth/login', json={'password': 'test-password'})
+    result = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'})
     assert result.status_code == 200
     return {'X-CSRF-Token': result.json['csrf_token']}
 
@@ -33,8 +33,8 @@ def test_auth_csrf_and_logout(client):
     assert client.get('/health').json == {'status': 'ok'}
     assert client.get('/api/v1/jobs').status_code == 401
     assert client.get('/api/v1/auth/session').json['authenticated'] is False
-    assert client.post('/api/v1/auth/login', json={'password': 'bad'}).status_code == 401
-    assert client.post('/api/v1/auth/login', json={'password': 'test-password'}, headers={'Origin': 'https://evil.example'}).status_code == 403
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'bad'}).status_code == 401
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}, headers={'Origin': 'https://evil.example'}).status_code == 403
     headers = login(client)
     assert client.get('/api/v1/auth/session').json['csrf_token'] == headers['X-CSRF-Token']
     assert client.post('/api/v1/jobs', json={'title': 'Engineer'}).status_code == 403
@@ -98,8 +98,8 @@ def test_production_fails_closed(monkeypatch):
 
 def test_login_throttling(client):
     for _ in range(10):
-        assert client.post('/api/v1/auth/login', json={'password': 'wrong'}).status_code == 401
-    assert client.post('/api/v1/auth/login', json={'password': 'test-password'}).status_code == 429
+        assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'wrong'}).status_code == 401
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}).status_code == 429
 
 
 def test_upload_rejections_and_bearer_unicode(client, app):
