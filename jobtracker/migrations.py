@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -166,6 +166,28 @@ def upgrade_v8_to_v9(connection, admin_email=None, bootstrap_hash=None):
     connection.execute(text('UPDATE schema_version SET version=9'))
 
 
+def upgrade_v9_to_v10(connection):
+    """Onboarding progress and master resumes (Phase 1).
+
+    No progress rows are seeded: existing accounts never enter the guided flow
+    (it needs a signup-time create_account row) and see optional steps on the
+    dashboard checklist instead.
+    """
+    connection.execute(text(
+        'CREATE TABLE onboarding_steps (user_id INTEGER NOT NULL REFERENCES users (id), '
+        'step_id VARCHAR(40) NOT NULL, version INTEGER NOT NULL, status VARCHAR(10) NOT NULL, '
+        'updated_at DATETIME NOT NULL, PRIMARY KEY (user_id, step_id), '
+        "CHECK (status IN ('pending','done','skipped')), CHECK (version > 0))"))
+    connection.execute(text(
+        'CREATE TABLE master_resumes (id VARCHAR(36) NOT NULL PRIMARY KEY, '
+        'user_id INTEGER NOT NULL REFERENCES users (id), version INTEGER NOT NULL, '
+        'original_filename VARCHAR(500) NOT NULL, stored_filename VARCHAR(100) NOT NULL UNIQUE, '
+        'media_type VARCHAR(200) NOT NULL, size INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, '
+        'created_at DATETIME NOT NULL, UNIQUE (user_id, version), CHECK (size >= 0), CHECK (version > 0))'))
+    connection.execute(text('CREATE INDEX ix_master_resumes_user_id ON master_resumes (user_id)'))
+    connection.execute(text('UPDATE schema_version SET version=10'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -191,5 +213,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [8]:
         upgrade_v8_to_v9(connection, admin_email, bootstrap_hash)
         versions = [9]
+    if versions == [9]:
+        upgrade_v9_to_v10(connection)
+        versions = [10]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

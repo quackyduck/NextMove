@@ -28,6 +28,7 @@ export async function api(path, { method = "GET", body, ...options } = {}) {
       data.error || `Request failed (${response.status})`,
     );
     error.status = response.status;
+    error.data = data;
     error.authenticationRequired =
       !path.startsWith("/auth/") &&
       (response.status === 401 ||

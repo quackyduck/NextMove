@@ -6,8 +6,8 @@ const password = process.env.E2E_PASSWORD || "local-demo-only";
 async function openAccess(page) {
   await page.goto(path);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
-  await page.getByLabel("Workspace password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page.getByRole("button", { name: "Agent access", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agent access." })).toBeVisible();
 }
@@ -76,7 +76,7 @@ test("failed creation and expired sessions do not create or lose track of tokens
   await page.getByLabel("Current workspace password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create token", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.getByRole("dialog").getByLabel("Workspace password").fill(password);
+  await page.getByRole("dialog").getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign back in", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByLabel("Token name", { exact: true })).toHaveValue("Recovery agent");

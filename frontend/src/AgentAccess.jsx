@@ -1,14 +1,86 @@
 import React, { useEffect, useState } from "react";
 import { api, apiUrl } from "./api.js";
 
+export const SCOPE_LABELS = {
+  "roles:search": "Search saved roles for duplicates",
+  "roles:ingest": "Add roles from URLs and upload resumes",
+};
+
 const formatDate = (value) => value ? new Date(value).toLocaleString() : "Never";
 
-export function AgentAccess({ reauthRequired, onBusyChange }) {
-  const [tokens, setTokens] = useState([]);
-  const [name, setName] = useState("");
+// Checks a raw token from this browser. Credential failures belong to the agent
+// token, not the browser session, so this bypasses api() and its recovery flow.
+export async function testConnection(raw) {
+  const response = await fetch(apiUrl("/agent-connection"), {
+    headers: { Authorization: `Bearer ${raw}` }, credentials: "omit", cache: "no-store", redirect: "error",
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Connection failed");
+  return data;
+}
+
+// Shared by Agent access and onboarding. `onCreate` resolves true on success.
+export function TokenCreateForm({ busy, onCreate, onPermissionsChange, initialName = "" }) {
+  const [name, setName] = useState(initialName);
   const [days, setDays] = useState("90");
-  const [permissions, setPermissions] = useState(["roles:search", "roles:ingest"]);
+  const [permissions, setPermissionsState] = useState(["roles:search", "roles:ingest"]);
   const [password, setPassword] = useState("");
+  function setPermissions(next) {
+    setPermissionsState(next);
+    onPermissionsChange?.(next);
+  }
+  async function submit(event) {
+    event.preventDefault();
+    const created = await onCreate({ name, expires_in_days: Number(days), current_password: password, permissions });
+    setPassword("");
+    if (created) setName("");
+  }
+  return (
+    <form className="form-panel mb-4" onSubmit={submit}>
+      <h2 className="section-heading mt-0">Create a token</h2>
+      <fieldset disabled={busy}>
+        <label className="form-label" htmlFor="agent-name">Token name</label>
+        <input id="agent-name" className="form-control mb-3" value={name} onChange={e => setName(e.target.value)} placeholder="My job-search agent" maxLength={80} required />
+        <label className="form-label" htmlFor="agent-expiry">Expires in</label>
+        <select id="agent-expiry" className="form-select mb-3" value={days} onChange={e => setDays(e.target.value)}>
+          <option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option>
+        </select>
+        <fieldset className="mb-3"><legend className="form-label">Permissions</legend>
+          {Object.entries(SCOPE_LABELS).map(([scope, text]) => <label className="d-block" key={scope}><input type="checkbox" checked={permissions.includes(scope)} onChange={event => setPermissions(event.target.checked ? [...permissions, scope] : permissions.filter(item => item !== scope))} /> {text}</label>)}
+        </fieldset>
+        <p className="form-text">Search returns matching role summaries. Add roles permission also allows adding resume versions to any saved role. Tokens cannot read notes or existing resumes, edit role fields, or manage tokens. New submissions start as Needs review.</p>
+        <label className="form-label" htmlFor="agent-password">Current workspace password</label>
+        <input id="agent-password" className="form-control mb-3" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} />
+        <button className="btn btn-primary" disabled={busy || !permissions.length}>{busy ? "Working…" : "Create token"}</button>
+      </fieldset>
+    </form>
+  );
+}
+
+export function NewTokenPanel({ secret, busy, onCopy, onTest, onHide, children }) {
+  return (
+    <section className="form-panel mb-4" aria-label="New token setup">
+      <h2 className="section-heading mt-0">Save your token</h2>
+      <p>This token is shown once. Save it in your agent’s secret manager or a private token file before leaving this screen.</p>
+      <label className="form-label" htmlFor="new-agent-token">New token</label>
+      <input id="new-agent-token" className="form-control" value={secret} readOnly autoComplete="off" spellCheck={false} />
+      <div className="d-flex flex-wrap gap-2 mt-3">
+        <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={onCopy}>Copy token</button>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={onTest}>Test connection</button>
+        <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={onHide}>I’ve saved my token</button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export async function copySecret(secret) {
+  try { await navigator.clipboard.writeText(secret); }
+  catch { throw new Error("Copy unavailable. Select the token field and copy it manually."); }
+}
+
+export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
+  const [tokens, setTokens] = useState([]);
   const [created, setCreated] = useState(null);
   const secret = created?.token || "";
   const [testToken, setTestToken] = useState("");
@@ -39,34 +111,23 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
     onBusyChange(true);
     setError("");
     setNotice("");
-    try { await action(); }
-    catch (error) { if (!error.authenticationRequired) setError(error.message); }
+    try { await action(); return true; }
+    catch (error) { if (!error.authenticationRequired) setError(error.message); return false; }
     finally { setBusy(false); onBusyChange(false); }
   }
-  function create(event) {
-    event.preventDefault();
-    run(async () => {
-      try {
-        const data = await api("/agent-tokens", { method: "POST", body: {
-          name, expires_in_days: Number(days), current_password: password, permissions,
-        } });
-        setCreated(data);
-        setName("");
-        await refresh();
-      } finally { setPassword(""); }
+  function create(values) {
+    return run(async () => {
+      setCreated(await api("/agent-tokens", { method: "POST", body: values }));
+      await refresh();
     });
   }
   function test(raw) {
     run(async () => {
       try {
-        // Credential failures belong to the agent token, not the browser session.
-        const response = await fetch(apiUrl("/agent-connection"), {
-          headers: { Authorization: `Bearer ${raw}` }, credentials: "omit", cache: "no-store", redirect: "error",
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Connection failed");
+        const data = await testConnection(raw);
         setNotice(`Connected as ${data.agent_token.name}. No role was created.`);
         await refresh();
+        onConnected?.();
       } finally { setTestToken(""); }
     });
   }
@@ -92,41 +153,13 @@ export function AgentAccess({ reauthRequired, onBusyChange }) {
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
       {secret ? (
-        <section className="form-panel mb-4" aria-label="New token setup">
-          <h2 className="section-heading mt-0">Save your token</h2>
-          <p>This token is shown once. Save it in your agent’s secret manager or a private token file before leaving this screen.</p>
-          <label className="form-label" htmlFor="new-agent-token">New token</label>
-          <input id="new-agent-token" className="form-control" value={secret} readOnly autoComplete="off" spellCheck={false} />
-          <div className="d-flex flex-wrap gap-2 mt-3">
-            <button className="btn btn-outline-secondary" disabled={busy} onClick={() => run(async () => {
-              try { await navigator.clipboard.writeText(secret); setNotice("Token copied. Store it securely; do not paste it into a conversation."); }
-              catch { throw new Error("Copy unavailable. Select the token field and copy it manually."); }
-            })}>Copy token</button>
-            <button className="btn btn-primary" disabled={busy} onClick={() => test(secret)}>Test connection</button>
-            <button className="btn btn-outline-secondary" disabled={busy} onClick={() => { setCreated(null); setNotice("Token hidden. You can revoke it and create another if you did not save it."); }}>I’ve saved my token</button>
-          </div>
+        <NewTokenPanel secret={secret} busy={busy}
+          onCopy={() => run(async () => { await copySecret(secret); setNotice("Token copied. Store it securely; do not paste it into a conversation."); })}
+          onTest={() => test(secret)}
+          onHide={() => { setCreated(null); setNotice("Token hidden. You can revoke it and create another if you did not save it."); }}>
           <p className="form-text mt-3 mb-0">This test checks the token from this browser. Use the command below on your agent’s machine to test its setup.</p>
-        </section>
-      ) : (
-        <form className="form-panel mb-4" onSubmit={create}>
-          <h2 className="section-heading mt-0">Create a token</h2>
-          <fieldset disabled={busy}>
-            <label className="form-label" htmlFor="agent-name">Token name</label>
-            <input id="agent-name" className="form-control mb-3" value={name} onChange={e => setName(e.target.value)} placeholder="My job-search agent" maxLength={80} required />
-            <label className="form-label" htmlFor="agent-expiry">Expires in</label>
-            <select id="agent-expiry" className="form-select mb-3" value={days} onChange={e => setDays(e.target.value)}>
-              <option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option>
-            </select>
-            <fieldset className="mb-3"><legend className="form-label">Permissions</legend>
-              {[["roles:search", "Search saved roles for duplicates"], ["roles:ingest", "Add roles from URLs and upload resumes"]].map(([scope, text]) => <label className="d-block" key={scope}><input type="checkbox" checked={permissions.includes(scope)} onChange={event => setPermissions(event.target.checked ? [...permissions, scope] : permissions.filter(item => item !== scope))} /> {text}</label>)}
-            </fieldset>
-            <p className="form-text">Search returns matching role summaries. Add roles permission also allows adding resume versions to any saved role. Tokens cannot read notes or existing resumes, edit role fields, or manage tokens. New submissions start as Needs review.</p>
-            <label className="form-label" htmlFor="agent-password">Current workspace password</label>
-            <input id="agent-password" className="form-control mb-3" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} />
-            <button className="btn btn-primary" disabled={busy || !permissions.length}>{busy ? "Working…" : "Create token"}</button>
-          </fieldset>
-        </form>
-      )}
+        </NewTokenPanel>
+      ) : <TokenCreateForm busy={busy} onCreate={create} />}
       <section className="form-panel mb-4" aria-label="Agent setup instructions">
         <h2 className="section-heading mt-0">Connect your agent</h2>
         <ol>

@@ -174,3 +174,33 @@ attachments. Normal version checks and activity history apply. Not Interested
 roles are excluded from the default Active filter and active-role counts; choose
 Not Interested or All outcomes to see them. Search summaries return the new value
 like other outcomes. This requires schema 8; see the operations migration notes.
+
+## Onboarding and master resume (browser session only)
+
+These routes require a signed-in browser session (and `X-CSRF-Token` on POST).
+Agent tokens and the legacy bearer token receive 403/401: profile data is personal.
+Schema 10 adds the `onboarding_steps` and `master_resumes` tables.
+
+- `GET /onboarding` → `{steps: [{id, version, title, status, guided, skippable}], guided_active}`.
+  `status` is `pending`, `done` or `skipped`. Registered steps: `create_account`
+  (always done), `upload_resume` and `connect_agent` (optional). `guided_active`
+  is true only for accounts created through sign-up that have not yet acted on
+  every guided step; migrated and admin-created accounts get the checklist only.
+- `POST /onboarding/steps/<id>` `{status: "skipped" | "done"}` → the same shape.
+  Steps with a completion fact are done when the fact holds: `upload_resume` once a
+  master resume exists, `connect_agent` once any of the account's tokens has made a
+  successful request (for example the connection test). Claiming `done` before
+  that returns 409; skipping a completed step changes nothing. Unknown steps 404.
+  A new registered step appears for existing users as `pending`; bumping a step's
+  version re-offers it to users who skipped an older version.
+- `POST /profile/resume` multipart `file` (PDF, DOCX or UTF-8 TXT, 5 MB max) →
+  201 `{resume, created: true, steps, guided_active}`, or 200 with `created: false`
+  when the bytes match the latest version. Type is decided by content (magic bytes),
+  not the name or MIME type, and must agree with the extension. DOCX files that are
+  encrypted, macro-enabled, ZIP bombs, polyglots or contain unsafe member names are
+  rejected with 400; oversize requests 413; more than 20 versions 409. Files are
+  streamed to `<uploads>/<user_id>/master/` under generated names; the client
+  filename is only kept for display and download. Nothing is parsed.
+- `GET /profile/resume` → `{resume: latest | null, versions: [...]}` with
+  `id, version, original_filename, media_type, size, sha256, created_at`.
+- `GET /profile/resume/download[?version=N]` → the file as an attachment (404 when none).

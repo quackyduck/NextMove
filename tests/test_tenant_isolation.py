@@ -74,6 +74,12 @@ COLLECTIONS = {
     ('POST', '/api/v1/auth/password'): 'test_password_change_is_per_account',
     ('POST', '/api/v1/auth/logout'): 'test_password_change_is_per_account',
     ('GET', '/api/v1/health'): 'public',
+    # Phase 1: caller-scoped, browser-session only (no IDs in the path).
+    ('GET', '/api/v1/onboarding'): 'test_onboarding.py',
+    ('POST', '/api/v1/onboarding/steps/<step_id>'): 'test_onboarding.py',
+    ('GET', '/api/v1/profile/resume'): 'test_onboarding.py',
+    ('POST', '/api/v1/profile/resume'): 'test_onboarding.py',
+    ('GET', '/api/v1/profile/resume/download'): 'test_onboarding.py',
 }
 
 

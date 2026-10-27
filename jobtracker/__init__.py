@@ -75,6 +75,8 @@ def create_app(test_config=None):
     worker.init_app(app)
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
+    from .profile import profile
+    app.register_blueprint(profile, url_prefix='/api/v1')
 
     @app.get('/health')
     @app.get('/api/v1/health')

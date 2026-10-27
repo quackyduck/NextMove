@@ -162,6 +162,8 @@ def create_user(email, password_hash, invite_code=None):
             else:
                 user_id = connection.execute(insert(User).values(
                     email=email, password_hash=password_hash, session_version=1, created_at=now())).inserted_primary_key[0]
+                from .onboarding import start as start_onboarding
+                start_onboarding(connection, user_id)  # Marks the account for guided setup.
             if invite_id is not None and user_id is not None:
                 consumed = connection.execute(update(InviteCode).where(
                     InviteCode.id == invite_id, InviteCode.used_at.is_(None)

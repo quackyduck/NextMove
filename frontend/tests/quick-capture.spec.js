@@ -5,8 +5,8 @@ async function openQuick(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
-  await page.getByLabel("Workspace password").fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page.getByRole("button", { name: "Quick capture", exact: false }).click();
   await expect(page.getByRole("heading", { name: "Quick capture." })).toBeVisible();
 }
@@ -107,7 +107,7 @@ test("background polling keeps navigation usable and resumes after sign-in", asy
   state = "expired";
   await expect(page.getByRole("dialog")).toBeVisible();
   state = "succeeded";
-  await page.getByRole("dialog").getByLabel("Workspace password").fill(process.env.E2E_PASSWORD || "local-demo-only");
+  await page.getByRole("dialog").getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
   await page.getByRole("dialog").getByRole("button", { name: "Sign back in" }).click();
   await expect(page.getByLabel("Company", { exact: true })).toHaveValue("Acme");
 });

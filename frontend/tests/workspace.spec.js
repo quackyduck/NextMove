@@ -11,9 +11,9 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   expect(new URL(page.url()).pathname).toBe(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
-    .getByLabel("Workspace password")
+    .getByLabel("Password", { exact: true })
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await expect(
     page.getByRole("heading", { name: "Your pipeline." }),
   ).toBeVisible();
@@ -87,7 +87,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByLabel("Workspace password")).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
 });
 
 test("invalid login and empty intake surface recoverable errors", async ({
@@ -95,14 +95,14 @@ test("invalid login and empty intake surface recoverable errors", async ({
 }) => {
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
-  await page.getByLabel("Workspace password").fill("incorrect-demo-password");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByLabel("Password", { exact: true }).fill("incorrect-demo-password");
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
-    .getByLabel("Workspace password")
+    .getByLabel("Password", { exact: true })
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page
     .getByRole("button", { name: "Capture a role", exact: false })
     .first()
@@ -120,9 +120,9 @@ test("partial intake retains failed contact and field labels stay distinct", asy
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
-    .getByLabel("Workspace password")
+    .getByLabel("Password", { exact: true })
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page
     .getByRole("button", { name: "Capture a role", exact: false })
     .first()
@@ -166,9 +166,9 @@ test("late detail response cannot replace pipeline after navigating back", async
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
-    .getByLabel("Workspace password")
+    .getByLabel("Password", { exact: true })
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page
     .getByRole("button", { name: "Capture a role", exact: false })
     .first()
@@ -214,9 +214,9 @@ test("outreach badge persists past its stage and can be corrected independently"
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
-    .getByLabel("Workspace password")
+    .getByLabel("Password", { exact: true })
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await page
     .getByRole("button", { name: "Capture a role", exact: false })
     .first()

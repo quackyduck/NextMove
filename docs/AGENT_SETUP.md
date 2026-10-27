@@ -6,6 +6,11 @@ provide the workflow. MCP can be added later for agents that require tool discov
 
 ## 1. Create access on the site
 
+New accounts are offered the same flow as an optional **Set up an agent** step
+right after sign-up (and from the dashboard checklist later). It also shows
+ready-to-copy setup snippets for Claude Code and for a generic HTTP agent; they
+reference the token by file path or `NEXTMOVE_INGEST_TOKEN`, never by value.
+
 Sign in, open **Agent access**, name the token for the agent, choose an expiry,
 and keep **Search saved roles for duplicates** and **Add roles from URLs and
 upload resumes** checked. Enter the current workspace password and select

@@ -130,7 +130,7 @@ def start(legacy, **overrides):
 
 def assert_upgraded(legacy):
     after = rows(legacy.path)
-    assert after.pop('version') == [(9,)]
+    assert after.pop('version') == [(migrations.SCHEMA_VERSION,)]
     assert after == {table: legacy.before[table] for table in TABLES}
     for table in TABLES:
         assert query(legacy.path, f'SELECT DISTINCT user_id FROM {table}') == [(1,)]
@@ -233,7 +233,7 @@ def test_startup_finishes_an_interrupted_file_relocation(legacy, monkeypatch):
             start(legacy)
     layout = digests(legacy.uploads)
     assert len(layout) == 2 and sum(name.startswith('1/') for name in layout) == 1
-    assert query(legacy.path, 'SELECT version FROM schema_version') == [(9,)]
+    assert query(legacy.path, 'SELECT version FROM schema_version') == [(migrations.SCHEMA_VERSION,)]
     start(legacy)
     assert_upgraded(legacy)
 
