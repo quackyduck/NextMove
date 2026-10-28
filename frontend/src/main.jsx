@@ -28,6 +28,8 @@ function App() {
   useEffect(() => onAuthenticationRequired(() => setReauthRequired(true)), []);
 
   const [auth, setAuth] = useState(null),
+    [email, setEmail] = useState(""),
+    [userId, setUserId] = useState(null),
     [password, setPassword] = useState(""),
     [jobs, setJobs] = useState([]),
     [page, setPage] = useState("pipeline"),
@@ -52,6 +54,10 @@ function App() {
     api("/auth/session")
       .then((data) => {
         setCsrf(data.csrf_token);
+        if (data.user) {
+          setEmail(data.user.email);
+          setUserId(data.user.id);
+        }
         setAuth(data.authenticated);
       })
       .catch((e) => {
@@ -116,7 +122,13 @@ function App() {
     ]);
     setExtras({ ...contacts, ...resumes, ...activities });
   }
-  async function sessionRecovered() {
+  async function sessionRecovered(data) {
+    if (data?.user && userId !== null && data.user.id !== userId) {
+      // A different account signed in: never carry the previous account's
+      // open role, drafts or files into it. Start a fresh workspace.
+      window.location.reload();
+      return;
+    }
     setReauthRequired(false);
     setError("");
     setNotice(
@@ -137,10 +149,14 @@ function App() {
     await run(async () => {
       const data = await api("/auth/login", {
         method: "POST",
-        body: { password },
+        body: { email, password },
       });
       setCsrf(data.csrf_token);
       setPassword("");
+      if (data.user) {
+        setEmail(data.user.email);
+        setUserId(data.user.id);
+      }
       setAuth(true);
     });
   }
@@ -241,6 +257,18 @@ function App() {
             A private home for every opportunity, conversation, and next step.
           </p>
           <form onSubmit={login}>
+            <label htmlFor="email" className="form-label mt-3">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="username"
+              required
+              className="form-control"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
             <label htmlFor="password" className="form-label mt-3">
               Workspace password
             </label>
@@ -900,7 +928,7 @@ function App() {
           NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
         </footer>
       </main>
-      {reauthRequired && <SessionRecovery onAuthenticated={sessionRecovered} />}
+      {reauthRequired && <SessionRecovery email={email} onAuthenticated={sessionRecovered} />}
 
       {passwordSettingsOpen && (
         <PasswordSettings

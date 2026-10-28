@@ -7,6 +7,7 @@ test("password change and expired-session recovery work together without losing 
   context,
 }) => {
   await page.goto(base);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
@@ -48,7 +49,7 @@ test("password change and expired-session recovery work together without losing 
     .getByLabel("Workspace password")
     .fill(process.env.E2E_PASSWORD || "local-demo-only");
   await recovery.getByRole("button", { name: "Sign back in" }).click();
-  await expect(recovery.getByRole("alert")).toContainText("Invalid password");
+  await expect(recovery.getByRole("alert")).toContainText("Invalid email or password");
   await recovery.getByLabel("Workspace password").fill(changed);
   await recovery.getByRole("button", { name: "Sign back in" }).click();
   await expect(recovery).toHaveCount(0);

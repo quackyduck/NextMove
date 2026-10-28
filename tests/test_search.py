@@ -29,7 +29,7 @@ def save(app, **values):
     defaults = dict(title='Backend Engineer', company='Acme', url='https://example.com/jobs/123')
     defaults.update(values)
     with app.app_context():
-        return services.create_job(defaults)
+        return services.create_job(1, defaults)
 
 
 def find(app, **params):
@@ -133,7 +133,7 @@ def test_auth_scope_and_browser(app):
     assert client.get(ENDPOINT + '?company=Acme', headers={'Authorization': 'Bearer existing-broad-test-token'}).status_code == 200
     app.config['ROLE_SEARCH_TOKEN_SHA256'] = None
     assert client.get(ENDPOINT + '?company=Acme', headers=HEADERS).status_code == 401
-    assert client.post('/api/v1/auth/login', json={'password': 'test-password'}).status_code == 200
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}).status_code == 200
     assert client.get(ENDPOINT + '?company=Acme').status_code == 200
     assert client.post('/api/v1/jobs', json={'title': 'x'}).status_code == 403
 
@@ -142,7 +142,7 @@ def test_privacy_ranking_pagination_and_read_only(app):
     first = save(app, notes='private-note', description='private-description')
     save(app, title='Other', url='https://different.example/job')
     with app.app_context():
-        services.create_contact(first['id'], {'name': 'private-contact'})
+        services.create_contact(1, first['id'], {'name': 'private-contact'})
         before = {model: get_session().scalar(select(func.count()).select_from(model))
                   for model in (Job, Activity, Contact, Resume)}
     response = find(app, company='Acme', title='Backend Engineer', limit='1')
@@ -159,7 +159,7 @@ def test_privacy_ranking_pagination_and_read_only(app):
     assert find(app, company='Acme', offset='1000').json['matches'] == []
     with app.app_context():
         assert before == {model: get_session().scalar(select(func.count()).select_from(model)) for model in before}
-        assert services.get_job(first['id']) == first
+        assert services.get_job(1, first['id']) == first
 
 
 def test_rate_limit_fail_closed_and_capacity(app, monkeypatch):
@@ -174,7 +174,7 @@ def test_rate_limit_fail_closed_and_capacity(app, monkeypatch):
     assert response.status_code == 429
     assert response.headers['Retry-After'] == '60'
     # Search traffic never consumes login attempts.
-    assert app.test_client().post('/api/v1/auth/login', json={'password': 'test-password'}).status_code == 200
+    assert app.test_client().post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'}).status_code == 200
     app.extensions['login_throttle_path'] = '/nonexistent-directory/search.sqlite3'
     assert find(app, company='Acme').status_code == 503
 

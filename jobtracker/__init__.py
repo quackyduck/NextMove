@@ -25,6 +25,11 @@ def create_app(test_config=None):
         FRONTEND_DIST=os.getenv('FRONTEND_DIST', str(Path(__file__).resolve().parent.parent / 'frontend' / 'dist')),
         TRUST_PROXY=os.getenv('TRUST_PROXY') == '1',
         LOGIN_THROTTLE_DATABASE=os.getenv('LOGIN_THROTTLE_DATABASE'),
+        # Accounts: sign-up is invite-only by default; nothing ever sends email.
+        SIGNUP_ENABLED=os.getenv('SIGNUP_ENABLED', '1') != '0',
+        SIGNUP_REQUIRES_INVITE=os.getenv('SIGNUP_REQUIRES_INVITE', '1') != '0',
+        BOOTSTRAP_ADMIN_EMAIL=os.getenv('BOOTSTRAP_ADMIN_EMAIL'),
+        QUEUE_POLL_SECONDS=float(os.getenv('QUEUE_POLL_SECONDS', '1')),
         TRUSTED_HOSTS=[host.strip() for host in os.getenv('APP_ALLOWED_HOSTS', '').split(',') if host.strip()] or None,
         APP_ROOT_PATH=os.getenv('APP_ROOT_PATH', ''),
         SESSION_COOKIE_NAME='next_move_session',
@@ -45,7 +50,8 @@ def create_app(test_config=None):
         # Only enable behind exactly one reverse proxy on a private connection.
         # Trust its scheme, but keep the original Host for origin validation.
         from werkzeug.middleware.proxy_fix import ProxyFix
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=1, x_host=0, x_port=0, x_prefix=0)
+        # x_for=1 takes the client address the proxy appended, for per-IP login budgets.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=0, x_port=0, x_prefix=0)
     development = app.config['APP_ENV'] == 'development'
     if not test_config or 'SESSION_COOKIE_SECURE' not in test_config:
         app.config['SESSION_COOKIE_SECURE'] = not development
@@ -64,8 +70,9 @@ def create_app(test_config=None):
     from .api import api
     from .auth import auth
     db.init_app(app)
-    from . import credentials
+    from . import credentials, worker
     credentials.init_app(app)
+    worker.init_app(app)
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
 

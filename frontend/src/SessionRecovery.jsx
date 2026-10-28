@@ -2,22 +2,26 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { api, setCsrf } from "./api.js";
 
 // A modal keeps the workspace mounted, including unsaved text and file inputs.
-export function SessionRecovery({ onAuthenticated }) {
+export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
   const dialog = useRef(null);
   const titleId = useId();
+  const emailId = useId();
   const passwordId = useId();
+  const [email, setEmail] = useState(knownEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const warnBeforeReload = useRef((event) => {
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
   useEffect(() => {
     dialog.current.showModal();
-    const warnBeforeReload = (event) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeReload);
-    return () => window.removeEventListener("beforeunload", warnBeforeReload);
+    const warn = warnBeforeReload.current;
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
   async function signIn(event) {
@@ -27,11 +31,13 @@ export function SessionRecovery({ onAuthenticated }) {
     try {
       const data = await api("/auth/login", {
         method: "POST",
-        body: { password },
+        body: { email, password },
       });
       setCsrf(data.csrf_token);
       setPassword("");
-      onAuthenticated();
+      // Signed in: the app may now reload (e.g. a different account signed in).
+      window.removeEventListener("beforeunload", warnBeforeReload.current);
+      onAuthenticated(data);
     } catch (error) {
       setError(error.message);
     } finally {
@@ -53,7 +59,20 @@ export function SessionRecovery({ onAuthenticated }) {
         taking.
       </p>
       <form onSubmit={signIn}>
-        <label htmlFor={passwordId} className="form-label">
+        <label htmlFor={emailId} className="form-label">
+          Email
+        </label>
+        <input
+          id={emailId}
+          type="email"
+          autoComplete="username"
+          className="form-control"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          required
+          autoFocus={!email}
+        />
+        <label htmlFor={passwordId} className="form-label mt-3">
           Workspace password
         </label>
         <input
@@ -64,7 +83,7 @@ export function SessionRecovery({ onAuthenticated }) {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
-          autoFocus
+          autoFocus={Boolean(email)}
         />
         {error && (
           <p role="alert" className="alert alert-danger mt-3">

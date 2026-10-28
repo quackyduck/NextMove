@@ -1,39 +1,47 @@
-"""Search-only credential and cross-worker budget, separate from write authority."""
-from contextlib import closing
+"""Search-only credential and per-account budget, separate from write authority."""
 from functools import wraps
 import hashlib
 import hmac
 import re
-import sqlite3
-import time
 
-from flask import current_app, request
+from flask import current_app, g, request
 
-from .auth import error, require_auth, require_agent_token
+from . import throttle
+from .auth import error, legacy_owner, require_auth, require_agent_token
+
+
+def budgeted(view):
+    """Charge search work to the authenticated account, so tenants never share a budget."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        try:
+            allowed = throttle.reserve_search(g.user_id)
+        except throttle.Unavailable:
+            return error('Search temporarily unavailable', 503)
+        if not allowed:
+            response, status = error('Search rate limit exceeded; retry in one minute', 429)
+            response.headers['Retry-After'] = str(throttle.SEARCH_WINDOW_SECONDS)
+            return response, status
+        return view(*args, **kwargs)
+    return wrapped
 
 
 def require_search_access(view):
-    existing_access = require_auth(view)
-    managed_access = require_agent_token(view, permission='roles:search')
+    charged = budgeted(view)
+    existing_access = require_auth(charged)
+    managed_access = require_agent_token(charged, permission='roles:search')
 
     @wraps(view)
     def wrapped(*args, **kwargs):
-        # One global budget bounds search work and invalid bearer attempts across
-        # workers/restarts. Does not consume the browser password-login budget.
+        # A per-IP budget first bounds unauthenticated/invalid bearer attempts
+        # (and token-hash work) without affecting any other client or account.
         try:
-            with closing(sqlite3.connect(current_app.extensions['login_throttle_path'], timeout=5)) as connection:
-                connection.execute('BEGIN IMMEDIATE')
-                now = time.time()
-                connection.execute('DELETE FROM search_attempts WHERE timestamp <= ?', (now - 60,))
-                count = connection.execute('SELECT COUNT(*) FROM search_attempts').fetchone()[0]
-                if count < 120:
-                    connection.execute('INSERT INTO search_attempts (timestamp) VALUES (?)', (now,))
-                connection.commit()
-        except sqlite3.Error:
+            allowed = throttle.reserve_search()
+        except throttle.Unavailable:
             return error('Search temporarily unavailable', 503)
-        if count >= 120:
+        if not allowed:
             response, status = error('Search rate limit exceeded; retry in one minute', 429)
-            response.headers['Retry-After'] = '60'
+            response.headers['Retry-After'] = str(throttle.SEARCH_WINDOW_SECONDS)
             return response, status
         authorization = request.headers.get('Authorization', '')
         scheme, _, raw = authorization.partition(' ')
@@ -44,6 +52,9 @@ def require_search_access(view):
             token = authorization[7:]
             if 32 <= len(token) <= 512 and hmac.compare_digest(
                     hashlib.sha256(token.encode('utf-8')).hexdigest(), verifier):
-                return view(*args, **kwargs)
+                owner = legacy_owner()
+                if owner is not None:
+                    g.user_id = owner
+                    return charged(*args, **kwargs)
         return existing_access(*args, **kwargs)
     return wrapped

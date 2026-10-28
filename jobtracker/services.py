@@ -1,4 +1,8 @@
-"""Transactional domain operations shared by HTTP and future ingestion workers."""
+"""Transactional domain operations shared by HTTP and the queue worker.
+
+Every public function takes the acting account's `user_id` first and touches only
+that account's rows. Another account's IDs behave exactly like missing IDs (404).
+"""
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 import re
@@ -38,6 +42,8 @@ def transaction(function):
 def serialize(record):
     result = {}
     for column in record.__table__.columns:
+        if column.name == "user_id":
+            continue  # Ownership is implied by the authenticated request.
         value = getattr(record, column.name)
         if isinstance(value, datetime):
             value = value.replace(tzinfo=value.tzinfo or timezone.utc).isoformat().replace("+00:00", "Z")
@@ -47,8 +53,9 @@ def serialize(record):
     return result
 
 
-def _record(model, identifier):
-    record = get_session().get(model, identifier)
+def _record(model, user_id, identifier):
+    record = get_session().scalar(select(model).where(model.id == identifier, model.user_id == user_id)) \
+        if isinstance(identifier, str) else None
     if record is None:
         raise ServiceError(f"{model.__name__} not found", 404)
     return record
@@ -114,11 +121,11 @@ def _job_values(data):
     return values
 
 
-def _activity(job_id, kind, message, details=None):
-    get_session().add(Activity(job_id=job_id, kind=kind, message=message, details=details or {}))
+def _activity(user_id, job_id, kind, message, details=None):
+    get_session().add(Activity(user_id=user_id, job_id=job_id, kind=kind, message=message, details=details or {}))
 
 
-def _create_job(data):
+def _create_job(user_id, data):
     _payload(data, JOB_FIELDS)
     if data.get("found_date") in (None, ""):
         data = {key: value for key, value in data.items() if key != "found_date"}
@@ -129,48 +136,48 @@ def _create_job(data):
     values.setdefault("found_date", datetime.now(ZoneInfo("America/Los_Angeles")).date())
     if values.get("stage") == "outreach":
         values["outreach_completed"] = True
-    job = Job(**values)
+    job = Job(user_id=user_id, **values)
     get_session().add(job)
     get_session().flush()
-    _activity(job.id, "created", "Job added")
+    _activity(user_id, job.id, "created", "Job added")
     return serialize(job)
 
 
 @transaction
-def create_job(data):
-    return _create_job(data)
+def create_job(user_id, data):
+    return _create_job(user_id, data)
 
 
 @transaction
-def complete_ingestion(identifier, fields, warnings):
+def complete_ingestion(user_id, identifier, fields, warnings):
     from .extraction_tasks import TASK_SECONDS
     session = get_session()
     # Claim under the write lock: an expired task cannot create a late role.
     claimed = session.execute(update(IngestionRequest).where(
-        IngestionRequest.id == identifier, IngestionRequest.status == 'running',
+        IngestionRequest.id == identifier, IngestionRequest.user_id == user_id, IngestionRequest.status == 'running',
         IngestionRequest.created_at >= now() - timedelta(seconds=TASK_SECONDS)
     ).values(status='saving')).rowcount
     if not claimed:
         return
     task = session.get(IngestionRequest, identifier)
-    job = _create_job({**fields, 'stage': 'needs_review'})
+    job = _create_job(user_id, {**fields, 'stage': 'needs_review'})
     task.status = 'succeeded'
     task.result = {'job_id': job['id'], 'warnings': warnings}
     # Role, activity, and idempotent success are committed together.
 
 
-def list_jobs():
-    return [serialize(job) for job in get_session().scalars(select(Job).order_by(Job.updated_at.desc(), Job.id))]
+def list_jobs(user_id):
+    return [serialize(job) for job in get_session().scalars(select(Job).where(Job.user_id == user_id).order_by(Job.updated_at.desc(), Job.id))]
 
 
-def get_job(job_id):
-    return serialize(_record(Job, job_id))
+def get_job(user_id, job_id):
+    return serialize(_record(Job, user_id, job_id))
 
 
 @transaction
-def update_job(job_id, data):
+def update_job(user_id, job_id, data):
     _payload(data, JOB_FIELDS | {"version"})
-    job = _record(Job, job_id)
+    job = _record(Job, user_id, job_id)
     if "version" in data:
         if type(data["version"]) is not int or data["version"] < 1:
             raise ServiceError("version must be a positive integer")
@@ -189,49 +196,49 @@ def update_job(job_id, data):
             setattr(job, field, value)
     if changes:
         job.updated_at = now()
-        _activity(job.id, "updated", "Job updated: " + ", ".join(changes), changes)
+        _activity(user_id, job.id, "updated", "Job updated: " + ", ".join(changes), changes)
         get_session().flush()
     return serialize(job)
 
 
-def list_activities(job_id):
-    _record(Job, job_id)
-    return [serialize(item) for item in get_session().scalars(select(Activity).where(Activity.job_id == job_id).order_by(Activity.created_at, Activity.id))]
+def list_activities(user_id, job_id):
+    _record(Job, user_id, job_id)
+    return [serialize(item) for item in get_session().scalars(select(Activity).where(Activity.job_id == job_id, Activity.user_id == user_id).order_by(Activity.created_at, Activity.id))]
 
 
-def list_contacts(job_id):
-    _record(Job, job_id)
-    return [serialize(item) for item in get_session().scalars(select(Contact).where(Contact.job_id == job_id).order_by(Contact.created_at, Contact.id))]
+def list_contacts(user_id, job_id):
+    _record(Job, user_id, job_id)
+    return [serialize(item) for item in get_session().scalars(select(Contact).where(Contact.job_id == job_id, Contact.user_id == user_id).order_by(Contact.created_at, Contact.id))]
 
 
 @transaction
-def create_contact(job_id, data):
-    _record(Job, job_id)
+def create_contact(user_id, job_id, data):
+    _record(Job, user_id, job_id)
     _payload(data, {"name", "email", "notes"})
     values = {field: _text(value, field, 100000 if field == "notes" else 500) for field, value in data.items()}
     if not (values.get("name") or values.get("email")):
         raise ServiceError("Provide a contact name or email")
     if values.get("email") and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", values["email"]):
         raise ServiceError("email must be a valid email address")
-    contact = Contact(job_id=job_id, **values)
+    contact = Contact(user_id=user_id, job_id=job_id, **values)
     get_session().add(contact)
     get_session().flush()
-    _activity(job_id, "contact_added", "Contact added", {"contact_id": contact.id})
+    _activity(user_id, job_id, "contact_added", "Contact added", {"contact_id": contact.id})
     return serialize(contact)
 
 
-def list_resumes(job_id):
-    _record(Job, job_id)
-    return [serialize(item) for item in get_session().scalars(select(Resume).where(Resume.job_id == job_id).order_by(Resume.created_at, Resume.id))]
+def list_resumes(user_id, job_id):
+    _record(Job, user_id, job_id)
+    return [serialize(item) for item in get_session().scalars(select(Resume).where(Resume.job_id == job_id, Resume.user_id == user_id).order_by(Resume.created_at, Resume.id))]
 
 
-def get_resume(resume_id):
-    return serialize(_record(Resume, resume_id))
+def get_resume(user_id, resume_id):
+    return serialize(_record(Resume, user_id, resume_id))
 
 
 @transaction
-def create_resume(job_id, data):
-    _record(Job, job_id)
+def create_resume(user_id, job_id, data):
+    _record(Job, user_id, job_id)
     required = {"original_filename", "stored_filename", "media_type", "size", "sha256"}
     _payload(data, required)
     if set(data) != required:
@@ -245,8 +252,8 @@ def create_resume(job_id, data):
         raise ServiceError("Invalid resume SHA-256")
     if type(data["size"]) is not int or data["size"] < 0:
         raise ServiceError("Resume size must be a nonnegative integer")
-    resume = Resume(job_id=job_id, size=data["size"], **values)
+    resume = Resume(user_id=user_id, job_id=job_id, size=data["size"], **values)
     get_session().add(resume)
     get_session().flush()
-    _activity(job_id, "resume_added", "Resume version added", {"resume_id": resume.id, "original_filename": resume.original_filename})
+    _activity(user_id, job_id, "resume_added", "Resume version added", {"resume_id": resume.id, "original_filename": resume.original_filename})
     return serialize(resume)

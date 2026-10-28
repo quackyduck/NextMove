@@ -5,6 +5,7 @@ const password = process.env.E2E_PASSWORD || "local-demo-only";
 
 async function openAccess(page) {
   await page.goto(path);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Workspace password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Open workspace" }).click();
   await page.getByRole("button", { name: "Agent access", exact: true }).click();

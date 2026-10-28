@@ -117,13 +117,13 @@ def evidence(row, query):
                 evidence={'company_similarity': round(company, 3), 'title_similarity': round(title, 3)})
 
 
-def search(args):
+def search(user_id, args):
     query = parameters(args)
     rows = get_session().execute(select(
         Job.id, Job.title, Job.company,
         case((func.length(Job.url) <= 4096, Job.url), else_='').label('url'),
         (func.length(Job.url) > 4096).label('url_omitted'), Job.stage, Job.outcome
-    ).order_by(Job.id).limit(MAX_ROLES + 1)).all()
+    ).where(Job.user_id == user_id).order_by(Job.id).limit(MAX_ROLES + 1)).all()
     if len(rows) > MAX_ROLES:
         raise ServiceError('Search capacity exceeded; indexed search is required before continuing', 503)
     matches = [match for row in rows if (match := evidence(row, query))]

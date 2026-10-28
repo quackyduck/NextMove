@@ -6,6 +6,7 @@ const api = `${path}api/v1`;
 test("Not Interested persists independently of stage and filters table and board", async ({ page }) => {
   const title = "Opportunity I am not interested in";
   await page.goto(path);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Workspace password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(page.getByRole("heading", { name: "Your pipeline.", exact: true })).toBeVisible();

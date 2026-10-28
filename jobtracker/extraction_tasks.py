@@ -1,10 +1,17 @@
-"""Bounded background extraction with shared previews and interrupted-task expiry."""
+"""Queued posting extraction with private, per-user previews and expiry.
+
+The web request only validates and enqueues (BEGIN IMMEDIATE admission); the
+separate worker process fetches the page. Each account may have two postings
+being read at once, and the whole queue is bounded so one account cannot grow
+it without limit. A preview not finished within TASK_SECONDS fails, so a
+stopped worker surfaces as a clear, retryable error rather than a hang.
+"""
 from datetime import timedelta, timezone
-import threading
 
 from flask import current_app
 from sqlalchemy import delete, func, select, update
 
+from . import taskqueue
 from .db import get_session
 from .extraction import extract_posting, validate_url
 from .models import ExtractionTask, IngestionRequest, new_id, now
@@ -12,9 +19,11 @@ from .services import ServiceError
 
 TASK_SECONDS = 60
 MAX_ACTIVE = 2
-SLOTS = threading.BoundedSemaphore(MAX_ACTIVE)
+MAX_PENDING = 20
 BUSY = 'Two postings are already being read. Wait a moment and try again.'
+FULL = 'Posting extraction is busy. Try again in a minute.'
 EXPIRED = {'error': 'Extraction timed out or was interrupted. Try again or enter details manually.'}
+UNREADABLE = 'The posting could not be read. Try again or enter details manually.'
 
 
 def expire_tasks(connection):
@@ -25,38 +34,35 @@ def expire_tasks(connection):
     connection.execute(delete(ExtractionTask).where(ExtractionTask.created_at < now() - timedelta(days=1)))
 
 
-def active_tasks(connection):
-    return sum(connection.scalar(select(func.count()).select_from(model).where(model.status == 'running'))
-               for model in (ExtractionTask, IngestionRequest))
+def active_tasks(connection, user_id):
+    return sum(connection.scalar(select(func.count()).select_from(model).where(
+        model.user_id == user_id, model.status == 'running')) for model in (ExtractionTask, IngestionRequest))
 
 
-def start_extraction(url):
-    if not SLOTS.acquire(blocking=False):
+def admit(connection, user_id):
+    """Raise 429 unless this account and the shared queue both have room."""
+    if active_tasks(connection, user_id) >= MAX_ACTIVE:
         raise ServiceError(BUSY, 429)
-    try:
-        validate_url(url)  # Syntax only: this request must never wait for a remote site.
-        engine = current_app.extensions['jobtracker_db']['engine']
-        identifier = new_id()
-        with engine.begin() as connection:
-            if engine.dialect.name == 'sqlite':
-                # Atomic admission across worker processes; no unbounded thread queue.
-                connection.exec_driver_sql('BEGIN IMMEDIATE')
-            expire_tasks(connection)
-            active = active_tasks(connection)
-            if active >= MAX_ACTIVE:
-                raise ServiceError(BUSY, 429)
-            connection.execute(ExtractionTask.__table__.insert().values(
-                id=identifier, status='running', result={}, created_at=now()))
-        try:
-            threading.Thread(target=run_extraction, args=(engine, identifier, url.strip()), daemon=True,
-                             name='posting-extraction').start()
-        except RuntimeError as exc:
-            finish(engine, identifier, 'failed', {'error': 'Extraction could not start. Please try again.'})
-            raise ServiceError('Extraction could not start. Please try again.', 503) from exc
-        return {'id': identifier, 'status': 'running'}
-    except Exception:
-        SLOTS.release()
-        raise
+    # Only tasks whose preview/receipt can still succeed count: when the worker
+    # is down, stale rows must not keep every account at 429.
+    if taskqueue.pending(connection, since=now() - timedelta(seconds=TASK_SECONDS)) >= MAX_PENDING:
+        raise ServiceError(FULL, 429)
+
+
+def start_extraction(user_id, url):
+    validate_url(url)  # Syntax only: this request must never wait for a remote site.
+    engine = current_app.extensions['jobtracker_db']['engine']
+    identifier = new_id()
+    with engine.begin() as connection:
+        if engine.dialect.name == 'sqlite':
+            # Atomic admission across web and worker processes.
+            connection.exec_driver_sql('BEGIN IMMEDIATE')
+        expire_tasks(connection)
+        admit(connection, user_id)
+        connection.execute(ExtractionTask.__table__.insert().values(
+            id=identifier, user_id=user_id, status='running', result={}, created_at=now()))
+        taskqueue.enqueue(connection, user_id, 'extract_preview', {'task_id': identifier, 'url': url.strip()})
+    return {'id': identifier, 'status': 'running'}
 
 
 def finish(engine, identifier, status, result, model=ExtractionTask):
@@ -66,24 +72,44 @@ def finish(engine, identifier, status, result, model=ExtractionTask):
         ).values(status=status, result=result))
 
 
-def run_extraction(engine, identifier, url):
+def still_running(engine, model, identifier, user_id):
+    """True when the record awaits a result and is within its deadline."""
+    with engine.connect() as connection:
+        return connection.scalar(select(model.id).where(
+            model.id == identifier, model.user_id == user_id, model.status == 'running',
+            model.created_at >= now() - timedelta(seconds=TASK_SECONDS))) is not None
+
+
+def give_up_preview(engine, _user_id, payload):
+    finish(engine, payload['task_id'], 'failed', EXPIRED)
+
+
+# The lease outlives the whole TASK_SECONDS deadline (fetch_page's 20 s budget
+# plus DNS for each redirect), so a live worker is never reclaimed mid-fetch; a
+# reclaimed task finds its preview expired and stops.
+LEASE_SECONDS = TASK_SECONDS + 15
+
+
+@taskqueue.handler('extract_preview', give_up=give_up_preview, lease_seconds=LEASE_SECONDS)
+def run_extraction(app, task):
+    engine = app.extensions['jobtracker_db']['engine']
+    identifier = task.payload['task_id']
+    if not still_running(engine, ExtractionTask, identifier, task.user_id):
+        return  # Expired or already finished: never fetch for a stale request.
     try:
-        result = extract_posting(url)
+        result = extract_posting(task.payload['url'])
         status = 'succeeded'
     except ServiceError as exc:
         status, result = 'failed', {'error': str(exc)}
     except Exception:
         # Never expose internal errors or page contents to the client/logs.
-        status, result = 'failed', {'error': 'The posting could not be read. Try again or enter details manually.'}
-    try:
-        finish(engine, identifier, status, result)
-    finally:
-        SLOTS.release()
+        status, result = 'failed', {'error': UNREADABLE}
+    finish(engine, identifier, status, result)
 
 
-def get_extraction(identifier, model=ExtractionTask, owner_id=None):
+def get_extraction(user_id, identifier, model=ExtractionTask, owner_id=None):
     session = get_session()
-    task = session.get(model, identifier)
+    task = session.scalar(select(model).where(model.id == identifier, model.user_id == user_id))
     if task is not None and model is IngestionRequest and task.token_id != owner_id:
         task = None
     if task is None or (model is ExtractionTask and task.created_at.replace(tzinfo=timezone.utc) < now() - timedelta(days=1)):
