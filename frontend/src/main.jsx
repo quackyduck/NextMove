@@ -12,6 +12,7 @@ import { SessionRecovery } from "./SessionRecovery.jsx";
 import { QuickCapture } from "./QuickCapture.jsx";
 
 import { AgentAccess } from "./AgentAccess.jsx";
+import { MasterResume } from "./MasterResume.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
@@ -371,7 +372,6 @@ function App() {
             ↗
           </span>{" "}
           Next Move
-          <span className="brand-sub">JOB SEARCH WORKSPACE</span>
         </a>
         <nav aria-label="Main navigation">
           <button
@@ -401,6 +401,10 @@ function App() {
           >
             ＋ <span>Capture a role</span>
           </button>
+          <button className={`nav-button ${page === "resume" ? "active" : ""}`}
+            onClick={() => { navigate("resume"); setError(""); setNotice(""); }}>
+            <span>Your Template Resume</span>
+          </button>
           <button className={`nav-button ${page === "agent-access" ? "active" : ""}`}
             onClick={() => { navigate("agent-access"); setError(""); setNotice(""); }}>
             <span>Agent access</span>
@@ -413,13 +417,6 @@ function App() {
             <span>Change password</span>
           </button>
         </nav>
-        <div className="sidebar-note">
-          <span className="little-dot" /> A little progress, every day.
-          <p>
-            Good opportunities deserve
-            <br />a place to grow.
-          </p>
-        </div>
         <button
           className="logout"
           disabled={busy}
@@ -429,10 +426,6 @@ function App() {
         </button>
       </aside>
       <main className="workspace">
-        <div className="topline">
-          <span>PERSONAL WORKSPACE</span>
-          <span className="private-pill">● Private</span>
-        </div>
         {error && (
           <div role="alert" className="alert alert-danger">
             {error}
@@ -454,18 +447,15 @@ function App() {
         <QuickCapture hidden={page !== "quick"} busy={busy} run={run} reauthRequired={reauthRequired}
           onSaved={async (job) => { await refresh({ showLoading: false }); await details(job); }}
           onManual={(url) => { setDraft((current) => ({ ...current, url: url.trim() })); navigate("intake"); setError(""); }} />
+        {page === "resume" && <MasterResume reauthRequired={reauthRequired} onBusyChange={setBusy} onSaved={refreshOnboarding} />}
         {page === "agent-access" && <AgentAccess reauthRequired={reauthRequired} onBusyChange={setBusy} onConnected={refreshOnboarding} />}
         {page === "pipeline" && (
           <>
             <header className="page-header">
               <div>
-                <p className="eyebrow">ONE STEP CLOSER</p>
                 <h1>
                   Your pipeline<span className="heading-dot">.</span>
                 </h1>
-                <p className="text-secondary">
-                  Every possibility, and what comes next.
-                </p>
               </div>
               <button
                 className="btn btn-primary"
@@ -483,12 +473,10 @@ function App() {
               <div>
                 <span>ACTIVE OPPORTUNITIES</span>
                 <strong>{active.length.toString().padStart(2, "0")}</strong>
-                <small>On your radar</small>
               </div>
               <div>
                 <span>IN CONVERSATION</span>
                 <strong>{interviews.length.toString().padStart(2, "0")}</strong>
-                <small>Interview stages</small>
               </div>
               <div>
                 <span>OFFERS</span>
@@ -498,7 +486,6 @@ function App() {
                     .length.toString()
                     .padStart(2, "0")}
                 </strong>
-                <small>Possibilities becoming real</small>
               </div>
               <div className="stat-action">
                 <span>NEXT ACTIONS</span>
@@ -508,7 +495,6 @@ function App() {
                     .length.toString()
                     .padStart(2, "0")}
                 </strong>
-                <small>Small steps, forward</small>
               </div>
             </section>
             <section className="pipeline-panel">
@@ -677,8 +663,7 @@ function App() {
               )}
               <div className="panel-footer">
                 {filtered.length} opportunit
-                {filtered.length === 1 ? "y" : "ies"} · Progress at your own
-                pace
+                {filtered.length === 1 ? "y" : "ies"}
               </div>
             </section>
           </>
@@ -687,14 +672,9 @@ function App() {
           <>
             <header className="page-header">
               <div>
-                <p className="eyebrow">SAVE A POSSIBILITY</p>
                 <h1>
                   Capture a role<span className="heading-dot">.</span>
                 </h1>
-                <p className="text-secondary">
-                  A URL or description is enough to start. Everything else can
-                  follow.
-                </p>
               </div>
               <button
                 className="btn btn-outline-secondary"
@@ -816,7 +796,7 @@ function App() {
                     ))}
                     {!extras.contacts.length && (
                       <p className="text-secondary">
-                        Keep the people behind the opportunity close.
+                        No contacts yet.
                       </p>
                     )}
                     <form
@@ -961,9 +941,6 @@ function App() {
             )}
           </>
         )}
-        <footer className="workspace-footer">
-          NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
-        </footer>
       </main>
       {reauthRequired && <SessionRecovery email={session.user?.email} onAuthenticated={sessionRecovered}
         onSwitchAccount={() => { setReauthRequired(false); run(signOut); }} />}

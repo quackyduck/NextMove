@@ -54,9 +54,7 @@ export function QuickCapture({ hidden, busy, run, onSaved, onManual, reauthRequi
     <section className="quick-capture" hidden={hidden}>
       <header className="page-header">
         <div>
-          <p className="eyebrow">SAVE A POSSIBILITY</p>
           <h1>Quick capture<span className="heading-dot">.</span></h1>
-          <p className="text-secondary">A posting URL is all you need to start.</p>
         </div>
       </header>
       <form className="form-panel" onSubmit={submit}>

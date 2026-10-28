@@ -52,9 +52,7 @@ export function LoginForm({ signup, initialError = "", onAuthenticated, onSignup
   }
   return (
     <AuthCard>
-      <p className="eyebrow mt-4">YOUR NEXT CHAPTER</p>
-      <h1>Keep your search<br />moving forward.</h1>
-      <p className="text-secondary">A private home for every opportunity, conversation, and next step.</p>
+      <h1 className="mt-4">Sign in.</h1>
       <form onSubmit={submit}>
         <AuthField id={`${id}-email`} label="Email" type="email" autoComplete="username" required
           maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -127,9 +125,7 @@ export function SignupForm({ signup, onAuthenticated, onLogin }) {
   }
   return (
     <AuthCard>
-      <p className="eyebrow mt-4">START HERE</p>
-      <h1>Create your account.</h1>
-      <p className="text-secondary">Takes a minute. You can add a resume or connect an agent next, or skip both.</p>
+      <h1 className="mt-4">Create your account.</h1>
       <form onSubmit={submit} noValidate>
         <fieldset disabled={busy}>
           <AuthField id={`${id}-email`} label="Email" type="email" autoComplete="email" required maxLength={254} {...bind("email")} />
