@@ -83,13 +83,6 @@ export function JobFields({ values, set, detail = false }) {
       />
       <Field name="lane" title="Category / lane" values={values} set={set} />
       <Field
-        name="priority"
-        title="Priority"
-        options={["low", "medium", "high"]}
-        values={values}
-        set={set}
-      />
-      <Field
         name="description"
         title="Job description (paste here)"
         area
@@ -142,14 +135,6 @@ export function JobFields({ values, set, detail = false }) {
           alone does not mark outreach.
         </p>
       </div>
-      <Field name="next_action" title="Next action" values={values} set={set} />
-      <Field
-        name="next_action_date"
-        title="Next action date"
-        type="date"
-        values={values}
-        set={set}
-      />
       <Field name="notes" title="Your notes" area values={values} set={set} />
     </div>
   );
