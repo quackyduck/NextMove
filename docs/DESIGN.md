@@ -62,7 +62,10 @@ variables and component variables (`.btn`, `.alert`, `.table`, form controls)
 are mapped onto them, so a new screen built from Bootstrap primitives and the
 shared classes (`page-header`, `eyebrow`, `heading-dot`, `form-panel`,
 `section-heading`, `form-footer`, `manual-note`, `stage-badge`, `mono-label`)
-picks up the system without new CSS.
+picks up the system without new CSS. The Phase 1 screens (sign in, create
+account, resume upload, agent setup, setup checklist) use the same tokens
+through `login-card`, `onboarding-*`, `setup-snippet`, `auth-switch` and the
+Bootstrap validation classes (`is-invalid`, `invalid-feedback`).
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
@@ -130,7 +133,9 @@ cd frontend && npm run build && cd ..
 .venv/bin/python scripts/design_screenshots.py after --dark --strict
 ```
 
-This captures every screen (login, pipeline table and board, job detail,
-capture a role, quick capture, agent access, password dialog, session
-recovery) at 1440×900 and 390×844 into `docs/design/screenshots/<label>/`,
+This captures every screen (sign in, create account and its validation
+state, resume upload and agent setup steps, pipeline with the setup
+checklist, pipeline table and board, job detail, capture a role, quick
+capture, agent access, password dialog, session recovery) at 1440×900 and
+390×844 into `docs/design/screenshots/<label>/`,
 with `contrast.json` next to them. `--strict` fails on any contrast violation.

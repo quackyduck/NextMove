@@ -2,13 +2,17 @@ import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // Captures every screen at desktop and phone widths for design review and
 // runs axe's WCAG AA color-contrast rule on each one. Run through
 // scripts/design_screenshots.py, which provides a disposable backend.
 const root = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`;
 const api = `${root}api/v1`;
+const email = process.env.E2E_EMAIL || "owner@localhost";
 const password = process.env.E2E_PASSWORD || "local-demo-only";
+const repo = fileURLToPath(new URL("../..", import.meta.url));
 const label = process.env.SHOT_LABEL || "after";
 const outDir = path.resolve(process.env.SHOT_DIR || "../docs/design/screenshots", label);
 const strict = process.env.CONTRAST_STRICT === "1";
@@ -26,11 +30,20 @@ const roles = [
   { title: "Data platform engineer", company: "Kiln", priority: "low", stage: "applied", outcome: "rejected" },
 ];
 
-async function login(page) {
-  await page.goto(root);
-  await page.getByLabel("Workspace password").fill(password);
-  await page.getByRole("button", { name: "Open workspace" }).click();
+async function login(page, { navigate = true } = {}) {
+  if (navigate) await page.goto(root);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: /Sign in/ }).click();
   await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
+}
+// Invites come from the administrator CLI against the disposable database,
+// the same way frontend/tests/onboarding.spec.js creates them.
+function invite() {
+  const output = execFileSync(process.env.E2E_PYTHON || "python3",
+    ["-m", "flask", "--app", "jobtracker:create_app", "invite", "create"],
+    { cwd: repo, env: process.env, encoding: "utf8" });
+  return output.trim().split(/\s+/).pop();
 }
 async function csrf(page) {
   return (await (await page.request.get(`${api}/auth/session`)).json()).csrf_token;
@@ -41,17 +54,20 @@ async function settle(page) {
 }
 async function shoot(page, name, viewport, scheme) {
   await page.mouse.move(0, 0);
+  // Full-page captures start at the top so the sticky sidebar lines up.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await settle(page);
   const file = `${name}-${viewport}${scheme === "dark" ? "-dark" : ""}.png`;
   await page.screenshot({ path: path.join(outDir, file), fullPage: !name.endsWith("dialog") && name !== "session-recovery", animations: "disabled", caret: "hide" });
   const result = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
   contrast[file] = result.violations.flatMap((v) => v.nodes.map((n) => ({ target: n.target.join(" "), summary: n.failureSummary.split("\n").slice(1).join(" ").trim() })));
+  // Written after every screen: a failed test restarts the worker and loses module state.
+  const report = path.join(outDir, "contrast.json");
+  const saved = fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, "utf8")) : {};
+  fs.writeFileSync(report, JSON.stringify({ ...saved, [file]: contrast[file] }, null, 2) + "\n");
 }
 
 test.beforeAll(() => fs.mkdirSync(outDir, { recursive: true }));
-test.afterAll(() => {
-  fs.writeFileSync(path.join(outDir, "contrast.json"), JSON.stringify(contrast, null, 2) + "\n");
-});
 
 test("seed demo workspace", async ({ page }) => {
   await login(page);
@@ -74,10 +90,35 @@ for (const scheme of schemes) {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await page.setViewportSize(size);
       await page.goto(root);
-      await expect(page.getByLabel("Workspace password")).toBeVisible();
+      await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
       await shoot(page, "login", viewport, scheme);
 
-      await login(page);
+      // A new account walks signup, both setup steps and the checklist.
+      await page.getByRole("button", { name: "Create an account" }).click();
+      await expect(page.getByRole("heading", { name: "Create your account." })).toBeVisible();
+      await shoot(page, "signup", viewport, scheme);
+      const newPassword = "Visual-review-2026";
+      await page.getByLabel("Email", { exact: true }).fill(`visual-${viewport}-${scheme}-${Date.now()}@example.com`);
+      await page.getByLabel("Password", { exact: true }).fill(newPassword);
+      await page.getByLabel("Confirm password", { exact: true }).fill("does-not-match");
+      await page.getByRole("button", { name: /Create account/ }).click();
+      await expect(page.getByText("Passwords do not match")).toBeVisible();
+      await shoot(page, "signup-error", viewport, scheme);
+      await page.getByLabel("Confirm password", { exact: true }).fill(newPassword);
+      await page.getByLabel("Invite code", { exact: true }).fill(invite());
+      await page.getByRole("button", { name: /Create account/ }).click();
+      await expect(page.getByRole("heading", { name: "Add your resume." })).toBeVisible();
+      await shoot(page, "onboarding-upload", viewport, scheme);
+      await page.getByRole("button", { name: "Skip for now" }).click();
+      await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+      await shoot(page, "onboarding-agent", viewport, scheme);
+      await page.getByRole("button", { name: "Skip agent setup" }).click();
+      await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
+      await expect(page.locator(".onboarding-checklist")).toBeVisible();
+      await shoot(page, "onboarding-checklist", viewport, scheme);
+      await page.getByRole("button", { name: "Sign out" }).click();
+
+      await login(page, { navigate: false });
       await expect(page.locator("tbody tr").first()).toBeVisible();
       await shoot(page, "pipeline", viewport, scheme);
       await page.getByRole("button", { name: "Board", exact: true }).click();
@@ -134,6 +175,7 @@ test("every keyboard stop on the pipeline shows a focus indicator", async ({ pag
 });
 
 test("contrast report", async () => {
-  const failures = Object.entries(contrast).filter(([, nodes]) => nodes.length);
+  const report = JSON.parse(fs.readFileSync(path.join(outDir, "contrast.json"), "utf8"));
+  const failures = Object.entries(report).filter(([, nodes]) => nodes.length);
   if (strict) expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
 });

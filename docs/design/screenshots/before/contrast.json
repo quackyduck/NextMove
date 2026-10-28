@@ -1,5 +1,136 @@
 {
   "login-desktop.png": [],
+  "signup-desktop.png": [],
+  "signup-error-desktop.png": [],
+  "onboarding-upload-desktop.png": [],
+  "onboarding-agent-desktop.png": [
+    {
+      "target": "label[for=\"agent-name\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"agent-expiry\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "legend",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"agent-password\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    }
+  ],
+  "onboarding-checklist-desktop.png": [
+    {
+      "target": ".brand-sub",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #879281, background color: #eff2eb, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(2) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(3) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(4) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(5) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".sidebar-note > p",
+      "summary": "Element has insufficient color contrast of 2.79 (foreground color: #8a9485, background color: #eff2eb, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".logout",
+      "summary": "Element has insufficient color contrast of 3.48 (foreground color: #778471, background color: #eff2eb, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".topline > span:nth-child(1)",
+      "summary": "Element has insufficient color contrast of 2.74 (foreground color: #92998d, background color: #f7f8f4, font size: 6.8pt (9px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".private-pill",
+      "summary": "Element has insufficient color contrast of 3.96 (foreground color: #6d8161, background color: #f7f8f4, font size: 7.5pt (10px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "main > header > div > .eyebrow",
+      "summary": "Element has insufficient color contrast of 3.09 (foreground color: #879178, background color: #f7f8f4, font size: 6.8pt (9px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "main > header > div > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "li:nth-child(1) > span > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "li:nth-child(2) > span > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stats > div:nth-child(1) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(1) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(2) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(2) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stats > div:nth-child(3) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(3) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stat-action > span",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #86907f, background color: #ecf0e5, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stat-action > small",
+      "summary": "Element has insufficient color contrast of 2.48 (foreground color: #939b8d, background color: #ecf0e5, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".view-toggle > button:nth-child(2)",
+      "summary": "Element has insufficient color contrast of 2.98 (foreground color: #88917e, background color: #f3f5ef, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".empty > p",
+      "summary": "Element has insufficient color contrast of 3.24 (foreground color: #89927e, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".panel-footer",
+      "summary": "Element has insufficient color contrast of 2.33 (foreground color: #a2aa97, background color: #fcfcf9, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "footer",
+      "summary": "Element has insufficient color contrast of 2.09 (foreground color: #a9b09f, background color: #f7f8f4, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "footer > span",
+      "summary": "Element has insufficient color contrast of 2.09 (foreground color: #a9b09f, background color: #f7f8f4, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    }
+  ],
   "pipeline-desktop.png": [
     {
       "target": ".brand-sub",
@@ -44,6 +175,10 @@
     {
       "target": "main > header > div > p:nth-child(3)",
       "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
       "target": ".stats > div:nth-child(1) > span",
@@ -280,6 +415,10 @@
       "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
       "target": ".stats > div:nth-child(1) > span",
       "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
@@ -430,59 +569,59 @@
       "summary": "Element has insufficient color contrast of 3.67 (foreground color: #56846c, background color: #e7f0eb, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-title-_r_1_\"]",
+      "target": "label[for=\"field-title-_r_2_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-company-_r_2_\"]",
+      "target": "label[for=\"field-company-_r_3_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-url-_r_3_\"]",
+      "target": "label[for=\"field-url-_r_4_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-found_date-_r_4_\"]",
+      "target": "label[for=\"field-found_date-_r_5_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-location-_r_5_\"]",
+      "target": "label[for=\"field-location-_r_6_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-salary-_r_6_\"]",
+      "target": "label[for=\"field-salary-_r_7_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-lane-_r_7_\"]",
+      "target": "label[for=\"field-lane-_r_8_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-priority-_r_8_\"]",
+      "target": "label[for=\"field-priority-_r_9_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-description-_r_9_\"]",
+      "target": "label[for=\"field-description-_r_a_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-stage-_r_a_\"]",
+      "target": "label[for=\"field-stage-_r_b_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-outcome-_r_b_\"]",
+      "target": "label[for=\"field-outcome-_r_c_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action-_r_c_\"]",
+      "target": "label[for=\"field-next_action-_r_d_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action_date-_r_d_\"]",
+      "target": "label[for=\"field-next_action_date-_r_e_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_e_\"]",
+      "target": "label[for=\"field-notes-_r_f_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -498,15 +637,15 @@
       "summary": "Element has insufficient color contrast of 3.09 (foreground color: #89977b, background color: #ffffff, font size: 7.9pt (10.5px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-name-_r_f_\"]",
+      "target": "label[for=\"field-name-_r_g_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-email-_r_g_\"]",
+      "target": "label[for=\"field-email-_r_h_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_h_\"]",
+      "target": "label[for=\"field-notes-_r_i_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -600,51 +739,51 @@
       "summary": "Element has insufficient color contrast of 3.19 (foreground color: #7d8d6d, background color: #f1f4ea, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-title-_r_j_\"]",
+      "target": "label[for=\"field-title-_r_k_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-company-_r_k_\"]",
+      "target": "label[for=\"field-company-_r_l_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-url-_r_l_\"]",
+      "target": "label[for=\"field-url-_r_m_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-found_date-_r_m_\"]",
+      "target": "label[for=\"field-found_date-_r_n_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-location-_r_n_\"]",
+      "target": "label[for=\"field-location-_r_o_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-salary-_r_o_\"]",
+      "target": "label[for=\"field-salary-_r_p_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-lane-_r_p_\"]",
+      "target": "label[for=\"field-lane-_r_q_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-priority-_r_q_\"]",
+      "target": "label[for=\"field-priority-_r_r_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-description-_r_r_\"]",
+      "target": "label[for=\"field-description-_r_s_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action-_r_s_\"]",
+      "target": "label[for=\"field-next_action-_r_t_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action_date-_r_t_\"]",
+      "target": "label[for=\"field-next_action_date-_r_u_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_u_\"]",
+      "target": "label[for=\"field-notes-_r_v_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -652,11 +791,11 @@
       "summary": "Element has insufficient color contrast of 2.57 (foreground color: #9aa58d, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-name-_r_v_\"]",
+      "target": "label[for=\"field-name-_r_10_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-email-_r_10_\"]",
+      "target": "label[for=\"field-email-_r_11_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -810,25 +949,164 @@
   ],
   "password-dialog-desktop.png": [
     {
-      "target": "label[for=\"_r_11_-current\"]",
+      "target": "label[for=\"_r_12_-current\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"_r_11_-new\"]",
+      "target": "label[for=\"_r_12_-new\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"_r_11_-confirm\"]",
+      "target": "label[for=\"_r_12_-confirm\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     }
   ],
   "session-recovery-desktop.png": [
     {
-      "target": "label[for=\"_r_13_\"]",
+      "target": "label[for=\"_r_14_\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"_r_15_\"]",
+      "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".mt-2",
+      "summary": "Element has insufficient color contrast of 4.33 (foreground color: #0d6efd, background color: #fafbf7, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
     }
   ],
   "login-phone.png": [],
+  "signup-phone.png": [],
+  "signup-error-phone.png": [],
+  "onboarding-upload-phone.png": [],
+  "onboarding-agent-phone.png": [
+    {
+      "target": ".btn-link.btn-sm[type=\"button\"]",
+      "summary": "Element has insufficient color contrast of 4.45 (foreground color: #0d6efd, background color: #fdfefd, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "code:nth-child(2)",
+      "summary": "Element has insufficient color contrast of 4.45 (foreground color: #d63384, background color: #fdfefd, font size: 8.5pt (11.375px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"agent-name\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"agent-expiry\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "legend",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"agent-password\"]",
+      "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    }
+  ],
+  "onboarding-checklist-phone.png": [
+    {
+      "target": ".nav-button:nth-child(2) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(3) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(4) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".nav-button:nth-child(5) > span",
+      "summary": "Element has insufficient color contrast of 3.61 (foreground color: #748174, background color: #eff2eb, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".logout",
+      "summary": "Element has insufficient color contrast of 3.48 (foreground color: #778471, background color: #eff2eb, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".topline > span:nth-child(1)",
+      "summary": "Element has insufficient color contrast of 2.74 (foreground color: #92998d, background color: #f7f8f4, font size: 6.8pt (9px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".private-pill",
+      "summary": "Element has insufficient color contrast of 3.96 (foreground color: #6d8161, background color: #f7f8f4, font size: 7.5pt (10px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "main > header > div > .eyebrow",
+      "summary": "Element has insufficient color contrast of 3.09 (foreground color: #879178, background color: #f7f8f4, font size: 6.8pt (9px), font weight: bold). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "main > header > div > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "li:nth-child(1) > span > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "li:nth-child(2) > span > .text-secondary",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stats > div:nth-child(1) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(1) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(2) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(2) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stats > div:nth-child(3) > span",
+      "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "div:nth-child(3) > small",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #939b8d, background color: #ffffff, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stat-action > span",
+      "summary": "Element has insufficient color contrast of 2.87 (foreground color: #86907f, background color: #ecf0e5, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".stat-action > small",
+      "summary": "Element has insufficient color contrast of 2.48 (foreground color: #939b8d, background color: #ecf0e5, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".view-toggle > button:nth-child(2)",
+      "summary": "Element has insufficient color contrast of 2.98 (foreground color: #88917e, background color: #f3f5ef, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".empty > p",
+      "summary": "Element has insufficient color contrast of 3.24 (foreground color: #89927e, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".panel-footer",
+      "summary": "Element has insufficient color contrast of 2.33 (foreground color: #a2aa97, background color: #fcfcf9, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "footer",
+      "summary": "Element has insufficient color contrast of 2.09 (foreground color: #a9b09f, background color: #f7f8f4, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "footer > span",
+      "summary": "Element has insufficient color contrast of 2.09 (foreground color: #a9b09f, background color: #f7f8f4, font size: 6.8pt (9px), font weight: normal). Expected contrast ratio of 4.5:1"
+    }
+  ],
   "pipeline-phone.png": [
     {
       "target": ".nav-button:nth-child(2) > span",
@@ -865,6 +1143,10 @@
     {
       "target": "main > header > div > p:nth-child(3)",
       "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
       "target": ".stats > div:nth-child(1) > span",
@@ -1025,6 +1307,10 @@
       "summary": "Element has insufficient color contrast of 3.62 (foreground color: #7b847c, background color: #f7f8f4, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
+      "target": ".fw-normal",
+      "summary": "Element has insufficient color contrast of 3.86 (foreground color: #7b847c, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
       "target": ".stats > div:nth-child(1) > span",
       "summary": "Element has insufficient color contrast of 3.32 (foreground color: #86907f, background color: #ffffff, font size: 6.0pt (8px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
@@ -1143,59 +1429,59 @@
       "summary": "Element has insufficient color contrast of 3.67 (foreground color: #56846c, background color: #e7f0eb, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-title-_r_1_\"]",
+      "target": "label[for=\"field-title-_r_2_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-company-_r_2_\"]",
+      "target": "label[for=\"field-company-_r_3_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-url-_r_3_\"]",
+      "target": "label[for=\"field-url-_r_4_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-found_date-_r_4_\"]",
+      "target": "label[for=\"field-found_date-_r_5_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-location-_r_5_\"]",
+      "target": "label[for=\"field-location-_r_6_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-salary-_r_6_\"]",
+      "target": "label[for=\"field-salary-_r_7_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-lane-_r_7_\"]",
+      "target": "label[for=\"field-lane-_r_8_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-priority-_r_8_\"]",
+      "target": "label[for=\"field-priority-_r_9_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-description-_r_9_\"]",
+      "target": "label[for=\"field-description-_r_a_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-stage-_r_a_\"]",
+      "target": "label[for=\"field-stage-_r_b_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-outcome-_r_b_\"]",
+      "target": "label[for=\"field-outcome-_r_c_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action-_r_c_\"]",
+      "target": "label[for=\"field-next_action-_r_d_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action_date-_r_d_\"]",
+      "target": "label[for=\"field-next_action_date-_r_e_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_e_\"]",
+      "target": "label[for=\"field-notes-_r_f_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -1211,15 +1497,15 @@
       "summary": "Element has insufficient color contrast of 3.09 (foreground color: #89977b, background color: #ffffff, font size: 7.9pt (10.5px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-name-_r_f_\"]",
+      "target": "label[for=\"field-name-_r_g_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-email-_r_g_\"]",
+      "target": "label[for=\"field-email-_r_h_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_h_\"]",
+      "target": "label[for=\"field-notes-_r_i_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -1305,51 +1591,51 @@
       "summary": "Element has insufficient color contrast of 3.19 (foreground color: #7d8d6d, background color: #f1f4ea, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-title-_r_j_\"]",
+      "target": "label[for=\"field-title-_r_k_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-company-_r_k_\"]",
+      "target": "label[for=\"field-company-_r_l_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-url-_r_l_\"]",
+      "target": "label[for=\"field-url-_r_m_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-found_date-_r_m_\"]",
+      "target": "label[for=\"field-found_date-_r_n_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-location-_r_n_\"]",
+      "target": "label[for=\"field-location-_r_o_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-salary-_r_o_\"]",
+      "target": "label[for=\"field-salary-_r_p_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-lane-_r_p_\"]",
+      "target": "label[for=\"field-lane-_r_q_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-priority-_r_q_\"]",
+      "target": "label[for=\"field-priority-_r_r_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-description-_r_r_\"]",
+      "target": "label[for=\"field-description-_r_s_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action-_r_s_\"]",
+      "target": "label[for=\"field-next_action-_r_t_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-next_action_date-_r_t_\"]",
+      "target": "label[for=\"field-next_action_date-_r_u_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-notes-_r_u_\"]",
+      "target": "label[for=\"field-notes-_r_v_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -1357,11 +1643,11 @@
       "summary": "Element has insufficient color contrast of 2.57 (foreground color: #9aa58d, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-name-_r_v_\"]",
+      "target": "label[for=\"field-name-_r_10_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"field-email-_r_10_\"]",
+      "target": "label[for=\"field-email-_r_11_\"]",
       "summary": "Element has insufficient color contrast of 4.17 (foreground color: #718166, background color: #ffffff, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
@@ -1499,22 +1785,30 @@
   ],
   "password-dialog-phone.png": [
     {
-      "target": "label[for=\"_r_11_-current\"]",
+      "target": "label[for=\"_r_12_-current\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"_r_11_-new\"]",
+      "target": "label[for=\"_r_12_-new\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     },
     {
-      "target": "label[for=\"_r_11_-confirm\"]",
+      "target": "label[for=\"_r_12_-confirm\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
     }
   ],
   "session-recovery-phone.png": [
     {
-      "target": "label[for=\"_r_13_\"]",
+      "target": "label[for=\"_r_14_\"]",
       "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": "label[for=\"_r_15_\"]",
+      "summary": "Element has insufficient color contrast of 4.01 (foreground color: #718166, background color: #fafbf7, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+    },
+    {
+      "target": ".mt-2",
+      "summary": "Element has insufficient color contrast of 4.33 (foreground color: #0d6efd, background color: #fafbf7, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
     }
   ]
 }
