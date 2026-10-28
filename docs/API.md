@@ -10,7 +10,7 @@ Browser sessions use `/auth/signup`, `/auth/login`, `/auth/session`, `/auth/logo
 
 ## Accounts and tenancy (schema 9)
 
-Every job, contact, resume (and its file), activity, agent token, extraction preview and ingestion receipt belongs to one account. Every request acts as exactly one account: the signed-in browser user, the user who created the managed token, or user #1 for the deprecated `AGENT_API_TOKEN` / `ROLE_SEARCH_TOKEN_SHA256`. Another account's IDs behave exactly like IDs that do not exist (404), and lists and search only include your own records. Nothing in the service sends email.
+Every job, contact, resume (and its file), activity, agent token, extraction preview and ingestion receipt belongs to one account. Every request acts as exactly one account: the signed-in browser user, the user who created the managed token, or the migrated workspace owner (user #1, flagged `owns_legacy_tokens`; never a signed-up account) for the deprecated `AGENT_API_TOKEN` / `ROLE_SEARCH_TOKEN_SHA256`. Another account's IDs behave exactly like IDs that do not exist (404), and lists and search only include your own records. Nothing in the service sends email.
 
 | Method | Path | Body | Responses |
 | --- | --- | --- | --- |
@@ -21,9 +21,10 @@ Every job, contact, resume (and its file), activity, agent token, extraction pre
 | POST | /auth/logout | — | 200 `{authenticated: false, csrf_token: null}` |
 
 - Emails are trimmed and lowercased; they are not verified. Passwords are 8–128 characters.
-- Invites are single-use and expire (default 7 days). Consuming the invite and creating the user happen in one transaction; a failed sign-up (duplicate email, bad input) never uses up the invite. `SIGNUP_REQUIRES_INVITE=0` opens sign-up without codes; `SIGNUP_ENABLED=0` closes it.
+- Invites are single-use and expire (default 7 days). Consuming the invite and creating the user happen in one transaction. Bad input never uses up the invite; a duplicate email (409) does, so one code can answer at most one "is this email registered?" question. With `SIGNUP_REQUIRES_INVITE=0` the 409 inherently reveals registered emails (rate-limited per IP). `SIGNUP_REQUIRES_INVITE=0` opens sign-up without codes; `SIGNUP_ENABLED=0` closes it.
 - Signup and login reject cross-origin `Origin` headers (403).
-- Attempt budgets per five minutes: 10 per account (by email, including unknown emails), 30 per client IP, 200 in total; sign-up is also limited to 10 per IP. Over budget returns 429 with `Retry-After: 300`. Unknown emails take the same time as wrong passwords.
+- Login attempt budgets per five minutes: 30 per client IP; 10 per account (by email, known or unknown, so 429 never reveals an account), after which a client that has made fewer than 3 attempts on that account may still try, up to 50 per account. An attacker hammering one email therefore cannot lock its owner out. There is no global budget. Sign-up is limited to 10 per IP. Password changes and token creation use a separate per-user budget (10), so login abuse cannot block a signed-in owner. Over budget returns 429 with `Retry-After: 300`. Unknown emails take the same time as wrong passwords.
+- `/jobs/search` allows 120 requests per minute per account, plus 120 per client IP before authentication.
 - A password change signs out that account's other sessions only.
 
 Administrators manage accounts from the server shell (`flask --app jobtracker ...`); there is no admin API and no email:

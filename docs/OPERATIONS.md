@@ -136,14 +136,16 @@ adds `users`, `invite_codes` and `queued_tasks`, rebuilds `jobs`, `contacts`,
 `ingestion_requests` with a NOT NULL `user_id` (children reference
 `jobs(id, user_id)`, so a contact or resume can never point at another
 account's role), and drops `workspace_credentials`. Every row keeps its ID,
-version and timestamps. User #1 keeps the existing password hash and session
-generation, so current sessions must sign in once more (the cookie now carries
+version and timestamps. User #1 (flagged as the owner the deprecated environment tokens act for)
+keeps the existing password hash and session generation, so current sessions must sign in once more (the cookie now carries
 the account) but the password is unchanged. Its email comes from
 `BOOTSTRAP_ADMIN_EMAIL` at migration time, else the placeholder
 `owner@localhost`; change it with `flask --app jobtracker user set-email 1 you@example.com`.
 The whole schema change is one transaction: any failure, including a foreign-key
-check failure, leaves schema 8 untouched. A database that has records but no
-workspace credential refuses to upgrade rather than creating orphaned data.
+check failure, leaves schema 8 untouched. A database without a workspace
+credential seeds user #1 from `APP_PASSWORD_HASH`, or refuses to upgrade, so the
+first sign-up can never become user #1. Account IDs are `AUTOINCREMENT` and are
+never reused.
 
 Resume files move from `UPLOAD_FOLDER/<file>` to `UPLOAD_FOLDER/<user_id>/<file>`
 (directories mode 0700) after the schema transaction commits. The move runs at
@@ -157,7 +159,8 @@ requesting account's directory.
 2. Take the coordinated snapshot (`scripts/backup.py --maintenance backup ...`) and keep it.
 3. Add `BOOTSTRAP_ADMIN_EMAIL` (and optionally `SIGNUP_ENABLED`, `SIGNUP_REQUIRES_INVITE`,
    `QUEUE_POLL_SECONDS`) to the environment file; see `deploy/production.env.example`.
-4. Start the web service once; it migrates and relocates files. Check
+4. Start the web service once; it migrates and relocates files (the worker never
+   migrates: it waits up to two minutes for the web service, then exits for systemd to retry). Check
    `flask --app jobtracker user list` shows user #1 with the expected email.
 5. Install and start `deploy/next-move-worker.service` (below).
 6. Smoke test: sign in with email + password, open a known role, download a resume,
@@ -178,12 +181,14 @@ URL extraction (`/jobs/extract`) and agent ingestion (`/ingestions`) no longer
 start threads in Gunicorn. The web request inserts the preview/receipt and a
 `queued_tasks` row in one transaction; `python -m jobtracker.worker` (unit
 `deploy/next-move-worker.service`, or `flask --app jobtracker worker`) claims one
-task at a time. Claims are leases (30 s) with a per-claim token, so a crashed
-worker's task is retried once by the next claim and a stale worker cannot
-overwrite a newer result. Finished tasks are pruned after 7 days. If the worker
+task at a time. Claims are leases (75 s, longer than the 60 s preview
+deadline) with a per-claim token, so a live worker is never reclaimed mid-fetch,
+a crashed worker's task is failed cleanly, and a stale worker cannot overwrite a
+newer result. Finished tasks are pruned after 7 days. If the worker
 is down, previews fail after 60 seconds with a retryable message; nothing else
 in the app depends on it. Admission: two running previews/ingestions per account
-and 20 pending tasks overall (429 beyond that).
+and 20 pending tasks younger than 60 s overall (429 beyond that); stale rows left
+by a stopped worker do not count.
 
 Install beside the web unit (same code, environment file, data directory and
 dynamic user):
@@ -206,6 +211,8 @@ No email is ever sent. Share invite codes yourself (`flask --app jobtracker invi
 `flask --app jobtracker user reset-password EMAIL` (prompts, signs that user out
 everywhere). Run these as the service's data identity with its environment, as
 for the existing password recovery. `SIGNUP_REQUIRES_INVITE=0` opens sign-up;
-`SIGNUP_ENABLED=0` closes it. Login attempt budgets (per account, per IP via
-`TRUST_PROXY=1` and nginx's overwritten `X-Forwarded-For`, and overall) persist
-in the throttle database as HMACs, never raw emails or addresses.
+`SIGNUP_ENABLED=0` closes it. Login attempt budgets (per account and per IP via
+`TRUST_PROXY=1` and nginx's overwritten `X-Forwarded-For`; no global budget, so
+no client can lock every account out) persist in the throttle database as HMACs,
+never raw emails or addresses. Without `TRUST_PROXY=1` every request appears to
+come from nginx and shares one IP budget.

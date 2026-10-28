@@ -266,3 +266,18 @@ def test_token_hashes_are_unique_across_tenants(world):
         hashes = connection.execute(text('SELECT token_hash FROM agent_tokens')).scalars().all()
     assert len(hashes) == len(set(hashes)) == 2
     assert hashlib.sha256(LEGACY.encode()).hexdigest() not in hashes
+
+
+def test_legacy_tokens_act_only_for_the_flagged_owner(world):
+    """The environment tokens never act for a signed-up account."""
+    engine = world['app'].extensions['jobtracker_db']['engine']
+    client, headers = world['credentials']['legacy']
+    with engine.begin() as connection:
+        assert connection.execute(text('SELECT id FROM users WHERE owns_legacy_tokens=1')).scalars().all() == [1]
+        connection.execute(text('UPDATE users SET owns_legacy_tokens=0'))
+    assert client.get('/api/v1/jobs', headers=headers).status_code == 401
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(text('UPDATE users SET owns_legacy_tokens=1'))  # at most one owner
+    with engine.begin() as connection:
+        connection.execute(text('UPDATE users SET owns_legacy_tokens=1 WHERE id=1'))
+    assert client.get('/api/v1/jobs', headers=headers).json['jobs'] == []
