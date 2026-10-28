@@ -57,10 +57,11 @@ class Job(Base):
 
 class Contact(Base):
     __tablename__ = "contacts"
-    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_contacts_job_owner"),)
+    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_contacts_job_owner"),
+        Index("ix_contacts_job_owner_created", "job_id", "user_id", "created_at", "id"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    job_id: Mapped[str] = mapped_column(String(36))
     name: Mapped[str] = mapped_column(String(500), default="")
     email: Mapped[str] = mapped_column(String(500), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -69,10 +70,11 @@ class Contact(Base):
 
 class Resume(Base):
     __tablename__ = "resumes"
-    __table_args__ = (CheckConstraint("size >= 0"), ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_resumes_job_owner"))
+    __table_args__ = (CheckConstraint("size >= 0"), ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_resumes_job_owner"),
+        Index("ix_resumes_job_owner_created", "job_id", "user_id", "created_at", "id"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    job_id: Mapped[str] = mapped_column(String(36))
     original_filename: Mapped[str] = mapped_column(String(500))
     stored_filename: Mapped[str] = mapped_column(String(100), unique=True)
     media_type: Mapped[str] = mapped_column(String(200))
@@ -83,10 +85,11 @@ class Resume(Base):
 
 class Activity(Base):
     __tablename__ = "activities"
-    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_activities_job_owner"),)
+    __table_args__ = (ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_activities_job_owner"),
+        Index("ix_activities_job_owner_created", "job_id", "user_id", "created_at", "id"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    job_id: Mapped[str] = mapped_column(String(36))
     kind: Mapped[str] = mapped_column(String(50))
     message: Mapped[str] = mapped_column(Text)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -128,7 +131,10 @@ class InviteCode(Base):
 
 class ExtractionTask(Base):
     __tablename__ = "extraction_tasks"
-    __table_args__ = (Index("ix_extraction_tasks_user_status", "user_id", "status"),)
+    __table_args__ = (
+        Index("ix_extraction_tasks_user_status", "user_id", "status"),
+        Index("ix_extraction_tasks_status_created", "status", "created_at"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -142,6 +148,9 @@ class IngestionRequest(Base):
         # Keys are scoped per account: another tenant's key is never an oracle.
         UniqueConstraint("user_id", "idempotency_key", name="uq_ingestion_requests_user_key"),
         Index("ix_ingestion_requests_user_created", "user_id", "created_at"),
+        Index("ix_ingestion_requests_user_status", "user_id", "status"),
+        # expire_tasks: running rows past the deadline, without scanning history.
+        Index("ix_ingestion_requests_status_created", "status", "created_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -150,7 +159,7 @@ class IngestionRequest(Base):
     url: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentToken(Base):
@@ -176,10 +185,10 @@ class QueuedTask(Base):
     __table_args__ = (
         CheckConstraint("status IN ('queued','running','succeeded','failed')"),
         CheckConstraint("attempts >= 0 AND max_attempts > 0"),
-        Index("ix_queued_tasks_claim", "status", "run_after"),
+        Index("ix_queued_tasks_claim", "status", "run_after", "created_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")

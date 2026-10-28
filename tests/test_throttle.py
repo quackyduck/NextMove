@@ -128,7 +128,9 @@ def test_ip_budget_limits_spraying_across_accounts(build, monkeypatch):
 def test_no_global_budget_many_addresses_cannot_lock_everyone_out(build, monkeypatch):
     monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
     client = build().test_client()
-    for address in range(20):
+    # Seven exhausted addresses would have spent the old global budget of 200.
+    monkeypatch.setattr(throttle, 'MAX_IP_ATTEMPTS', 3)
+    for address in range(70):
         for index in range(throttle.MAX_IP_ATTEMPTS):
             login(client, f'spray{index}@example.com', address=f'10.1.0.{address}')
     assert login(client, 'owner@localhost', 'test-password', address='192.0.2.99') == 200

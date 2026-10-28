@@ -1,7 +1,7 @@
 """Queue worker process: `python -m jobtracker.worker` or `flask --app jobtracker worker`.
 
-Single-threaded on purpose: one task at a time keeps resident memory near the
-web worker's (~45 MiB) on the shared small Droplet. Run more processes, not
+Single-threaded on purpose: one task at a time keeps resident memory flat
+(~68 MiB measured) on the shared small Droplet. Run more processes, not
 threads, if throughput is ever needed. SIGTERM/SIGINT finish the current task
 and exit, so systemd restarts never abandon a claim mid-write (an abandoned
 claim is still recovered when its lease expires).

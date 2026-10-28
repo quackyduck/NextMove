@@ -202,7 +202,13 @@ journalctl -u next-move-worker -f   # "Queue worker started"
 
 `SIGTERM` lets the current task finish (network reads are capped at about 20 s)
 and exits 0; `TimeoutStopSec=45` covers it. The worker needs outbound HTTP(S);
-the web unit no longer does. Memory: WORKER_MEMORY_NOTE
+the web unit no longer does. Memory, measured on macOS with production settings (Linux
+is usually a little lower): the worker's resident set is about 68 MiB idle and
+stays flat after 20 tasks; for comparison the preloaded Gunicorn master is about
+100 MiB plus about 36 MiB for its worker. The unit caps the worker at
+`MemoryHigh=80M`/`MemoryMax=112M`, so web + worker stay well under 300 MiB on the
+458 MiB Droplet. Idle polling is one indexed read per second (about 1.5 ms CPU,
+no writes); raise `QUEUE_POLL_SECONDS` to trade latency for even less.
 
 ### Accounts administration
 

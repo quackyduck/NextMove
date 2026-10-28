@@ -24,8 +24,18 @@ INVITE_DAYS = 7
 # Deliberately simple: one @, no whitespace, a dotted domain (or localhost for
 # the migrated placeholder). Deliverability is never checked; no email is sent.
 EMAIL_PATTERN = re.compile(r'[^\s@]{1,64}@(?:[^\s@.]+\.)+[^\s@.]{2,}|[^\s@]{1,64}@localhost')
-# Verified against when an email is unknown, so timing does not reveal accounts.
-DUMMY_HASH = generate_password_hash(secrets.token_urlsafe(16))
+_dummy_hash = None
+
+
+def dummy_hash():
+    """Verified against when an email is unknown, so timing does not reveal accounts.
+
+    Built on first use: scrypt needs ~32 MiB, which the worker should never pay.
+    """
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = generate_password_hash(secrets.token_urlsafe(16))
+    return _dummy_hash
 
 
 class Unavailable(Exception):
@@ -71,7 +81,8 @@ def legacy_owner_id():
     """
     try:
         with engine().connect() as connection:
-            return connection.scalar(select(User.id).where(User.owns_legacy_tokens.is_(True)))
+            # `= 1` (not `IS 1`) so SQLite uses the partial unique index.
+            return connection.scalar(select(User.id).where(User.owns_legacy_tokens == True))  # noqa: E712
     except SQLAlchemyError:
         return None
 

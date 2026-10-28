@@ -232,7 +232,7 @@ def login():
     except credentials.Unavailable:
         return error('Sign-in temporarily unavailable; try again later', 503)
     # Unknown emails still pay for one hash so response time does not reveal accounts.
-    verified = check_password_hash(credential.password_hash if credential else credentials.DUMMY_HASH, password)
+    verified = check_password_hash(credential.password_hash if credential else credentials.dummy_hash(), password)
     if credential is None or not verified:
         return error('Invalid email or password', 401)
     # Bind to the generation observed BEFORE hashing. A concurrent password

@@ -99,6 +99,11 @@ def authenticate(raw, permission='roles:ingest'):
         allowed = set(row['permissions']).intersection(PERMISSIONS)
         if not allowed or (permission is not None and permission not in allowed):
             return None
+        last_used = row['last_used_at']
+        if last_used is not None and last_used.replace(tzinfo=timezone.utc) > now() - timedelta(seconds=60):
+            # Recently recorded: skip the write (one WAL commit per agent call).
+            # Revocation was checked in the read above, within this request.
+            return metadata(row), row['user_id']
         with engine.begin() as connection:
             # Recheck revocation/expiry atomically: a revoke between read and write wins.
             row = connection.execute(update(table).where(*valid, table.c.expires_at > now())
