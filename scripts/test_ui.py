@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_file(spec):
+def run_file(spec, command=None):
     if not (Path(os.environ.get('FRONTEND_DIST', ROOT / 'frontend/dist')) / 'index.html').is_file():
         raise SystemExit('Build frontend before running UI tests')
     with tempfile.TemporaryDirectory(prefix='jobtracker-ui-') as directory:
@@ -50,7 +50,7 @@ def run_file(spec):
                     time.sleep(0.2)
             else:
                 raise RuntimeError('UI test server did not become healthy')
-            return subprocess.run(['npm', 'run', 'test:e2e', '--', spec], cwd=ROOT / 'frontend', env=environment).returncode
+            return subprocess.run(command or ['npm', 'run', 'test:e2e', '--', spec], cwd=ROOT / 'frontend', env=environment).returncode
         finally:
             server.terminate()
             try:
