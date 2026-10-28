@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { lazy, Suspense, useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./style.css";
@@ -15,6 +15,50 @@ import { AgentAccess } from "./AgentAccess.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
+import { LoginForm, SignupForm } from "./AuthScreens.jsx";
+import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
+
+// Only people in setup download the onboarding screens.
+const Onboarding = lazy(() => import("./Onboarding.jsx"));
+const SETUP_SCREENS = ["upload_resume", "connect_agent"];
+// The server names the next guided step; steps without a screen here wait for the checklist.
+const nextGuided = (state) =>
+  state?.guided_active && SETUP_SCREENS.includes(state.next_step) ? state.next_step : null;
+// "Continue later" holds for this tab only; the next sign-in resumes setup.
+const DEFERRED = "nextmove.setupDeferred";
+function deferred(value) {
+  try {
+    if (value === undefined) return sessionStorage.getItem(DEFERRED) === "1";
+    if (value) sessionStorage.setItem(DEFERRED, "1");
+    else sessionStorage.removeItem(DEFERRED);
+  } catch {
+    // Storage can be unavailable; setup then simply resumes.
+  }
+  return false;
+}
+
+class SetupBoundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <main className="login">
+        <div className="login-card" role="alert">
+          <h1>Setup didn’t load.</h1>
+          <p>Check your connection and reload, or skip setup for now. You can finish it later from your pipeline.</p>
+          <div className="d-flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+            <button type="button" className="btn btn-outline-secondary" onClick={this.props.onSkip}>Skip setup for now</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+}
+
 function App() {
   const [passwordSettingsOpen, setPasswordSettingsOpen] = useState(false);
   const detailRequest = useRef(0);
@@ -28,9 +72,12 @@ function App() {
   useEffect(() => onAuthenticationRequired(() => setReauthRequired(true)), []);
 
   const [auth, setAuth] = useState(null),
-    [email, setEmail] = useState(""),
+    [session, setSession] = useState({ user: null, signup: null }),
     [userId, setUserId] = useState(null),
-    [password, setPassword] = useState(""),
+    [authScreen, setAuthScreen] = useState("login"),
+    [onboarding, setOnboarding] = useState(null),
+    // { id, guided } while a setup screen is open; guided walks the remaining steps.
+    [setup, setSetup] = useState(null),
     [jobs, setJobs] = useState([]),
     [page, setPage] = useState("pipeline"),
     [view, setView] = useState("table"),
@@ -54,10 +101,8 @@ function App() {
     api("/auth/session")
       .then((data) => {
         setCsrf(data.csrf_token);
-        if (data.user) {
-          setEmail(data.user.email);
-          setUserId(data.user.id);
-        }
+        setSession({ user: data.user || null, signup: data.signup || null });
+        if (data.user) setUserId(data.user.id);
         setAuth(data.authenticated);
       })
       .catch((e) => {
@@ -75,9 +120,38 @@ function App() {
       if (showLoading) setLoading(false);
     }
   }
+  // Checklist only: a token connected on Agent access completes connect_agent.
+  async function refreshOnboarding() {
+    try {
+      setOnboarding(await api("/onboarding"));
+    } catch {
+      // Optional; the next sign-in or reload refreshes it.
+    }
+  }
+  async function loadOnboarding() {
+    try {
+      const state = await api("/onboarding");
+      setOnboarding(state);
+      // Resume the guided flow after a sign-in if it was left unfinished.
+      const next = nextGuided(state);
+      if (next && !deferred()) setSetup({ id: next, guided: true });
+    } catch (e) {
+      // The checklist is optional; never block the workspace on it.
+      if (!e.authenticationRequired) setOnboarding(null);
+    }
+  }
   useEffect(() => {
-    if (auth) refresh();
+    if (auth) {
+      refresh();
+      loadOnboarding();
+    }
   }, [auth]);
+  function nextSetupStep(state = onboarding) {
+    const next = setup?.guided ? nextGuided(state) : null;
+    // Skipped steps get a row and completed ones are done, so this advances.
+    setSetup(next && next !== setup.id ? { id: next, guided: true } : null);
+    setError("");
+  }
   async function run(fn) {
     setBusy(true);
     setError("");
@@ -144,21 +218,23 @@ function App() {
       }
     }
   }
-  async function login(e) {
-    e.preventDefault();
-    await run(async () => {
-      const data = await api("/auth/login", {
-        method: "POST",
-        body: { email, password },
-      });
-      setCsrf(data.csrf_token);
-      setPassword("");
-      if (data.user) {
-        setEmail(data.user.email);
-        setUserId(data.user.id);
-      }
-      setAuth(true);
-    });
+  function authenticated(data) {
+    deferred(false);
+    setError("");
+    setSession((current) => ({ ...current, user: data.user || current.user }));
+    if (data.user) setUserId(data.user.id);
+    setAuth(true);
+  }
+  async function signOut() {
+    try {
+      await api("/auth/logout", { method: "POST" });
+    } catch {
+      // A replaced or expired session still signs out locally.
+    }
+    setCsrf(null);
+    // A full page load discards every unsaved draft, selected file and pending
+    // request, so the next person signing in on this tab starts clean.
+    window.location.assign(import.meta.env.BASE_URL);
   }
   async function create(e) {
     e.preventDefault();
@@ -241,58 +317,32 @@ function App() {
       </main>
     );
   if (!auth)
-    return (
-      <main className="login">
-        <div className="login-card">
-          <div className="brand-mark" aria-hidden="true">
-            ↗
-          </div>
-          <p className="eyebrow mt-4">YOUR NEXT CHAPTER</p>
-          <h1>
-            Keep your search
-            <br />
-            moving forward.
-          </h1>
-          <p className="text-secondary">
-            A private home for every opportunity, conversation, and next step.
-          </p>
-          <form onSubmit={login}>
-            <label htmlFor="email" className="form-label mt-3">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="username"
-              required
-              className="form-control"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <label htmlFor="password" className="form-label mt-3">
-              Workspace password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="form-control"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {error && (
-              <div role="alert" className="alert alert-danger mt-3">
-                {error}
-              </div>
-            )}
-            <button className="btn btn-primary w-100 mt-3" disabled={busy}>
-              {busy ? "Signing in…" : "Open workspace →"}
-            </button>
-          </form>
-        </div>
-      </main>
+    return authScreen === "signup" && session.signup?.enabled ? (
+      <SignupForm signup={session.signup} onAuthenticated={authenticated}
+        onLogin={() => setAuthScreen("login")} />
+    ) : (
+      <LoginForm signup={session.signup} initialError={error} onAuthenticated={authenticated}
+        onSignup={() => { setError(""); setAuthScreen("signup"); }} />
     );
+  if (setup) {
+    const guidedSteps = onboarding?.steps.filter((step) => step.guided) || [];
+    const current = onboarding?.steps.find((step) => step.id === setup.id);
+    return (
+      <>
+        <SetupBoundary onSkip={() => setSetup(null)}>
+        <Suspense fallback={<main className="login"><p role="status">Loading setup…</p></main>}>
+          <Onboarding step={setup.id} done={current?.status === "done"} guided={setup.guided}
+            position={guidedSteps.findIndex((step) => step.id === setup.id) + 1} total={guidedSteps.length}
+            reauthRequired={reauthRequired} onState={setOnboarding} onNext={nextSetupStep}
+            onExit={() => { deferred(true); setSetup(null); setError(""); }}
+            onSignOut={() => run(signOut)} />
+        </Suspense>
+        </SetupBoundary>
+        {reauthRequired && <SessionRecovery email={session.user?.email} onAuthenticated={sessionRecovered}
+          onSwitchAccount={() => { setReauthRequired(false); run(signOut); }} />}
+      </>
+    );
+  }
   return (
     <div
       className="app-shell"
@@ -373,22 +423,7 @@ function App() {
         <button
           className="logout"
           disabled={busy}
-          onClick={() =>
-            run(async () => {
-              try {
-                await api("/auth/logout", { method: "POST" });
-              } catch (e) {
-                if (e.status !== 401) throw e;
-              }
-              setReauthRequired(false);
-              setCsrf(null);
-              setAuth(false);
-              navigate("pipeline");
-              setPasswordSettingsOpen(false);
-              setJobs([]);
-              setSelected(null);
-            })
-          }
+          onClick={() => run(signOut)}
         >
           Sign out ↗
         </button>
@@ -419,7 +454,7 @@ function App() {
         <QuickCapture hidden={page !== "quick"} busy={busy} run={run} reauthRequired={reauthRequired}
           onSaved={async (job) => { await refresh({ showLoading: false }); await details(job); }}
           onManual={(url) => { setDraft((current) => ({ ...current, url: url.trim() })); navigate("intake"); setError(""); }} />
-        {page === "agent-access" && <AgentAccess reauthRequired={reauthRequired} onBusyChange={setBusy} />}
+        {page === "agent-access" && <AgentAccess reauthRequired={reauthRequired} onBusyChange={setBusy} onConnected={refreshOnboarding} />}
         {page === "pipeline" && (
           <>
             <header className="page-header">
@@ -442,6 +477,8 @@ function App() {
                 ＋ Capture a role
               </button>
             </header>
+            <OnboardingChecklist steps={onboarding?.steps}
+              onOpen={(id) => { setNotice(""); setSetup({ id, guided: false }); }} />
             <section className="stats" aria-label="Pipeline summary">
               <div>
                 <span>ACTIVE OPPORTUNITIES</span>
@@ -928,7 +965,8 @@ function App() {
           NEXT MOVE <span>A thoughtful search. A clearer next step.</span>
         </footer>
       </main>
-      {reauthRequired && <SessionRecovery email={email} onAuthenticated={sessionRecovered} />}
+      {reauthRequired && <SessionRecovery email={session.user?.email} onAuthenticated={sessionRecovered}
+        onSwitchAccount={() => { setReauthRequired(false); run(signOut); }} />}
 
       {passwordSettingsOpen && (
         <PasswordSettings

@@ -6,8 +6,8 @@ const password = process.env.E2E_PASSWORD || "local-demo-only";
 async function login(page) {
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
-  await page.getByLabel("Workspace password").fill(password);
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await expect(
     page.getByRole("heading", { name: "Your pipeline." }),
   ).toBeVisible();
@@ -28,7 +28,7 @@ async function create(page, title) {
 async function recover(page) {
   const dialog = page.getByRole("dialog", { name: "Sign in again" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Workspace password").fill(password);
+  await dialog.getByLabel("Password", { exact: true }).fill(password);
   await dialog.getByRole("button", { name: "Sign back in" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("Signed back in");
@@ -57,7 +57,7 @@ test("expired session preserves unsaved job, contact and selected file; writes w
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Sign in again" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Workspace password").fill("wrong-password");
+  await dialog.getByLabel("Password", { exact: true }).fill("wrong-password");
   await dialog.getByRole("button", { name: "Sign back in" }).click();
   await expect(dialog.getByRole("alert")).toHaveText("Invalid email or password");
   await recover(page);

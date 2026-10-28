@@ -201,3 +201,36 @@ class QueuedTask(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class OnboardingStep(Base):
+    """Per-user progress for a registered step; absent rows mean pending."""
+    __tablename__ = "onboarding_steps"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','done','skipped')"),
+        CheckConstraint("version > 0"),
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    step_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+
+
+class MasterResume(Base):
+    """A user's own resume versions, independent of any job."""
+    __tablename__ = "master_resumes"
+    __table_args__ = (
+        CheckConstraint("size >= 0"),
+        CheckConstraint("version > 0"),
+        UniqueConstraint("user_id", "version"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(500))
+    stored_filename: Mapped[str] = mapped_column(String(100), unique=True)
+    media_type: Mapped[str] = mapped_column(String(200))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

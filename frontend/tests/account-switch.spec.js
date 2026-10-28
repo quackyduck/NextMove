@@ -7,8 +7,8 @@ const password = process.env.E2E_PASSWORD || "local-demo-only";
 async function login(page) {
   await page.goto(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
-  await page.getByLabel("Workspace password").fill(password);
-  await page.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in →" }).click();
   await expect(
     page.getByRole("heading", { name: "Your pipeline." }),
   ).toBeVisible();
@@ -52,7 +52,7 @@ test("signing back in as a different account starts a fresh workspace", async ({
   const dialog = page.getByRole("dialog", { name: "Sign in again" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Email", { exact: true }).fill(otherEmail);
-  await dialog.getByLabel("Workspace password").fill("other-account-password");
+  await dialog.getByLabel("Password", { exact: true }).fill("other-account-password");
   await dialog.getByRole("button", { name: "Sign back in" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByLabel("Your notes", { exact: true })).toHaveCount(0);

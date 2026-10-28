@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { api, setCsrf } from "./api.js";
 
 // A modal keeps the workspace mounted, including unsaved text and file inputs.
-export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
+export function SessionRecovery({ email: knownEmail = "", onAuthenticated, onSwitchAccount }) {
   const dialog = useRef(null);
   const titleId = useId();
   const emailId = useId();
@@ -73,7 +73,7 @@ export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
           autoFocus={!email}
         />
         <label htmlFor={passwordId} className="form-label mt-3">
-          Workspace password
+          Password
         </label>
         <input
           id={passwordId}
@@ -93,6 +93,16 @@ export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
         <button className="btn btn-primary w-100 mt-3" disabled={busy}>
           {busy ? "Signing in…" : "Sign back in"}
         </button>
+        {onSwitchAccount && (
+          <button
+            type="button"
+            className="btn btn-link w-100 mt-2"
+            disabled={busy}
+            onClick={onSwitchAccount}
+          >
+            Sign in as someone else (discards unsaved edits)
+          </button>
+        )}
       </form>
     </dialog>
   );
