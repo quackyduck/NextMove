@@ -1,59 +1,56 @@
 # Next Move design system
 
-Phase 1.1 gives Next Move its own visual identity. The reference was the
-Awwwards Site of the Day [Heron AI](https://www.awwwards.com/sites/heron-ai)
-(live site heronaiapp.com, by Bearplus). We took its *style*, not its content:
-no Heron names, logos, copy, imagery or font files are used.
+The current look follows the Awwwards Site of the Day
+[Neutomni](https://www.awwwards.com/sites/neutomni) (live site neutomni.com, a
+Webflow studio). It replaced the earlier Heron AI–inspired drafting-paper
+system. We took its *style*, not its content: no Neutomni names, wordmark,
+copy, imagery or font files are used.
 
 ## What the reference does
 
-Measured from the live stylesheet and the Open Graph image:
+Measured from the live stylesheet and the Awwwards screenshots:
 
-| Trait | Heron AI | Why it matters to us |
+| Trait | Neutomni | Why it matters to us |
 | --- | --- | --- |
-| Surface | Warm off-white "drafting paper" (`#f4f2ee`-ish), with whole sections inverted to graphite | A calm, non-white base reads as paper and suits a long reading session |
-| Ink | Graphite `#282828`, secondary `#414140`, `#626260` | Near-black instead of pure black, warm grays |
-| Accent | One signal orange-red (`#fa3600` / `#f15534`), used only for alerts, callouts and the active marker | A single accent lets status jump out of a dense table |
-| Type | BT Grotesk (commercial grotesk), tight `-0.02em` tracking, uppercase display headlines; Geist Mono for small technical labels | The grotesk/mono pairing is the core of the look |
-| Annotation | Bracketed indices `[01]`–`[04]`, coordinate readouts, mono uppercase captions | Gives every number and label a "spec sheet" voice |
-| Structure | Hairline blueprint grid lines, crosshair `+` registration marks, dashed tick rulers | Structure comes from lines, not from shadows or color blocks |
-| Shape | Square corners (0–3px radius) | Crisp, technical |
-| Elevation | Flat offset shadows (`.6rem .6rem` at 6% black), no blur | Depth without softness |
-| Motion | `0.4s` color/opacity/transform transitions on `cubic-bezier(.23,1,.32,1)` and `cubic-bezier(.625,.05,0,1)` | Fast start, long settle |
+| Color | Two-colour print: red `#cf1830` on white, used for *all* text, headings and rules; pale grey `#f8f4f4` as the second surface; sky blue `#6db1f0` as a rare accent | One ink gives the app an unmistakable identity with no extra palette to maintain |
+| Display | A huge custom stencil wordmark in all caps | A stencil display face makes titles and figures feel printed |
+| Text | Vazirmatn (sans), sentence case | A clean, neutral sans keeps dense screens readable |
+| Accent type | Editorial New italic for an aside ("*as much as we do*") | An italic serif adds warmth against the mechanical display face |
+| Labels | Fira Code, uppercase ("LOCAL TIME", "◆ OPEN FOR PROJECTS") | The monospace voice carries status and metadata |
+| Controls | Bracketed labels, `[ Reserve your spot ]` | A playful retro, terminal-like affordance |
+| Structure | Thin red rules, dashed "tear along line" dividers, ticket-like cards, `01`–`04` numbering | Structure comes from rules, not shadows |
+| Shape | Mostly square, soft large shadows used sparingly | Crisp, print-like |
 
 ## How it translates to a dense product UI
 
-Heron is a scroll-driven marketing page; Next Move is a workspace people scan
-every day. So the rules are:
-
-1. **Paper, ink, one signal.** The neutral palette carries everything. The
-   accent appears only in small amounts: the active nav marker, eyebrow
-   squares, the heading period, high priority, the offer stage, the newest
-   timeline point, focus rings and dialog top rules.
-2. **Grotesk for content, mono for annotation.** Role titles, body copy,
-   form labels and buttons use Geist. Eyebrows, table headers, stage badges,
-   priorities, lanes, timestamps, counts, section headings and footers use
-   Geist Mono, uppercase with `0.08em` tracking. Page `h1`s are uppercase
-   Geist with `-0.03em` tracking; long role titles on the detail page stay in
-   sentence case.
-3. **Lines, not boxes.** Panels are hairline-ruled with square corners. The
-   stats become one ruled strip numbered `[01]`–`[04]`, the "Next actions"
-   cell inverted to graphite. The board and login get a faint blueprint grid,
-   and the login card has crosshair registration marks.
-4. **Status as a progression.** Stage badges go from dashed or outlined
-   (needs review, interesting), to a gray fill (resume updated, outreach,
-   applied), to graphite (interviews), to signal orange (offer).
-5. **Quiet motion.** Only color, border and `transform` transitions. Board
-   cards and the primary button lift by 1–2px onto an offset shadow; table
-   rows only change background. Dialogs fade up once. Nothing animates on load
-   or loops, and `prefers-reduced-motion` sets every duration to zero.
+1. **One ink.** Text, borders, fills and the focus ring all use the red ink.
+   Hierarchy comes from size, weight, the typeface and fills (the
+   "Next actions" stat, primary buttons and the sign-in frame are solid red with
+   white text), not from extra colours. Green stays only for the outreach
+   badge and success alerts, so status still reads.
+2. **Stencil for titles and figures.** Page `h1`s, the wordmark and the
+   pipeline numbers use Big Shoulders Stencil Display. Long role titles on the
+   detail page stay in sentence case.
+3. **Sans for content, mono for annotation, serif for asides.** Role titles,
+   body copy and form labels use Vazirmatn. Table headers, stage badges,
+   priorities, lanes, timestamps, section headings and buttons use Fira Code,
+   uppercase. Company names and `<em>` use Instrument Serif italic.
+4. **Brackets and tear lines.** Every button reads `[ LABEL ]` (decorative
+   brackets with empty alt text). Section headings, form footers and table
+   rows are separated by dashed red rules, like tear-off lines on a ticket.
+   Eyebrow markers are ◆ diamonds.
+5. **A red frame for sign-in.** The sign-in and create-account screens put the
+   white card on a full red page, echoing the reference's framed hero.
+6. **Quiet motion.** Colour, border and soft-shadow transitions only. Nothing
+   animates on load or loops, and `prefers-reduced-motion` sets every duration
+   to zero.
 
 ## Themes
 
-Light is the default. Dark follows `prefers-color-scheme: dark` with no toggle,
-so there is no behavior change. Dark is the inverted drawing: graphite paper,
-light ink, the same signal accent. `color-scheme: light dark` is declared so
-native controls (date pickers, file inputs, scrollbars) match.
+Light is the default. Dark follows `prefers-color-scheme: dark` with no toggle:
+the same print run on near-black paper (`#140a0b`), with the red lifted to
+`#ff7380` so text keeps AA contrast. `color-scheme: light dark` is declared so
+native controls match.
 
 ## Tokens
 
@@ -61,70 +58,57 @@ All tokens live at the top of `frontend/src/style.css`. Bootstrap's `--bs-*`
 variables and component variables (`.btn`, `.alert`, `.table`, form controls)
 are mapped onto them, so a new screen built from Bootstrap primitives and the
 shared classes (`page-header`, `eyebrow`, `heading-dot`, `form-panel`,
-`section-heading`, `form-footer`, `manual-note`, `stage-badge`, `mono-label`)
-picks up the system without new CSS. The Phase 1 screens (sign in, create
-account, resume upload, agent setup, setup checklist) use the same tokens
-through `login-card`, `onboarding-*`, `setup-snippet`, `auth-switch` and the
-Bootstrap validation classes (`is-invalid`, `invalid-feedback`).
+`section-heading`, `form-footer`, `manual-note`, `stage-badge`, `mono-label`,
+`serif-accent`) picks up the system without new CSS.
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
-| `--color-paper` | `#f2f1ec` | `#161615` | Page background |
-| `--color-surface` | `#fbfbf8` | `#1f1f1d` | Panels, inputs, cards |
-| `--color-sunken` | `#e9e8e2` | `#2a2a27` | Wells, filled badges, read-only inputs |
-| `--color-hover` | `#efeee8` | `#262624` | Row and nav hover |
-| `--color-ink` | `#1f1f1e` | `#efeee8` | Primary text |
-| `--color-ink-2` | `#41413f` | `#c9c8c1` | Secondary text, labels |
-| `--color-muted` | `#5e5e5a` | `#a5a49d` | Captions, meta (AA on every surface) |
-| `--color-line` | `#dcdbd4` | `#33332f` | Decorative hairlines |
-| `--color-line-strong` | `#85847e` | `#74736d` | Control borders (≥3:1 non-text contrast) |
-| `--color-accent` | `#fa3600` | `#fa3600` | Signal fills and marks (non-text, large text) |
-| `--color-accent-strong` | `#c22a00` | `#ff6a3d` | Accent text, hover fills, offer badge |
-| `--color-on-accent` | `#ffffff` | `#161615` | Text on accent-strong |
-| `--color-inverse` / `--color-on-inverse` | `#1f1f1e` / `#f2f1ec` | `#efeee8` / `#161615` | Primary buttons, inverted cells, code blocks |
-| `--color-accent-on-inverse` | `#fa3600` | `#c22a00` | Accent on inverted cells |
-| `--color-success` / `-wash` | `#2f6b45` / `#e3eee5` | `#7fc796` / `#1b2a20` | Success alerts, outreach badge |
-| `--color-warning` / `-wash` | `#7a5a00` / `#f5ecd0` | `#e4c26a` / `#2d2715` | Warning alerts |
-| `--color-danger` / `-wash` | `#a3241a` / `#f8e1dd` | `#ff8f80` / `#351b18` | Errors, destructive buttons |
-| `--font-sans` | Geist, metric-matched Arial fallback | | Content |
-| `--font-mono` | Geist Mono, metric-matched Menlo fallback | | Annotation |
-| `--text-2xs` … `--text-display` | 11, 12, 13, 14, 16, 20, 28, 40, 48px | | Type scale (phone: `xl` 24, `2xl` 30) |
-| `--weight-*` | 400, 500, 600, 700 | | |
-| `--tracking-display` / `-tight` / `-label` | `-0.03em` / `-0.015em` / `0.08em` | | |
+| `--color-paper` / `--color-surface` | `#ffffff` / `#ffffff` | `#140a0b` / `#1b0f11` | Page, panels, inputs |
+| `--color-sunken` | `#f8f4f4` | `#251416` | Wells, filled badges, table headers |
+| `--color-hover` | `#fcf1f2` | `#2a1619` | Row and nav hover |
+| `--color-ink` | `#cf1830` | `#ff7380` | All primary text, headings |
+| `--color-ink-2` | `#b0142a` | `#f6a0a8` | Secondary text, company names |
+| `--color-muted` | `#8e3440` | `#d99aa1` | Captions, meta (AA on every surface) |
+| `--color-line` / `--color-line-strong` | `#f0cdd2` / `#cf1830` | `#43242a` / `#ff7380` | Hairlines / control borders and tear lines |
+| `--color-accent` / `-strong` | `#cf1830` / `#9a0e21` | `#ff5363` / `#ff9aa3` | Fills, marks, hover |
+| `--color-inverse` / `--color-on-inverse` | `#cf1830` / `#ffffff` | `#ff7380` / `#140a0b` | Primary buttons, inverted cells |
+| `--color-signal` | `#6db1f0` | | Decoration only (fails text contrast) |
+| `--color-success` / `-wash` | `#2f6b45` / `#e3eee5` | `#7fc796` / `#1b2a20` | Outreach badge, success alerts |
+| `--color-danger` / `-wash` | `#8a0c1c` / `#fbe7ea` | `#ffb4bb` / `#3a1419` | Errors, destructive buttons |
+| `--font-sans` | Vazirmatn | | Content |
+| `--font-mono` | Fira Code | | Labels, buttons, code |
+| `--font-display` | Big Shoulders Stencil Display | | Titles, wordmark, figures |
+| `--font-serif` | Instrument Serif italic | | Company names, `<em>` |
+| `--text-2xs` … `--text-display` | 11, 12, 13, 14, 16, 20, 28, 40, 64px | | Type scale (phone `h1` and figures: 48px) |
+| `--weight-*` | 400, 500, 600, 700, display 800 | | |
 | `--space-1` … `--space-16` | 4, 8, 12, 16, 20, 24, 32, 40, 48, 64px | | 4px grid |
-| `--radius-0` / `-1` / `-2` | 0 / 2 / 4px | | Panels / controls / large |
-| `--control-height` | 40px (48px for phone inputs on capture screens) | | |
-| `--shadow-1` / `-2` / `-dialog` | 3px, 6px, 10px offset, no blur | stronger alpha | Elevation |
-| `--ease-out` / `--ease-in-out` | `cubic-bezier(.23,1,.32,1)` / `cubic-bezier(.625,.05,0,1)` | | |
-| `--duration-fast` / `-base` / `-slow` | 120 / 240 / 400ms (0 with reduced motion) | | |
+| `--radius-*` | 0 | | Square everywhere |
+| `--rule-dashed` | `1px dashed var(--color-line-strong)` | | Tear lines |
+| `--shadow-1` / `-2` / `-dialog` | soft, red-tinted, 24–60px blur | darker | Elevation |
 | `--focus-ring` | `2px solid var(--color-accent)`, offset 2px | | Every focusable element |
 
 ## Fonts and performance
 
-- [Geist and Geist Mono](https://github.com/vercel/geist-font), SIL OFL 1.1
-  (`frontend/src/fonts/OFL.txt`). Self-hosted variable woff2, latin and
-  latin-ext subsets only (29 + 23 KB for the latin files that every page uses;
-  latin-ext loads only if such characters appear).
-- The previous Google Fonts `@import` was blocked by the production CSP
-  (`default-src 'self'`), so DM Sans and Manrope never loaded in production.
-  Self-hosting fixes that without touching the CSP.
-- `font-display: swap`, `<link rel="preload">` for the two latin files, and
-  fallback faces with `size-adjust` / `ascent-override` / `descent-override`
-  measured by `frontend/visual/measure-fallback.mjs`, so the swap does not
-  shift layout.
-- No new runtime dependency. Bootstrap is still the full build (about 230 KB
-  of the 270 KB CSS, 38 KB gzip). Trimming it to used partials is a possible
-  follow-up once the Phase 1 screens land.
+- All four families are SIL OFL 1.1 (`frontend/src/fonts/OFL.txt`), self-hosted
+  as woff2 subsets from Fontsource. Every page loads the latin files it uses:
+  Vazirmatn 34 KB, Fira Code 36 KB, Big Shoulders Stencil 37 KB and
+  Instrument Serif italic 22 KB; latin-ext files load only if such characters
+  appear.
+- Editorial New, the reference's serif, is commercial, so Instrument Serif
+  stands in. The reference's wordmark is custom; Big Shoulders Stencil
+  Display gives the same stencil feel.
+- `font-display: swap` and `<link rel="preload">` for the text and display
+  faces. The CSP stays `font-src 'self'`.
 
 ## Accessibility
 
 - Text tokens meet WCAG AA (4.5:1) on paper, surface and sunken in both
-  themes; control borders meet 3:1.
+  themes; control borders meet 3:1. White on the red ink is 5.5:1, and red on the grey surface 5.0:1.
 - `frontend/visual/screens.visual.js` runs axe's `color-contrast` rule on every
   screen at desktop and phone widths in both themes, and checks that every
   keyboard stop on the pipeline shows a 2px or wider focus outline.
-- Decorative generated content (`[01]` indices, `/` lane prefix, brackets)
-  uses the `content: "…" / ""` alt syntax so screen readers skip it.
+- Decorative generated content (`[01]` indices, button brackets, `/` lane
+  prefix) uses the `content: "…" / ""` alt syntax so screen readers skip it.
 
 ## Visual review
 
