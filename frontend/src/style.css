@@ -3,92 +3,99 @@
    variables are mapped onto them, so new screens built from Bootstrap
    primitives and the shared classes inherit the look without extra CSS. */
 
-/* Fonts: Geist and Geist Mono (SIL OFL 1.1, see fonts/OFL.txt), self-hosted
-   variable woff2, latin + latin-ext subsets only. The CSP is font-src 'self'. */
+/* Fonts (all SIL OFL 1.1, see fonts/OFL.txt), self-hosted woff2, latin +
+   latin-ext subsets only. The CSP is font-src 'self'.
+   Vazirmatn: text. Fira Code: labels and code. Big Shoulders Stencil
+   Display: wordmark, page titles and figures. Instrument Serif italic:
+   the editorial accent. */
 @font-face {
-  font-family: "Geist";
-  src: url("./fonts/geist-latin.woff2") format("woff2");
+  font-family: "Vazirmatn";
+  src: url("./fonts/vazirmatn-latin.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: "Geist";
-  src: url("./fonts/geist-latin-ext.woff2") format("woff2");
+  font-family: "Vazirmatn";
+  src: url("./fonts/vazirmatn-latin-ext.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: "Geist Mono";
-  src: url("./fonts/geist-mono-latin.woff2") format("woff2");
+  font-family: "Fira Code";
+  src: url("./fonts/fira-code-latin.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Fira Code";
+  src: url("./fonts/fira-code-latin-ext.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Big Shoulders Stencil Display";
+  src: url("./fonts/big-shoulders-stencil-latin.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: "Geist Mono";
-  src: url("./fonts/geist-mono-latin-ext.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
+  font-family: "Instrument Serif";
+  src: url("./fonts/instrument-serif-italic-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-/* Metric-matched fallbacks keep text from reflowing when the web font swaps in.
-   Values from visual/measure-fallback.mjs (Arial and Menlo against Geist). */
-@font-face {
-  font-family: "Geist Fallback";
-  src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
-  size-adjust: 101.58%;
-  ascent-override: 99.43%;
-  descent-override: 28.55%;
-  line-gap-override: 0%;
-}
-@font-face {
-  font-family: "Geist Mono Fallback";
-  src: local("Menlo"), local("Consolas"), local("DejaVu Sans Mono"), local("Courier New");
-  size-adjust: 99.66%;
-  ascent-override: 101.35%;
-  descent-override: 29.1%;
-  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 /* ---------- Tokens ---------- */
 :root {
   color-scheme: light dark;
 
-  /* Color: warm drafting paper, graphite ink, one signal accent. */
-  --color-paper: #f2f1ec;
-  --color-surface: #fbfbf8;
-  --color-sunken: #e9e8e2;
-  --color-hover: #efeee8;
-  --color-ink: #1f1f1e;
-  --color-ink-2: #41413f;
-  --color-muted: #5e5e5a;
-  --color-line: #dcdbd4;
-  --color-line-strong: #85847e;
-  --color-accent: #fa3600;
-  --color-accent-strong: #c22a00;
+  /* Color: one green ink on white paper, the way a two-colour print run
+     reads. Text, rules and fills are all the same green. Blue carries success
+     and the outreach badge, red only errors; the pale blue is decoration only
+     (it is too light for text or focus rings). */
+  --color-paper: #ffffff;
+  --color-surface: #ffffff;
+  --color-sunken: #f3f7f4;
+  --color-hover: #eef6f1;
+  --color-ink: #0f7a3c;
+  --color-ink-2: #0b6431;
+  --color-muted: #3d6a4e;
+  --color-line: #cfe5d6;
+  --color-line-strong: #0f7a3c;
+  --color-accent: #0f7a3c;
+  --color-accent-strong: #0a5a2c;
   --color-on-accent: #ffffff;
-  --color-accent-wash: #fbe3d9;
-  --color-inverse: #1f1f1e;
-  --color-on-inverse: #f2f1ec;
-  --color-accent-on-inverse: #fa3600;
-  --color-success: #2f6b45;
-  --color-success-wash: #e3eee5;
+  --color-accent-wash: #e3f2e8;
+  --color-signal: #6db1f0;
+  --color-inverse: #0f7a3c;
+  --color-on-inverse: #ffffff;
+  --color-accent-on-inverse: #ffffff;
+  --color-success: #1d5fa3;
+  --color-success-wash: #e4edf7;
   --color-warning: #7a5a00;
   --color-warning-wash: #f5ecd0;
   --color-danger: #a3241a;
   --color-danger-wash: #f8e1dd;
-  --color-backdrop: rgb(31 31 30 / 0.55);
-  --grid-line: rgb(31 31 30 / 0.06);
+  --color-backdrop: rgb(6 40 20 / 0.45);
+  --grid-line: transparent;
 
   /* Type */
-  --font-sans: "Geist", "Geist Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, Menlo, Consolas, monospace;
+  --font-sans: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, Menlo, Consolas, monospace;
+  --font-display: "Big Shoulders Stencil Display", "Arial Narrow", "Vazirmatn", sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
   --text-2xs: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
@@ -97,19 +104,20 @@
   --text-lg: 20px;
   --text-xl: 28px;
   --text-2xl: 40px;
-  --text-display: 48px;
+  --text-display: 64px;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
-  --leading-tight: 1.05;
-  --leading-snug: 1.3;
+  --weight-display: 800;
+  --leading-tight: 0.95;
+  --leading-snug: 1.25;
   --leading-normal: 1.55;
-  --tracking-display: -0.03em;
-  --tracking-tight: -0.015em;
-  --tracking-label: 0.08em;
+  --tracking-display: 0;
+  --tracking-tight: -0.01em;
+  --tracking-label: 0.06em;
 
-  /* Space: 4px grid */
+  /* Space: 4px base. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -121,18 +129,19 @@
   --space-12: 48px;
   --space-16: 64px;
 
-  /* Shape: hairlines and near-square corners. */
+  /* Shape: square edges, hairline red rules, dashed tear lines. */
   --border-width: 1px;
+  --rule-dashed: var(--border-width) dashed var(--color-line-strong);
   --radius-0: 0;
-  --radius-1: 2px;
-  --radius-2: 4px;
+  --radius-1: 0;
+  --radius-2: 0;
   --radius-round: 999px;
   --control-height: 40px;
 
-  /* Elevation: flat offset shadows, never blurry glows. */
-  --shadow-1: 3px 3px 0 rgb(31 31 30 / 0.06);
-  --shadow-2: 6px 6px 0 rgb(31 31 30 / 0.08);
-  --shadow-dialog: 10px 10px 0 rgb(31 31 30 / 0.16);
+  /* Elevation: soft and rare, as on the reference. */
+  --shadow-1: 0 6px 24px rgb(15 122 60 / 0.10);
+  --shadow-2: 0 10px 40px rgb(15 122 60 / 0.12);
+  --shadow-dialog: 0 18px 60px rgb(6 40 20 / 0.25);
 
   /* Motion */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -161,12 +170,12 @@
   --bs-border-radius-sm: var(--radius-1);
   --bs-border-radius-lg: var(--radius-2);
   --bs-link-color: var(--color-ink);
-  --bs-link-color-rgb: 31, 31, 30;
+  --bs-link-color-rgb: 15, 122, 60;
   --bs-link-hover-color: var(--color-accent-strong);
-  --bs-link-hover-color-rgb: 194, 42, 0;
+  --bs-link-hover-color-rgb: 10, 90, 44;
   --bs-code-color: var(--color-accent-strong);
   --bs-primary: var(--color-ink);
-  --bs-primary-rgb: 31, 31, 30;
+  --bs-primary-rgb: 15, 122, 60;
   --bs-focus-ring-color: transparent;
   --bs-form-valid-color: var(--color-success);
   --bs-form-valid-border-color: var(--color-success);
@@ -184,45 +193,44 @@
   --bs-info-text-emphasis: var(--color-ink);
   --bs-info-bg-subtle: var(--color-sunken);
   --bs-info-border-subtle: var(--color-line-strong);
-  --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%231f1f1e' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
-  --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23f2f1ec' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
+  --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%230f7a3c' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
+  --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
 }
 
-/* Dark: the inverted drawing, graphite paper with light ink. */
+/* Dark: the same print run on near-black paper, the red lifted for contrast. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-paper: #161615;
-    --color-surface: #1f1f1d;
-    --color-sunken: #2a2a27;
-    --color-hover: #262624;
-    --color-ink: #efeee8;
-    --color-ink-2: #c9c8c1;
-    --color-muted: #a5a49d;
-    --color-line: #33332f;
-    --color-line-strong: #74736d;
-    --color-accent: #fa3600;
-    --color-accent-strong: #ff6a3d;
-    --color-on-accent: #161615;
-    --color-accent-wash: #3a1d12;
-    --color-inverse: #efeee8;
-    --color-on-inverse: #161615;
-    --color-accent-on-inverse: #c22a00;
-    --color-success: #7fc796;
-    --color-success-wash: #1b2a20;
+    --color-paper: #0b130e;
+    --color-surface: #101b14;
+    --color-sunken: #16241b;
+    --color-hover: #1a2a20;
+    --color-ink: #5fd38a;
+    --color-ink-2: #9be3b5;
+    --color-muted: #9cc7ab;
+    --color-line: #24382b;
+    --color-line-strong: #5fd38a;
+    --color-accent: #3fca76;
+    --color-accent-strong: #8ee6ae;
+    --color-on-accent: #0b130e;
+    --color-accent-wash: #15301f;
+    --color-inverse: #5fd38a;
+    --color-on-inverse: #0b130e;
+    --color-accent-on-inverse: #0b130e;
+    --color-success: #8fb8ea;
+    --color-success-wash: #17253a;
     --color-warning: #e4c26a;
     --color-warning-wash: #2d2715;
     --color-danger: #ff8f80;
     --color-danger-wash: #351b18;
     --color-backdrop: rgb(0 0 0 / 0.7);
-    --grid-line: rgb(239 238 232 / 0.05);
-    --shadow-1: 3px 3px 0 rgb(0 0 0 / 0.35);
-    --shadow-2: 6px 6px 0 rgb(0 0 0 / 0.4);
-    --shadow-dialog: 10px 10px 0 rgb(0 0 0 / 0.5);
-    --bs-link-color-rgb: 239, 238, 232;
-    --bs-link-hover-color-rgb: 255, 106, 61;
-    --bs-primary-rgb: 239, 238, 232;
-    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23efeee8' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
-    --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23161615' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
+    --shadow-1: 0 6px 24px rgb(0 0 0 / 0.35);
+    --shadow-2: 0 10px 40px rgb(0 0 0 / 0.45);
+    --shadow-dialog: 0 18px 60px rgb(0 0 0 / 0.6);
+    --bs-link-color-rgb: 95, 211, 138;
+    --bs-link-hover-color-rgb: 142, 230, 174;
+    --bs-primary-rgb: 95, 211, 138;
+    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%235fd38a' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
+    --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%230b130e' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
   }
 }
 
@@ -252,7 +260,6 @@ body {
   margin: 0;
   font-size: var(--text-base);
   line-height: var(--leading-normal);
-  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -293,19 +300,29 @@ h3,
   color: var(--color-ink);
 }
 h1 {
-  font-size: var(--text-2xl);
+  font-family: var(--font-display);
+  font-size: var(--text-display);
   letter-spacing: var(--tracking-display);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-display);
   line-height: var(--leading-tight);
   text-transform: uppercase;
   margin-bottom: 0;
 }
 h2 {
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-tight);
 }
 h3 {
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
+}
+/* The editorial accent: an italic serif aside, as in the reference. */
+em,
+.serif-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: var(--weight-regular);
+  font-size: 1.12em;
+  letter-spacing: 0;
 }
 code,
 pre,
@@ -341,9 +358,10 @@ small {
 }
 .eyebrow::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   background: var(--color-accent);
+  transform: rotate(45deg);
   flex: none;
 }
 .heading-dot {
@@ -375,6 +393,22 @@ small {
     transform var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out);
 }
+.btn:not(.btn-link):not(.btn-close) {
+  --bs-btn-font-family: var(--font-mono);
+  --bs-btn-font-size: var(--text-xs);
+  --bs-btn-font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+/* Bracketed labels, "[ Save role ]". Decorative: the alt text is empty. */
+.btn:not(.btn-link):not(.btn-close)::before {
+  content: "[" / "";
+  opacity: 0.7;
+}
+.btn:not(.btn-link):not(.btn-close)::after {
+  content: "]" / "";
+  opacity: 0.7;
+}
 .btn-sm {
   --bs-btn-padding-x: var(--space-3);
   --bs-btn-padding-y: 6px;
@@ -397,7 +431,6 @@ small {
 }
 .btn-primary:not(:disabled):hover {
   box-shadow: var(--shadow-1);
-  transform: translate(-1px, -1px);
 }
 .btn-outline-primary,
 .btn-outline-secondary {
@@ -628,9 +661,11 @@ fieldset > label.d-block {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-display);
+  letter-spacing: 0.01em;
+  line-height: 1;
   text-transform: uppercase;
   margin-bottom: var(--space-12);
 }
@@ -775,6 +810,7 @@ nav {
   color: var(--color-muted);
 }
 .stats span {
+  padding-right: var(--space-8);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
@@ -782,8 +818,9 @@ nav {
   font-weight: var(--weight-medium);
 }
 .stats strong {
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-medium);
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: var(--weight-display);
   letter-spacing: var(--tracking-display);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -797,7 +834,6 @@ nav {
 .stats .stat-action span,
 .stats .stat-action::after {
   color: var(--color-on-inverse);
-  opacity: 0.8;
 }
 .stats .stat-action strong {
   color: var(--color-accent-on-inverse);
@@ -908,7 +944,8 @@ nav {
 }
 .table td {
   padding: var(--space-4) var(--space-6);
-  border-color: var(--color-line);
+  border-color: var(--color-line-strong);
+  border-bottom-style: dashed;
 }
 .table tbody tr > * {
   transition: background-color var(--duration-fast) var(--ease-out);
@@ -948,8 +985,10 @@ nav {
   transform: translate(2px, -2px);
 }
 .company {
-  font-size: var(--text-xs);
-  color: var(--color-muted);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--text-md);
+  color: var(--color-ink-2);
   margin-top: 2px;
 }
 .lane-label {
@@ -1186,7 +1225,7 @@ nav {
   justify-content: space-between;
   margin-top: var(--space-6);
   padding-top: var(--space-5);
-  border-top: var(--border-width) solid var(--color-line);
+  border-top: var(--rule-dashed);
   gap: var(--space-4);
 }
 .form-footer > span {
@@ -1207,7 +1246,7 @@ nav {
   text-transform: uppercase;
   margin: var(--space-8) 0 var(--space-5);
   padding-bottom: var(--space-3);
-  border-bottom: var(--border-width) solid var(--color-line);
+  border-bottom: var(--rule-dashed);
   color: var(--color-ink);
 }
 .section-heading small {
@@ -1227,7 +1266,7 @@ nav {
   gap: var(--space-6);
 }
 .detail-title {
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
   margin-top: var(--space-3);
   max-width: 760px;
   line-height: var(--leading-snug);
@@ -1339,14 +1378,8 @@ nav {
   display: grid;
   place-items: center;
   padding: var(--space-8) var(--space-4);
-  background-color: var(--color-paper);
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
-  background-position: center;
+  /* The reference's red frame around a white sheet. */
+  background: var(--color-accent);
 }
 .login-card {
   --tick: var(--color-ink);
@@ -1373,7 +1406,7 @@ nav {
     calc(100% - 6px) calc(100% - 11px), calc(100% - 11px) calc(100% - 6px);
 }
 .login h1 {
-  font-size: var(--text-xl);
+  font-size: var(--text-display);
   line-height: var(--leading-tight);
   margin-bottom: var(--space-4);
 }
@@ -1386,7 +1419,7 @@ nav {
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-on-accent);
 }
 
 /* ---------- Dialogs ---------- */
@@ -1742,12 +1775,23 @@ nav {
   }
   .page-header {
     align-items: flex-start;
+    flex-wrap: wrap;
     gap: var(--space-3);
   }
   .page-header .btn {
     padding: 8px 12px;
     font-size: var(--text-xs);
+    letter-spacing: 0.02em;
     white-space: nowrap;
+  }
+  h1 {
+    font-size: 48px;
+  }
+  .stats strong {
+    font-size: 48px;
+  }
+  .stage-badge {
+    white-space: normal;
   }
   .stats {
     grid-template-columns: 1fr 1fr;
