@@ -145,9 +145,7 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
     <section className="agent-access">
       <header className="page-header">
         <div>
-          <p className="eyebrow">CONNECT YOUR TOOLS</p>
           <h1>Agent access<span className="heading-dot">.</span></h1>
-          <p className="text-secondary">Give each agent its own token. Revoke it whenever you need to.</p>
         </div>
       </header>
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
