@@ -12,3 +12,4 @@ frontend/dist/
 playwright-report/
 test-results/
 .DS_Store
+.claude/worktrees/
