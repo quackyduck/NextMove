@@ -98,7 +98,7 @@ The web worker runs at most two extractions in daemon threads, with private prev
 No Redis/Celery service, dependency, or environment variable is required. The existing preloaded Gunicorn worker starts threads only after fork, on submission. Use a dedicated durable queue if execution must survive process restarts or scale beyond this single-user workspace. Previews contain page text and retain the workspace's private storage and authenticated/no-store API protections.
 
 
-## API onboarding — schema 7 (not deployed)
+## API onboarding — schema 7
 
 The ingestion API adds schema 5 receipts and schema 6 managed `agent_tokens` plus nullable receipt ownership. Use the standard stopped-writer database/uploads checkpoint before any eventual deployment; an older binary requires the matching checkpoint for rollback. Existing roles, credentials, previews and receipts remain intact. Pre-onboarding receipts have no owner, so new tokens cannot read them. Stored keys still prevent accidental duplicate creation.
 
@@ -128,7 +128,7 @@ Tests cover migration preservation/rollback, database and API validation, outcom
 history, unchanged stage, restart persistence, and filtering in table/board views
 with disposable storage. Building this feature does not modify hosted records.
 
-## Accounts, tenancy and queue worker — schema 9 (not deployed)
+## Accounts, tenancy and queue worker — schema 9
 
 Schema 8 → 9 turns the single workspace into user #1 of a multi-user app. It
 adds `users`, `invite_codes` and `queued_tasks`, rebuilds `jobs`, `contacts`,
@@ -222,3 +222,38 @@ for the existing password recovery. `SIGNUP_REQUIRES_INVITE=0` opens sign-up;
 no client can lock every account out) persist in the throttle database as HMACs,
 never raw emails or addresses. Without `TRUST_PROXY=1` every request appears to
 come from nginx and shares one IP budget.
+
+## Production release — schema 10, October 28, 2026
+
+`main` at `de129f0` (PRs #13, #12, #11) took the live instance from schema 8 to
+10 in one start. The release followed the upgrade steps above, plus:
+
+- The migration was rehearsed on a copy of production first, locally and then on
+  the Droplet with the release's own Python 3.12 environment; the full pytest
+  suite also ran on that environment. Every tenant row (ignoring the new
+  `user_id`), every resume file and the password hash matched before and after.
+- `BOOTSTRAP_ADMIN_EMAIL`, `SIGNUP_ENABLED=1`, `SIGNUP_REQUIRES_INVITE=1` and
+  `QUEUE_POLL_SECONDS=1` were added to the environment file; `TRUST_PROXY=1` was
+  already set. The nginx snippet now overwrites `X-Forwarded-For`, which makes
+  per-IP login budgets effective (before this they saw an empty address).
+- A 1 GiB `/swapfile` (`vm.swappiness=10`) was added because the host had about
+  85 MiB available and no swap. Measured after release: web about 64 MiB, worker
+  about 44 MiB, about 140 MiB available.
+- The rollback checkpoint (schema-8 snapshot, previous environment file and nginx
+  snippet) is `/opt/next-move/rollback/phase01-de129f0`.
+- Live checks used an in-memory admin session only: all roles listed, a resume
+  download matched its stored hash, anonymous API calls were refused, and posting
+  URLs extracted through the worker in under two seconds. No test account was
+  created, because accounts cannot be deleted yet.
+
+Run admin commands through `deploy/next-move-admin.sh` (installed as
+`/usr/local/sbin/next-move-admin`). It runs `flask` as the service's dynamic
+user with its environment, so database files and resume directories keep their
+owner and 0700/0600 modes; running `flask` directly as root can leave files the
+service cannot write.
+
+```sh
+sudo install -m 0755 deploy/next-move-admin.sh /usr/local/sbin/next-move-admin
+sudo next-move-admin invite create --count 1 --expires-days 7
+sudo next-move-admin user reset-password you@example.com
+```

@@ -1,10 +1,10 @@
 # Next Move — Current State Map & Expansion Roadmap
 
-As of October 27, 2026. Living copy: [Claude Doc](https://claude.ai/artifact/Rox77s8FGD9zziNwrSwbS7). Keep this file and the doc in sync when either changes.
+As of October 28, 2026. Living copy: [Claude Doc](https://claude.ai/artifact/Rox77s8FGD9zziNwrSwbS7). Keep this file and the doc in sync when either changes.
 
 ## Purpose and vision
 
-Next Move grows from a private, single-user job tracker into a free, donation-funded tool that carries a job seeker from their first resume upload to a signed offer. The biggest structural change is going **multi-user**: onboarding with account creation and a public donation page both assume many people, while today every table, credential and file belongs to one workspace.
+Next Move grows from a private, single-user job tracker into a free, donation-funded tool that carries a job seeker from their first resume upload to a signed offer. The biggest structural change is going **multi-user**: onboarding with account creation and a public donation page both assume many people, and as of Phase 0 every table, credential and file belongs to a user account.
 
 Three principles carry through every component below:
 
@@ -14,7 +14,7 @@ Three principles carry through every component below:
 
 ## Map of the current system
 
-Today Next Move is a working single-user tracker (schema 7, `main` at fdb267d) with URL extraction, scoped agent tokens and duplicate search; a private preview exists on the shared Droplet but is stopped and not public. It is a Flask + SQLAlchemy/SQLite modular monolith serving a React/Vite + Bootstrap UI, with 126 pytest and 20 Playwright tests run in GitHub Actions.
+Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), live at `nicolasmelo.com/nextmove/` with invite-only signup, URL extraction on a background worker, scoped agent tokens and duplicate search. It is a Flask + SQLAlchemy/SQLite modular monolith serving a React/Vite + Bootstrap UI with its own design system ([DESIGN.md](DESIGN.md)), with 392 pytest and 28 Playwright tests run in GitHub Actions.
 
 ### Components
 
@@ -22,27 +22,29 @@ Today Next Move is a working single-user tracker (schema 7, `main` at fdb267d) w
 | --- | --- | --- |
 | Pipeline tracking | Jobs with stage (Needs review → Interesting → Resume updated → Outreach → Applied → Recruiter → Hiring manager → Panel → Offer), separate outcome, priority, lane, notes, next action/date, optimistic versioning, activity history, outreach badge | `models.py`, `services.py`, `main.jsx` |
 | Contacts | Per-job name, email, notes | `models.py` `Contact` |
-| Resumes | Versioned file uploads attached to a job, SHA-256, authorized download; no parsing or template concept | `api.py` resumes routes, `test_resume_client.py` |
-| URL extraction | Background fetch with SSRF defenses; Schema.org JobPosting first, HTML fallback; no LLM | `extraction.py`, `extraction_tasks.py`, `QuickCapture.jsx` |
+| Resumes | Versioned file uploads attached to a job, plus a per-user master resume from onboarding; SHA-256, magic-byte checks, authorized download; no parsing yet | `api.py` resumes routes, `documents.py` |
+| URL extraction | Fetch on the queue worker with SSRF defenses; Schema.org JobPosting first, HTML fallback; no LLM | `extraction.py`, `extraction_tasks.py`, `QuickCapture.jsx` |
 | Agent ingestion | `POST /ingestions` with idempotency keys and receipts; roles land in Needs review | `ingestion.py`, `scripts/ingest_url.py` |
 | Duplicate search | `GET /jobs/search` with explainable evidence (company, title, URL) | `search.py`, `docs/saved-role-search-api.md` |
 | Agent access | Named, expiring, hashed tokens with scopes `roles:search`, `roles:ingest`; create/revoke in UI; connection test | `agent_tokens.py`, `AgentAccess.jsx` |
 | Agent skill | `nextmove-url-intake`: search, then submit, never fabricate, never change stage | `.agents/skills/`, `docs/AGENT_SETUP.md` |
-| Auth | One workspace password (hash in DB), sessions + CSRF, persistent login throttle, session recovery dialog | `auth.py`, `credentials.py`, `throttle.py` |
+| Accounts and tenancy | `users` table; `user_id` on every row and file path (`uploads/<user_id>/`); email + password login; invite-code signup with password confirmation, no outbound email; per-account and per-IP throttle; tenant-isolation suite blocks release | `auth.py`, `credentials.py`, `throttle.py`, `storage.py`, `test_tenant_isolation.py` |
+| Background queue | SQLite `queued_tasks` with leases and retries; separate `next-move-worker` process runs extraction and agent ingestion | `taskqueue.py`, `worker.py`, `deploy/next-move-worker.service` |
+| Onboarding | Signup → optional master-resume upload → optional agent setup (token, snippets, connection test); versioned step registry and dashboard checklist | `onboarding.py`, `AuthScreens.jsx`, `Onboarding.jsx`, `OnboardingChecklist.jsx` |
 | Operations | Coordinated SQLite + uploads backup/restore, path-prefix mount, Gunicorn/systemd/nginx templates | `scripts/backup.py`, `deploy/`, `docs/OPERATIONS.md` |
 
 ### Deployment state
 
-- Target: `nicolasmelo.com/nextmove/` on an existing 458 MiB Droplet shared with BuyItAgain and the homepage; nginx + one Gunicorn worker, no Docker or Redis.
-- The preview service is installed but **inactive**; deploys must come from verified `origin/main`.
-- Memory headroom (about 153 MiB free) is unproven; the docs recommend 1–2 GiB before adding anything.
+- **Live** at `nicolasmelo.com/nextmove/` on the 458 MiB Droplet shared with BuyItAgain and the homepage: nginx, one Gunicorn worker (`next-move`) and the queue worker (`next-move-worker`); no Docker or Redis. Deploys come from verified `origin/main` with a rollback checkpoint per release.
+- Schema 10 (`de129f0`) deployed October 28, 2026; every existing row and file was verified unchanged and now belongs to user #1.
+- Memory after that release: web about 64 MiB, worker about 44 MiB, about 140 MiB available, plus a 1 GiB swap file added as a safety net. A move to Kubernetes and another platform is planned before wider launch.
 
 ### Gaps that the roadmap must close
 
-- **Single tenant.** No `users` table; `WorkspaceCredential` is pinned to `id = 1`. Accounts need a `user_id` on every row and file path.
 - **No resume understanding.** Files are stored, never parsed; there is no profile (titles, skills, history) or master template.
-- **No LLM layer.** Extraction is deterministic; tailoring, crawling and applying all need a model provider, prompts, cost tracking and evals.
-- **No queue.** Extraction runs in-process; Celery/Redis is planned but out of scope for the demo host.
+- **No LLM layer.** Extraction is deterministic; resume parsing, tailoring, crawling and applying all need a model provider, prompts, cost tracking and evals. The gateway was deferred out of Phase 0.
+- **No email.** Signup has no verification and password resets go through the admin CLI; self-service reset needs an email provider.
+- **No account deletion.** There is no delete-account path for users or the admin yet; required before opening signup beyond invites.
 - **No cost or billing data.** Nothing measures per-user spend today.
 
 ## Roadmap overview
@@ -51,8 +53,8 @@ Build a thin multi-user foundation, then onboarding, then widen the tracker to t
 
 | Phase | Scope | Gate to start the next phase | Deployment work alongside |
 | --- | --- | --- | --- |
-| 0 · Platform foundation (F) | Users and tenancy, accounts, LLM gateway with metering, background queue; migrate the current workspace to user #1 | Tenant-isolation suite passes, no data lost in migration | Own host, DB decision |
-| 1 · Onboarding (1) — **next up** | Tour, signup, resume upload and parse, profile review, targets, agent-connect step, extensible checklist | Extraction eval meets thresholds on 40 golden resumes | Worker unit |
+| 0 · Platform foundation (F) — **shipped Oct 28, except the LLM gateway** | Users and tenancy, accounts, LLM gateway with metering, background queue; migrate the current workspace to user #1 | Tenant-isolation suite passes, no data lost in migration | Own host, DB decision |
+| 1 · Onboarding (1) — **v1 shipped Oct 28** (signup, upload, agent setup, checklist); parse, profile review and targets wait on the LLM gateway | Tour, signup, resume upload and parse, profile review, targets, agent-connect step, extensible checklist | Extraction eval meets thresholds on 40 golden resumes | Worker unit |
 | 2 · Tracking to offer, agent API v2 (2), donations v1 (7) | Applications, interviews, offers, proposals inbox, MCP server; payment link and public cost page | Scope matrix and contract tests green; intake-agent eval passes | Donations unit |
 | 3 · Resume tailoring (5) | Diff-and-approve tailored versions, match report, PDF and DOCX export; optional cover letter and interview prep | Zero hard-fact fabrication on the golden set | Export in worker |
 | 4 · Job crawl and alerts (3) | Public ATS feeds, fit scores with reasons, Suggested inbox, daily or weekly email digest | Precision@10 at least 0.7, zero hard-filter leaks | Crawler unit |
@@ -366,22 +368,28 @@ One eval harness and one test strategy serve every component, so each new agent 
 
 ## Next steps
 
-Start with the foundation work that onboarding depends on, then ship onboarding in four reviewable PRs. Each PR keeps `main` deployable and the current single-user workspace working.
+Phase 0 (without the LLM gateway), onboarding v1 and the design refresh shipped on October 28, 2026 as PRs #13, #12 and #11. Each PR keeps `main` deployable and existing accounts working.
 
 ### First milestones
 
-- [ ] PR 1 — Users and tenancy: `users` table, `user_id` on all rows, migrate the existing workspace to user #1, tenant-isolation test suite.
-- [ ] PR 2 — Accounts: signup, email verification, password reset, per-account throttle; keep the admin password-reset CLI.
-- [ ] PR 3 — LLM gateway + resume parser: provider abstraction, metering table, parser prompt and schema, `evals/resume_extraction/` with the first 20 golden resumes.
-- [ ] PR 4 — Onboarding UI: tour, upload, profile review, targets, agent-connect step, checklist, step registry; Playwright flow with a stubbed model.
-- [ ] Grow the extraction golden set to 40 and hit the thresholds before inviting anyone else.
-- [ ] Finish the paused single-user deployment, or decide to skip it in favor of the new host.
+- [x] Users and tenancy: `users` table, `user_id` on all rows, existing workspace migrated to user #1, tenant-isolation test suite (#13).
+- [x] Accounts: invite-code signup with password confirmation, per-account and per-IP throttle, admin `user reset-password`; email verification and self-service reset deferred (#13).
+- [x] Background queue: SQLite-backed queue and separate worker; URL extraction and agent ingestion moved onto it (#13).
+- [x] Onboarding v1: signup, optional master-resume upload, agent-setup screen, checklist, step registry; Playwright flow at desktop and phone widths (#12).
+- [x] Design refresh: token-driven design system, self-hosted fonts, zero contrast violations (#11).
+- [x] Deploy to the live single-user instance and migrate it to user #1 (October 28, 2026).
+- [ ] Admin and self-service account deletion (database rows, files, then backups).
+- [ ] Delete or archive master-resume versions (each account is capped at 20).
+- [ ] LLM gateway + resume parser: provider abstraction, metering table, parser prompt and schema, `evals/resume_extraction/` with the first 20 golden resumes.
+- [ ] Onboarding v2: tour, profile review and targets, behind the parser.
+- [ ] Grow the extraction golden set to 40 and hit the thresholds before inviting anyone beyond invite codes.
+- [ ] Move to Kubernetes and the new platform, with PostgreSQL; then remove the Droplet swap file.
 
 ### Open questions
 
-- [ ] Account before or after resume upload? This doc recommends account first for cost and privacy; resume-first converts better but needs abuse controls.
-- [ ] Stay on SQLite for the first few users, or move to PostgreSQL in PR 1?
+- [x] Account before or after resume upload? **Account first**; upload is optional and skippable.
+- [x] Stay on SQLite for the first few users, or move to PostgreSQL in PR 1? **SQLite for now**; PostgreSQL arrives with the Kubernetes move.
 - [ ] Which model provider for the gateway, and what monthly LLM budget before donations cover it?
-- [ ] Email delivery provider for verification and digests?
+- [ ] Email delivery provider for verification, password reset and digests? Deferred: no email is sent today.
 - [ ] Stripe Payment Link vs GitHub Sponsors for donations v1?
-- [ ] Will the product stay invite-only at first? That changes how urgent the new host and privacy controls are.
+- [x] Will the product stay invite-only at first? **Yes**: signup requires a single-use invite code (`SIGNUP_REQUIRES_INVITE=1`).
