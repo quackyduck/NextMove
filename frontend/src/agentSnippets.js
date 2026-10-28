@@ -15,9 +15,9 @@ export function agentSnippets({ base, permissions }) {
   const auth = `printf 'Authorization: Bearer %s\\n' "$${TOKEN_ENV}"`;
   const client = `python3 scripts/ingest_url.py --token-file ${TOKEN_FILE} --base-url ${base}`;
   const claudeCode = [
-    "Use the Next Move intake skill in .agents/skills/nextmove-url-intake/SKILL.md",
+    "Use the My Next Moov intake skill in .agents/skills/nextmove-url-intake/SKILL.md",
     "and follow docs/AGENT_SETUP.md from this checkout.",
-    `Next Move base URL: ${base}`,
+    `My Next Moov base URL: ${base}`,
     `Token file: ${TOKEN_FILE} (private; never read it aloud, print it, or put it in a URL)`,
     `Granted scopes: ${scopes.join(", ")}`,
     "",

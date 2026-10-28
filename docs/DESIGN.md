@@ -1,6 +1,6 @@
-# Next Move design system
+# My Next Moov design system
 
-Next Move takes visual cues from [Affirm](https://www.affirm.com/): large,
+My Next Moov takes visual cues from [Affirm](https://www.affirm.com/): large,
 light sans-serif headings, generous space, pill actions and softly rounded
 panels. It uses the user's [Coolors palette](https://coolors.co/ff6f59-254441-43aa8b-b2b09b-ef3054).
 The app keeps its existing workflows and navigation. No Affirm assets, fonts,
@@ -65,3 +65,21 @@ board, details, manual/URL capture, agent access, password and session recovery
 at 1440×900 and 390×844 in both themes. Screenshots and `contrast.json` live in
 `docs/design/screenshots/affirm-palette/`. The strict check runs axe's
 `color-contrast` rule and the suite also checks pipeline keyboard focus.
+
+## Mascot and name
+
+The visible product name is **My Next Moov**. `frontend/src/Brand.jsx`
+shares the wordmark and cow illustration across the sidebar, authentication
+and onboarding. A larger cow sits beside the pipeline title. It remains
+separate from text and controls, with smaller responsive dimensions on phones.
+The repeated illustration is decorative (`alt=""`); the adjacent wordmark
+provides the accessible name.
+
+The user's cow artwork was prepared as a transparent cutout with the built-in
+imagegen tool and saved in `frontend/src/assets/moov-mascot.png`. Prompt:
+"Remove only the white exterior background; preserve the cow, glasses,
+waving pose, cream/black coat, blue shirt, navy tie and trousers, tail,
+proportions, outlines and illustration style. Keep white/cream regions inside
+the character opaque. Full body, no clipping, no text or new elements."
+Repository names, API paths and existing browser-storage keys retain their
+technical names for compatibility.

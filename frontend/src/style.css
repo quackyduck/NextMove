@@ -1,4 +1,4 @@
-/* Next Move design system. Spec and token table: docs/DESIGN.md.
+/* My Next Moov design system. Spec and token table: docs/DESIGN.md.
    Everything below reads from the tokens in :root, and the Bootstrap
    variables are mapped onto them, so new screens built from Bootstrap
    primitives and the shared classes inherit the look without extra CSS. */
@@ -1766,3 +1766,43 @@ nav {
 .outreach-badge { background: var(--color-success-wash); }
 .brand-mark, .empty-icon { border-radius: var(--radius-round); }
 .login > p[role="status"] { color: #ffffff; }
+
+/* Mascot stays alongside headings so text and controls remain unobstructed. */
+.moov-mascot {
+  display: block;
+  width: 56px;
+  height: 64px;
+  object-fit: contain;
+  flex: none;
+}
+.brand-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.brand .moov-mascot { width: 40px; height: 52px; }
+.auth-brand .moov-mascot { width: 88px; height: 100px; }
+.auth-brand .brand-identity { font-size: 25px; gap: 16px; }
+.pipeline-title { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.title-mascot { width: 88px; height: 104px; }
+@media (min-width: 761px) and (max-width: 1150px) {
+  .brand-identity { font-size: 18px; gap: 6px; }
+  .brand .moov-mascot { width: 32px; }
+}
+@media (max-width: 760px) {
+  .brand-identity { font-size: 20px; }
+  .brand .moov-mascot { width: 32px; height: 40px; }
+  .auth-brand .brand-identity { font-size: 23px; gap: 12px; }
+  .auth-brand .moov-mascot { width: 64px; height: 80px; }
+  .pipeline-title { gap: 10px; }
+  .title-mascot { width: 56px; height: 72px; }
+  .pipeline-title h1 { font-size: clamp(30px, 8.8vw, 40px); }
+  .onboarding-top { flex-wrap: wrap; }
+}
