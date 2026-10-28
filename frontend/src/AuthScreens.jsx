@@ -1,3 +1,4 @@
+import { BrandIdentity } from "./Brand.jsx";
 import React, { useEffect, useId, useRef, useState } from "react";
 import { api, setCsrf } from "./api.js";
 
@@ -7,7 +8,7 @@ function AuthCard({ children }) {
   return (
     <main className="login">
       <div className="login-card">
-        <div className="brand-mark" aria-hidden="true">↗</div>
+        <div className="auth-brand"><BrandIdentity /></div>
         {children}
       </div>
     </main>

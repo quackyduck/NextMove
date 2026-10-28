@@ -1,3 +1,4 @@
+import { BrandIdentity } from "./Brand.jsx";
 import React, { useEffect, useId, useRef, useState } from "react";
 import { api } from "./api.js";
 import { NewTokenPanel, SCOPE_LABELS, TokenCreateForm, copySecret, testConnection } from "./AgentAccess.jsx";
@@ -45,7 +46,7 @@ export default function Onboarding({ step, done, position, total, guided, reauth
     <main className="login onboarding">
       <div className="login-card onboarding-card">
         <div className="onboarding-top">
-          <div className="brand-mark" aria-hidden="true">↗</div>
+          <div className="auth-brand"><BrandIdentity /></div>
           <button type="button" className="btn btn-link btn-sm" onClick={onSignOut} disabled={busy}>Sign out</button>
         </div>
         {guided && <p className="eyebrow mt-4">SETUP · STEP {position} OF {total}</p>}

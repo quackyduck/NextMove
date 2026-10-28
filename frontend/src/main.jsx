@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./style.css";
 
+import { BrandIdentity, Mascot } from "./Brand.jsx";
+
 import { stages, outcomes, label, blank } from "./workflow.js";
 import { api, apiUrl, setCsrf, onAuthenticationRequired } from "./api.js";
 import { Field, JobFields, OutreachBadge } from "./components.jsx";
@@ -368,10 +370,7 @@ function App() {
             navigate("pipeline");
           }}
         >
-          <span className="brand-mark" aria-hidden="true">
-            ↗
-          </span>{" "}
-          Next Move
+          <BrandIdentity />
         </a>
         <nav aria-label="Main navigation">
           <button
@@ -452,7 +451,8 @@ function App() {
         {page === "pipeline" && (
           <>
             <header className="page-header">
-              <div>
+              <div className="pipeline-title">
+                <Mascot className="title-mascot" />
                 <h1>
                   Your pipeline<span className="heading-dot">.</span>
                 </h1>
