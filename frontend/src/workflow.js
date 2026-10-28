@@ -38,11 +38,8 @@ export const blank = () => ({
   location: "",
   salary: "",
   lane: "",
-  priority: "medium",
   stage: "interesting",
   outreach_completed: false,
   outcome: "active",
   notes: "",
-  next_action: "",
-  next_action_date: "",
 });

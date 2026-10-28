@@ -26,9 +26,8 @@ Measured from the live stylesheet and the Awwwards screenshots:
 ## How it translates to a dense product UI
 
 1. **One ink.** Text, borders, fills and the focus ring all use the green
-   ink. Hierarchy comes from size, weight, the typeface and fills (the
-   "Next actions" stat, primary buttons and the sign-in frame are solid green
-   with white text), not from extra colours. A deep blue (`#1d5fa3`, a darker
+   ink. Hierarchy comes from size, weight, the typeface and fills (primary
+   buttons and the sign-in frame are solid green with white text), not from extra colours. A deep blue (`#1d5fa3`, a darker
    take on the reference's sky blue) marks the outreach badge and success
    alerts, and red is reserved for errors, so status still reads.
 2. **Stencil for titles and figures.** Page `h1`s, the wordmark and the
@@ -36,7 +35,7 @@ Measured from the live stylesheet and the Awwwards screenshots:
    detail page stay in sentence case.
 3. **Sans for content, mono for annotation, serif for asides.** Role titles,
    body copy and form labels use Vazirmatn. Table headers, stage badges,
-   priorities, lanes, timestamps, section headings and buttons use Fira Code,
+   lanes, timestamps, section headings and buttons use Fira Code,
    uppercase. Company names and `<em>` use Instrument Serif italic.
 4. **Brackets and tear lines.** Every button reads `[ LABEL ]` (decorative
    brackets with empty alt text). Section headings, form footers and table

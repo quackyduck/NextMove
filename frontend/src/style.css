@@ -782,7 +782,7 @@ nav {
 /* Stats read as one ruled strip, numbered like drawing callouts. */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0;
   margin-bottom: var(--space-8);
   border: var(--border-width) solid var(--color-line);
@@ -826,17 +826,6 @@ nav {
   line-height: 1;
   margin: var(--space-4) 0 var(--space-2);
   color: var(--color-ink);
-}
-.stats .stat-action {
-  background: var(--color-inverse);
-  border-color: var(--color-inverse);
-}
-.stats .stat-action span,
-.stats .stat-action::after {
-  color: var(--color-on-inverse);
-}
-.stats .stat-action strong {
-  color: var(--color-accent-on-inverse);
 }
 .pipeline-panel {
   background: var(--color-surface);
@@ -928,7 +917,7 @@ nav {
   --bs-table-border-color: var(--color-line);
   --bs-table-hover-bg: var(--color-hover);
   margin: 0;
-  min-width: 790px;
+  min-width: 560px;
   font-size: var(--text-sm);
 }
 .table thead th {
@@ -1059,21 +1048,6 @@ nav {
   background: var(--color-accent-strong);
   border-color: var(--color-accent-strong);
   color: var(--color-on-accent);
-}
-.priority {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-.priority-high {
-  color: var(--color-accent-strong);
-  font-weight: var(--weight-semibold);
-}
-.priority-medium {
-  color: var(--color-ink-2);
 }
 .panel-footer {
   font-family: var(--font-mono);
@@ -1801,6 +1775,7 @@ nav {
     padding: var(--space-4);
   }
   .stats > div:nth-child(3) {
+    grid-column: 1 / -1;
     border-left: 0;
   }
   .stats > div:nth-child(n + 3) {

@@ -487,15 +487,6 @@ function App() {
                     .padStart(2, "0")}
                 </strong>
               </div>
-              <div className="stat-action">
-                <span>NEXT ACTIONS</span>
-                <strong>
-                  {active
-                    .filter((j) => j.next_action)
-                    .length.toString()
-                    .padStart(2, "0")}
-                </strong>
-              </div>
             </section>
             <section className="pipeline-panel">
               <div className="toolbar">
@@ -574,8 +565,6 @@ function App() {
                       <tr>
                         <th>OPPORTUNITY</th>
                         <th>STAGE</th>
-                        <th>PRIORITY</th>
-                        <th>NEXT MOVE</th>
                         <th>FOUND</th>
                       </tr>
                     </thead>
@@ -609,19 +598,6 @@ function App() {
                               </small>
                             )}
                           </td>
-                          <td>
-                            <span className={`priority priority-${j.priority}`}>
-                              ● {label(j.priority)}
-                            </span>
-                          </td>
-                          <td>
-                            <span>{j.next_action || "Choose a next step"}</span>
-                            {j.next_action_date && (
-                              <small className="d-block text-secondary">
-                                {j.next_action_date}
-                              </small>
-                            )}
-                          </td>
                           <td className="text-secondary text-nowrap">
                             {j.found_date}
                           </td>
@@ -648,13 +624,9 @@ function App() {
                             className="job-card"
                             onClick={() => details(j)}
                           >
-                            <span className={`priority priority-${j.priority}`}>
-                              ● {label(j.priority)}
-                            </span>
                             <OutreachBadge job={j} />
                             <strong>{j.title}</strong>
                             <span>{j.company || "Company to be added"}</span>
-                            {j.next_action && <small>↳ {j.next_action}</small>}
                           </button>
                         ))}
                     </section>

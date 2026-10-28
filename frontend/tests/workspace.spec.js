@@ -26,9 +26,6 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   await page
     .getByLabel("Job description (paste here)", { exact: true })
     .fill("Build reliable developer platforms. Remote role.");
-  await page
-    .getByLabel("Next action", { exact: true })
-    .fill("Adapt resume for this role");
   await page.getByRole("button", { name: "Save opportunity" }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await page.reload();
@@ -263,4 +260,55 @@ test("outreach badge persists past its stage and can be corrected independently"
       .filter({ hasText: title })
       .locator(".outreach-badge"),
   ).toHaveCount(0);
+});
+
+test("priority and next actions stay hidden while existing values survive edits", async ({ page }) => {
+  const api = `${workspacePath}api/v1`;
+  const title = `Simplified pipeline ${Date.now()}`;
+  const hidden = {
+    priority: "high",
+    next_action: "Private follow-up reminder",
+    next_action_date: "2026-11-05",
+  };
+  await page.goto(workspacePath);
+  await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
+  await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
+  await page.getByRole("button", { name: "Sign in →" }).click();
+  await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
+  const session = await (await page.request.get(`${api}/auth/session`)).json();
+  const response = await page.request.post(`${api}/jobs`, {
+    headers: { "X-CSRF-Token": session.csrf_token },
+    data: { title, ...hidden },
+  });
+  expect(response.status()).toBe(201);
+  const job = await response.json();
+  await page.reload();
+  await page.getByLabel("Search roles").fill(title);
+  await expect(page.getByRole("columnheader")).toHaveText(["OPPORTUNITY", "STAGE", "FOUND"]);
+  const summary = page.getByRole("region", { name: "Pipeline summary" });
+  await expect(summary.locator(":scope > div")).toHaveCount(3);
+  await expect(summary).not.toContainText("NEXT ACTIONS");
+  await expect(page.locator("tbody")).not.toContainText(hidden.next_action);
+  await expect(page.locator(".priority")).toHaveCount(0);
+  await page.getByRole("button", { name: "Board", exact: true }).click();
+  const card = page.locator(".job-card").filter({ hasText: title });
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText(hidden.next_action);
+  await expect(card).not.toContainText("high");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(card).toBeVisible();
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await card.click();
+  await expect(page.getByLabel(/^(Priority|Next action|Next action date)$/)).toHaveCount(0);
+  await page.getByLabel("Your notes", { exact: true }).fill("Updated through the simplified form.");
+  const saved = page.waitForRequest((request) => request.method() === "PATCH" && request.url().endsWith(`/jobs/${job.id}`));
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  const payload = (await saved).postDataJSON();
+  for (const key of Object.keys(hidden)) expect(payload).not.toHaveProperty(key);
+  await expect(page.getByRole("status")).toContainText("Changes saved");
+  const persisted = await (await page.request.get(`${api}/jobs/${job.id}`)).json();
+  expect(persisted).toMatchObject({ ...hidden, notes: "Updated through the simplified form." });
+  await page.getByRole("button", { name: "Capture a role", exact: false }).first().click();
+  await expect(page.getByRole("heading", { name: "Capture a role." })).toBeVisible();
+  await expect(page.getByLabel(/^(Priority|Next action|Next action date)$/)).toHaveCount(0);
 });
