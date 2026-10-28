@@ -4,7 +4,9 @@ The current look follows the Awwwards Site of the Day
 [Neutomni](https://www.awwwards.com/sites/neutomni) (live site neutomni.com, a
 Webflow studio). It replaced the earlier Heron AI–inspired drafting-paper
 system. We took its *style*, not its content: no Neutomni names, wordmark,
-copy, imagery or font files are used.
+copy, imagery or font files are used. The reference prints in red; Next Move
+prints in green (`#0f7a3c`), chosen to match the red's contrast (5.4:1 vs
+5.5:1 for white text) so every layout and weight carries over unchanged.
 
 ## What the reference does
 
@@ -23,11 +25,12 @@ Measured from the live stylesheet and the Awwwards screenshots:
 
 ## How it translates to a dense product UI
 
-1. **One ink.** Text, borders, fills and the focus ring all use the red ink.
-   Hierarchy comes from size, weight, the typeface and fills (the
-   "Next actions" stat, primary buttons and the sign-in frame are solid red with
-   white text), not from extra colours. Green stays only for the outreach
-   badge and success alerts, so status still reads.
+1. **One ink.** Text, borders, fills and the focus ring all use the green
+   ink. Hierarchy comes from size, weight, the typeface and fills (the
+   "Next actions" stat, primary buttons and the sign-in frame are solid green
+   with white text), not from extra colours. A deep blue (`#1d5fa3`, a darker
+   take on the reference's sky blue) marks the outreach badge and success
+   alerts, and red is reserved for errors, so status still reads.
 2. **Stencil for titles and figures.** Page `h1`s, the wordmark and the
    pipeline numbers use Big Shoulders Stencil Display. Long role titles on the
    detail page stay in sentence case.
@@ -39,8 +42,8 @@ Measured from the live stylesheet and the Awwwards screenshots:
    brackets with empty alt text). Section headings, form footers and table
    rows are separated by dashed red rules, like tear-off lines on a ticket.
    Eyebrow markers are ◆ diamonds.
-5. **A red frame for sign-in.** The sign-in and create-account screens put the
-   white card on a full red page, echoing the reference's framed hero.
+5. **A green frame for sign-in.** The sign-in and create-account screens put
+   the white card on a full green page, echoing the reference's framed hero.
 6. **Quiet motion.** Colour, border and soft-shadow transitions only. Nothing
    animates on load or loops, and `prefers-reduced-motion` sets every duration
    to zero.
@@ -48,8 +51,8 @@ Measured from the live stylesheet and the Awwwards screenshots:
 ## Themes
 
 Light is the default. Dark follows `prefers-color-scheme: dark` with no toggle:
-the same print run on near-black paper (`#140a0b`), with the red lifted to
-`#ff7380` so text keeps AA contrast. `color-scheme: light dark` is declared so
+the same print run on near-black green paper (`#0b130e`), with the green
+lifted to `#5fd38a` so text keeps AA contrast. `color-scheme: light dark` is declared so
 native controls match.
 
 ## Tokens
@@ -63,18 +66,18 @@ shared classes (`page-header`, `eyebrow`, `heading-dot`, `form-panel`,
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
-| `--color-paper` / `--color-surface` | `#ffffff` / `#ffffff` | `#140a0b` / `#1b0f11` | Page, panels, inputs |
-| `--color-sunken` | `#f8f4f4` | `#251416` | Wells, filled badges, table headers |
-| `--color-hover` | `#fcf1f2` | `#2a1619` | Row and nav hover |
-| `--color-ink` | `#cf1830` | `#ff7380` | All primary text, headings |
-| `--color-ink-2` | `#b0142a` | `#f6a0a8` | Secondary text, company names |
-| `--color-muted` | `#8e3440` | `#d99aa1` | Captions, meta (AA on every surface) |
-| `--color-line` / `--color-line-strong` | `#f0cdd2` / `#cf1830` | `#43242a` / `#ff7380` | Hairlines / control borders and tear lines |
-| `--color-accent` / `-strong` | `#cf1830` / `#9a0e21` | `#ff5363` / `#ff9aa3` | Fills, marks, hover |
-| `--color-inverse` / `--color-on-inverse` | `#cf1830` / `#ffffff` | `#ff7380` / `#140a0b` | Primary buttons, inverted cells |
+| `--color-paper` / `--color-surface` | `#ffffff` / `#ffffff` | `#0b130e` / `#101b14` | Page, panels, inputs |
+| `--color-sunken` | `#f3f7f4` | `#16241b` | Wells, filled badges, table headers |
+| `--color-hover` | `#eef6f1` | `#1a2a20` | Row and nav hover |
+| `--color-ink` | `#0f7a3c` | `#5fd38a` | All primary text, headings |
+| `--color-ink-2` | `#0b6431` | `#9be3b5` | Secondary text, company names |
+| `--color-muted` | `#3d6a4e` | `#9cc7ab` | Captions, meta (AA on every surface) |
+| `--color-line` / `--color-line-strong` | `#cfe5d6` / `#0f7a3c` | `#24382b` / `#5fd38a` | Hairlines / control borders and tear lines |
+| `--color-accent` / `-strong` | `#0f7a3c` / `#0a5a2c` | `#3fca76` / `#8ee6ae` | Fills, marks, hover |
+| `--color-inverse` / `--color-on-inverse` | `#0f7a3c` / `#ffffff` | `#5fd38a` / `#0b130e` | Primary buttons, inverted cells |
 | `--color-signal` | `#6db1f0` | | Decoration only (fails text contrast) |
-| `--color-success` / `-wash` | `#2f6b45` / `#e3eee5` | `#7fc796` / `#1b2a20` | Outreach badge, success alerts |
-| `--color-danger` / `-wash` | `#8a0c1c` / `#fbe7ea` | `#ffb4bb` / `#3a1419` | Errors, destructive buttons |
+| `--color-success` / `-wash` | `#1d5fa3` / `#e4edf7` | `#8fb8ea` / `#17253a` | Outreach badge, success alerts (blue) |
+| `--color-danger` / `-wash` | `#a3241a` / `#f8e1dd` | `#ff8f80` / `#351b18` | Errors, destructive buttons (red) |
 | `--font-sans` | Vazirmatn | | Content |
 | `--font-mono` | Fira Code | | Labels, buttons, code |
 | `--font-display` | Big Shoulders Stencil Display | | Titles, wordmark, figures |
@@ -103,7 +106,8 @@ shared classes (`page-header`, `eyebrow`, `heading-dot`, `form-panel`,
 ## Accessibility
 
 - Text tokens meet WCAG AA (4.5:1) on paper, surface and sunken in both
-  themes; control borders meet 3:1. White on the red ink is 5.5:1, and red on the grey surface 5.0:1.
+  themes; control borders meet 3:1. White on the green ink is 5.4:1, green on the grey surface 5.0:1, and the
+  dark-mode ink 10.0:1 on its paper.
 - `frontend/visual/screens.visual.js` runs axe's `color-contrast` rule on every
   screen at desktop and phone widths in both themes, and checks that every
   keyboard stop on the pipeline shows a 2px or wider focus outline.

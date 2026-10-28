@@ -61,33 +61,34 @@
 :root {
   color-scheme: light dark;
 
-  /* Color: one red ink on white paper, the way a two-colour print run reads.
-     Text, rules and fills are all the same red; the pale blue is decoration
-     only (it is too light for text or focus rings). */
+  /* Color: one green ink on white paper, the way a two-colour print run
+     reads. Text, rules and fills are all the same green. Blue carries success
+     and the outreach badge, red only errors; the pale blue is decoration only
+     (it is too light for text or focus rings). */
   --color-paper: #ffffff;
   --color-surface: #ffffff;
-  --color-sunken: #f8f4f4;
-  --color-hover: #fcf1f2;
-  --color-ink: #cf1830;
-  --color-ink-2: #b0142a;
-  --color-muted: #8e3440;
-  --color-line: #f0cdd2;
-  --color-line-strong: #cf1830;
-  --color-accent: #cf1830;
-  --color-accent-strong: #9a0e21;
+  --color-sunken: #f3f7f4;
+  --color-hover: #eef6f1;
+  --color-ink: #0f7a3c;
+  --color-ink-2: #0b6431;
+  --color-muted: #3d6a4e;
+  --color-line: #cfe5d6;
+  --color-line-strong: #0f7a3c;
+  --color-accent: #0f7a3c;
+  --color-accent-strong: #0a5a2c;
   --color-on-accent: #ffffff;
-  --color-accent-wash: #fbe7ea;
+  --color-accent-wash: #e3f2e8;
   --color-signal: #6db1f0;
-  --color-inverse: #cf1830;
+  --color-inverse: #0f7a3c;
   --color-on-inverse: #ffffff;
   --color-accent-on-inverse: #ffffff;
-  --color-success: #2f6b45;
-  --color-success-wash: #e3eee5;
+  --color-success: #1d5fa3;
+  --color-success-wash: #e4edf7;
   --color-warning: #7a5a00;
   --color-warning-wash: #f5ecd0;
-  --color-danger: #8a0c1c;
-  --color-danger-wash: #fbe7ea;
-  --color-backdrop: rgb(60 6 14 / 0.45);
+  --color-danger: #a3241a;
+  --color-danger-wash: #f8e1dd;
+  --color-backdrop: rgb(6 40 20 / 0.45);
   --grid-line: transparent;
 
   /* Type */
@@ -138,9 +139,9 @@
   --control-height: 40px;
 
   /* Elevation: soft and rare, as on the reference. */
-  --shadow-1: 0 6px 24px rgb(207 24 48 / 0.10);
-  --shadow-2: 0 10px 40px rgb(207 24 48 / 0.12);
-  --shadow-dialog: 0 18px 60px rgb(60 6 14 / 0.25);
+  --shadow-1: 0 6px 24px rgb(15 122 60 / 0.10);
+  --shadow-2: 0 10px 40px rgb(15 122 60 / 0.12);
+  --shadow-dialog: 0 18px 60px rgb(6 40 20 / 0.25);
 
   /* Motion */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -169,12 +170,12 @@
   --bs-border-radius-sm: var(--radius-1);
   --bs-border-radius-lg: var(--radius-2);
   --bs-link-color: var(--color-ink);
-  --bs-link-color-rgb: 207, 24, 48;
+  --bs-link-color-rgb: 15, 122, 60;
   --bs-link-hover-color: var(--color-accent-strong);
-  --bs-link-hover-color-rgb: 154, 14, 33;
+  --bs-link-hover-color-rgb: 10, 90, 44;
   --bs-code-color: var(--color-accent-strong);
   --bs-primary: var(--color-ink);
-  --bs-primary-rgb: 207, 24, 48;
+  --bs-primary-rgb: 15, 122, 60;
   --bs-focus-ring-color: transparent;
   --bs-form-valid-color: var(--color-success);
   --bs-form-valid-border-color: var(--color-success);
@@ -192,44 +193,44 @@
   --bs-info-text-emphasis: var(--color-ink);
   --bs-info-bg-subtle: var(--color-sunken);
   --bs-info-border-subtle: var(--color-line-strong);
-  --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23cf1830' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
+  --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%230f7a3c' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
   --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
 }
 
 /* Dark: the same print run on near-black paper, the red lifted for contrast. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-paper: #140a0b;
-    --color-surface: #1b0f11;
-    --color-sunken: #251416;
-    --color-hover: #2a1619;
-    --color-ink: #ff7380;
-    --color-ink-2: #f6a0a8;
-    --color-muted: #d99aa1;
-    --color-line: #43242a;
-    --color-line-strong: #ff7380;
-    --color-accent: #ff5363;
-    --color-accent-strong: #ff9aa3;
-    --color-on-accent: #140a0b;
-    --color-accent-wash: #3a1419;
-    --color-inverse: #ff7380;
-    --color-on-inverse: #140a0b;
-    --color-accent-on-inverse: #140a0b;
-    --color-success: #7fc796;
-    --color-success-wash: #1b2a20;
+    --color-paper: #0b130e;
+    --color-surface: #101b14;
+    --color-sunken: #16241b;
+    --color-hover: #1a2a20;
+    --color-ink: #5fd38a;
+    --color-ink-2: #9be3b5;
+    --color-muted: #9cc7ab;
+    --color-line: #24382b;
+    --color-line-strong: #5fd38a;
+    --color-accent: #3fca76;
+    --color-accent-strong: #8ee6ae;
+    --color-on-accent: #0b130e;
+    --color-accent-wash: #15301f;
+    --color-inverse: #5fd38a;
+    --color-on-inverse: #0b130e;
+    --color-accent-on-inverse: #0b130e;
+    --color-success: #8fb8ea;
+    --color-success-wash: #17253a;
     --color-warning: #e4c26a;
     --color-warning-wash: #2d2715;
-    --color-danger: #ffb4bb;
-    --color-danger-wash: #3a1419;
+    --color-danger: #ff8f80;
+    --color-danger-wash: #351b18;
     --color-backdrop: rgb(0 0 0 / 0.7);
     --shadow-1: 0 6px 24px rgb(0 0 0 / 0.35);
     --shadow-2: 0 10px 40px rgb(0 0 0 / 0.45);
     --shadow-dialog: 0 18px 60px rgb(0 0 0 / 0.6);
-    --bs-link-color-rgb: 255, 115, 128;
-    --bs-link-hover-color-rgb: 255, 154, 163;
-    --bs-primary-rgb: 255, 115, 128;
-    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ff7380' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
-    --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23140a0b' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
+    --bs-link-color-rgb: 95, 211, 138;
+    --bs-link-hover-color-rgb: 142, 230, 174;
+    --bs-primary-rgb: 95, 211, 138;
+    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%235fd38a' stroke-linecap='square' stroke-width='1.5' d='m3 6 5 5 5-5'/%3e%3c/svg%3e");
+    --check-mark: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%230b130e' stroke-linecap='square' stroke-width='2.5' d='m5 10 3.5 3.5L15 7'/%3e%3c/svg%3e");
   }
 }
 
