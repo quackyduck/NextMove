@@ -32,6 +32,41 @@ def init_app(app):
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.close()
 
+    if app.config.get("QUEUE_WORKER"):
+        # The worker never migrates: it waits for the web process to finish, so
+        # two processes never race a long migration past busy_timeout.
+        wait_for_schema(engine, app.config.get("SCHEMA_WAIT_SECONDS", 120))
+    else:
+        migrate_or_create(app, engine)
+
+    sessions = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
+    app.extensions["jobtracker_db"] = {"engine": engine, "sessions": sessions}
+    if app.config.get("UPLOAD_FOLDER") and not app.config.get("QUEUE_WORKER"):
+        from .storage import relocate_legacy_files
+        relocate_legacy_files(app)
+
+    @app.teardown_appcontext
+    def remove_session(_error=None):
+        sessions.remove()
+
+
+def wait_for_schema(engine, seconds):
+    import time
+    deadline = time.monotonic() + seconds
+    while True:
+        with engine.connect() as connection:
+            if "schema_version" in inspect(connection).get_table_names():
+                versions = connection.execute(text("SELECT version FROM schema_version")).scalars().all()
+                if versions == [SCHEMA_VERSION]:
+                    return
+                if versions and versions[0] > SCHEMA_VERSION:
+                    raise RuntimeError(f"Database schema {versions} is newer than this worker ({SCHEMA_VERSION})")
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Database is not at the expected schema; start the web service to migrate it")
+        time.sleep(1)
+
+
+def migrate_or_create(app, engine):
     with engine.begin() as connection:
         if engine.dialect.name == "sqlite":
             # Explicit BEGIN also makes DDL transactional on legacy sqlite3 drivers.
@@ -52,16 +87,6 @@ def init_app(app):
             versions = connection.execute(text("SELECT version FROM schema_version")).scalars().all()
             migrate(connection, versions, bootstrap_hash=app.config.get("APP_PASSWORD_HASH"),
                     admin_email=app.config.get("BOOTSTRAP_ADMIN_EMAIL"))
-
-    sessions = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
-    app.extensions["jobtracker_db"] = {"engine": engine, "sessions": sessions}
-    if app.config.get("UPLOAD_FOLDER"):
-        from .storage import relocate_legacy_files
-        relocate_legacy_files(app)
-
-    @app.teardown_appcontext
-    def remove_session(_error=None):
-        sessions.remove()
 
 
 def get_session():

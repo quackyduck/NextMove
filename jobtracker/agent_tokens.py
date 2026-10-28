@@ -46,7 +46,7 @@ def create_token(user_id, data):
         raise services.ServiceError('Enter your current workspace password')
     observed = g.credential
     try:
-        if not throttle.reserve_attempt(observed.email):
+        if not throttle.reserve_verification(observed.user_id):
             raise services.ServiceError('Too many verification attempts. Try again later.', 429)
     except throttle.Unavailable as exc:
         raise services.ServiceError('Password verification temporarily unavailable', 503) from exc

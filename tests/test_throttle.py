@@ -42,7 +42,7 @@ def test_reservations_are_atomic_across_instances(build):
 
     def attempt(index):
         with apps[index % 2].test_request_context():
-            return throttle.reserve_attempt('owner@localhost')
+            return throttle.reserve_login('owner@localhost')
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         outcomes = list(executor.map(attempt, range(24)))
@@ -74,9 +74,9 @@ def test_cross_origin_does_not_consume_budget_and_clock_rollback_preserves_it(bu
     for _ in range(12):
         assert client.post('/api/v1/auth/login', json={}, headers={'Origin': 'https://evil.example'}).status_code == 403
     with app.test_request_context():
-        assert all(throttle.reserve_attempt('owner@localhost') for _ in range(10))
+        assert all(throttle.reserve_login('owner@localhost') for _ in range(10))
         monkeypatch.setattr(throttle.time, 'time', lambda: 900)
-        assert not throttle.reserve_attempt('owner@localhost')
+        assert not throttle.reserve_login('owner@localhost')
 
 
 def login(client, email, password='wrong-password', address='198.51.100.1'):
@@ -84,20 +84,35 @@ def login(client, email, password='wrong-password', address='198.51.100.1'):
                        environ_base={'REMOTE_ADDR': address}).status_code
 
 
-def test_account_budget_is_per_account_and_ignores_client_address(build, monkeypatch):
+def test_account_budget_stops_one_attacker_but_not_the_owner(build, monkeypatch):
     monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
     client = build().test_client()
-    for index in range(10):
-        assert login(client, 'owner@localhost', address=f'198.51.100.{index}') == 401
-    # A distributed guesser is still stopped at the account budget...
-    assert login(client, 'owner@localhost', 'test-password', address='203.0.113.9') == 429
-    # ...while other accounts (including unknown ones, so 429 does not reveal
-    # existence) keep their own budgets.
+    for _ in range(throttle.MAX_ATTEMPTS):
+        assert login(client, 'owner@localhost', address='198.51.100.1') == 401
+    # The attacker's address is stopped for this account...
+    assert login(client, 'owner@localhost', 'test-password', address='198.51.100.1') == 429
+    # ...but the owner, from their own network, can still sign in.
+    assert login(client, 'owner@localhost', 'test-password', address='203.0.113.9') == 200
+    # Other accounts, known or unknown (429 never reveals existence), keep their budgets.
     assert login(client, 'someone@example.com', address='203.0.113.9') == 401
-    for _ in range(9):
+    for _ in range(throttle.MAX_ATTEMPTS):
         assert login(client, 'nobody@example.com', address='203.0.113.10') == 401
-    assert login(client, 'nobody@example.com', address='203.0.113.10') == 401
     assert login(client, 'nobody@example.com', address='203.0.113.10') == 429
+
+
+def test_distributed_guessing_is_capped_per_account(build, monkeypatch):
+    monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
+    client = build().test_client()
+    attempts = 0
+    for address in range(100):
+        for _ in range(throttle.CLEAN_CLIENT_TRIES):
+            if attempts < throttle.MAX_CLEAN_CLIENT_ATTEMPTS:
+                assert login(client, 'owner@localhost', address=f'10.0.{address // 250}.{address % 250}') == 401
+                attempts += 1
+    # Every further address is refused until the window passes, even with the right password.
+    assert login(client, 'owner@localhost', 'test-password', address='192.0.2.200') == 429
+    monkeypatch.setattr(throttle.time, 'time', lambda: 1000 + throttle.WINDOW_SECONDS)
+    assert login(client, 'owner@localhost', 'test-password', address='192.0.2.200') == 200
 
 
 def test_ip_budget_limits_spraying_across_accounts(build, monkeypatch):
@@ -110,13 +125,29 @@ def test_ip_budget_limits_spraying_across_accounts(build, monkeypatch):
     assert login(client, 'owner@localhost', 'test-password', address='192.0.2.50') == 200
 
 
-def test_global_budget_caps_total_password_hashing(build, monkeypatch):
+def test_no_global_budget_many_addresses_cannot_lock_everyone_out(build, monkeypatch):
     monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
-    monkeypatch.setattr(throttle, 'MAX_GLOBAL_ATTEMPTS', 3)
     client = build().test_client()
-    for index in range(3):
-        assert login(client, f'user{index}@example.com', address=f'192.0.2.{index}') == 401
-    assert login(client, 'owner@localhost', 'test-password', address='192.0.2.99') == 429
+    for address in range(20):
+        for index in range(throttle.MAX_IP_ATTEMPTS):
+            login(client, f'spray{index}@example.com', address=f'10.1.0.{address}')
+    assert login(client, 'owner@localhost', 'test-password', address='192.0.2.99') == 200
+
+
+def test_login_abuse_does_not_block_the_signed_in_owner(build, monkeypatch):
+    monkeypatch.setattr(throttle.time, 'time', lambda: 1000)
+    client = build().test_client()
+    owner = client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'},
+                        environ_base={'REMOTE_ADDR': '192.0.2.1'})
+    headers = {'X-CSRF-Token': owner.json['csrf_token']}
+    for address in range(20):
+        for _ in range(throttle.CLEAN_CLIENT_TRIES):
+            login(client.application.test_client(), 'owner@localhost', address=f'10.2.0.{address}')
+    changed = client.post('/api/v1/auth/password', base_url='https://localhost', headers=headers,
+                          environ_base={'REMOTE_ADDR': '192.0.2.1'},
+                          json={'current_password': 'test-password', 'new_password': 'changed-password',
+                                'confirm_password': 'changed-password'})
+    assert changed.status_code == 200
 
 
 def test_trusted_proxy_uses_forwarded_client_address(build, monkeypatch, tmp_path):

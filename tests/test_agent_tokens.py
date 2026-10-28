@@ -92,7 +92,8 @@ def test_wrong_password_budget_and_password_change_race(client, app, monkeypatch
 
 def test_wrong_password_is_throttled(client):
     browser = login(client)
-    for _ in range(9):
+    # Signed-in re-verification has its own per-user budget (sign-in does not spend it).
+    for _ in range(10):
         assert create(client, browser, current_password='wrong').status_code == 400
     assert create(client, browser).status_code == 429
 

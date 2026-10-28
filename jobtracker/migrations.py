@@ -1,5 +1,6 @@
 """Numbered, transactional SQLite schema upgrades; run with writers stopped."""
 import json
+from types import SimpleNamespace
 
 from sqlalchemy import inspect, text
 
@@ -134,7 +135,7 @@ def bootstrap_email(value):
 TENANT_TABLES = ('Job', 'Contact', 'Resume', 'Activity', 'AgentToken', 'ExtractionTask', 'IngestionRequest')
 
 
-def upgrade_v8_to_v9(connection, admin_email=None):
+def upgrade_v8_to_v9(connection, admin_email=None, bootstrap_hash=None):
     """Multi-user tenancy: the singleton workspace becomes user #1.
 
     Every row keeps its ID, version and timestamps and gains user_id=1. Resume
@@ -146,14 +147,16 @@ def upgrade_v8_to_v9(connection, admin_email=None):
     models.QueuedTask.__table__.create(connection)
     credential = connection.execute(text(
         'SELECT password_hash, session_version FROM workspace_credentials WHERE id=1')).first()
-    if credential is not None:
-        connection.execute(models.User.__table__.insert().values(
-            id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
-            session_version=credential.session_version, created_at=models.now()))
-    elif any(connection.exec_driver_sql(f'SELECT 1 FROM "{getattr(models, name).__tablename__}" LIMIT 1').first()
-             for name in TENANT_TABLES):
-        raise RuntimeError('Existing records have no workspace credential to become user #1; '
-                           'restore the credential or set APP_PASSWORD_HASH before upgrading')
+    if credential is None and bootstrap_hash:
+        credential = SimpleNamespace(password_hash=bootstrap_hash, session_version=1)
+    if credential is None:
+        # Never leave ID 1 for the first sign-up: it would inherit the workspace's
+        # records and the deprecated environment tokens.
+        raise RuntimeError('The workspace has no credential to become user #1; restore the '
+                           'credential or set APP_PASSWORD_HASH before upgrading')
+    connection.execute(models.User.__table__.insert().values(
+        id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
+        session_version=credential.session_version, owns_legacy_tokens=True, created_at=models.now()))
 
     def rebuild():
         for name in TENANT_TABLES:
@@ -186,7 +189,7 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
         upgrade_v7_to_v8(connection)
         versions = [8]
     if versions == [8]:
-        upgrade_v8_to_v9(connection, admin_email)
+        upgrade_v8_to_v9(connection, admin_email, bootstrap_hash)
         versions = [9]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

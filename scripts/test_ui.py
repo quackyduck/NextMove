@@ -29,6 +29,10 @@ def run_file(spec):
                            DATABASE_URL=f'sqlite:///{directory}/test.sqlite3',
                            UPLOAD_FOLDER=f'{directory}/resumes',
                            E2E_BASE_URL=f'http://127.0.0.1:{port}', E2E_PASSWORD='isolated-browser-test', E2E_EMAIL='owner@localhost')
+        # One invite per suite lets browser tests create a second account.
+        invite = subprocess.run([sys.executable, '-m', 'flask', '--app', 'jobtracker:create_app', 'invite', 'create'],
+                                cwd=ROOT, env=environment, check=True, capture_output=True, text=True)
+        environment['E2E_INVITE_CODE'] = invite.stdout.strip()
         server = subprocess.Popen([sys.executable, '-m', 'flask', '--app', 'jobtracker:create_app',
                                    'run', '--host', '127.0.0.1', '--port', str(port),
                                    '--no-debugger', '--no-reload'], cwd=ROOT, env=environment)

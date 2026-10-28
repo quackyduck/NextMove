@@ -12,14 +12,16 @@ export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const warnBeforeReload = useRef((event) => {
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
   useEffect(() => {
     dialog.current.showModal();
-    const warnBeforeReload = (event) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeReload);
-    return () => window.removeEventListener("beforeunload", warnBeforeReload);
+    const warn = warnBeforeReload.current;
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
   async function signIn(event) {
@@ -33,7 +35,9 @@ export function SessionRecovery({ email: knownEmail = "", onAuthenticated }) {
       });
       setCsrf(data.csrf_token);
       setPassword("");
-      onAuthenticated();
+      // Signed in: the app may now reload (e.g. a different account signed in).
+      window.removeEventListener("beforeunload", warnBeforeReload.current);
+      onAuthenticated(data);
     } catch (error) {
       setError(error.message);
     } finally {

@@ -51,7 +51,7 @@ def give_up_ingestion(engine, _user_id, payload):
     tasks.finish(engine, payload['request_id'], 'failed', {'error': FAILED}, IngestionRequest)
 
 
-@taskqueue.handler('ingest_url', give_up=give_up_ingestion)
+@taskqueue.handler('ingest_url', give_up=give_up_ingestion, lease_seconds=tasks.LEASE_SECONDS)
 def run_ingestion(app, task):
     engine = app.extensions['jobtracker_db']['engine']
     identifier = task.payload['request_id']

@@ -46,6 +46,9 @@ def relocate_legacy_files(app):
         if target is None or target.exists():
             continue
         user_directory(root, user_id, create=True)
-        os.replace(root / stored, target)
+        try:
+            os.replace(root / stored, target)
+        except FileNotFoundError:
+            continue  # Another process (web or worker) moved it first.
         moved += 1
     return moved

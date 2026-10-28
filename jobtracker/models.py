@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import text, Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -96,12 +96,21 @@ class Activity(Base):
 class User(Base):
     """An account. Replaces the schema-3 singleton workspace credential (user #1)."""
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint("session_version > 0"),)
+    __table_args__ = (
+        CheckConstraint("session_version > 0"),
+        # At most one account may answer to the deprecated environment tokens.
+        Index("uq_users_legacy_owner", "owns_legacy_tokens", unique=True, sqlite_where=text("owns_legacy_tokens = 1")),
+        # AUTOINCREMENT: a deleted account's ID (and its uploads/<id>/, cookies) is never reissued.
+        {"sqlite_autoincrement": True},
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Normalized (trimmed, lowercase) at every boundary; unique per account.
     email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # The migrated/bootstrapped workspace owner: AGENT_API_TOKEN and
+    # ROLE_SEARCH_TOKEN_SHA256 act for this account only. Never set by sign-up.
+    owns_legacy_tokens: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

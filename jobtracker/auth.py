@@ -15,8 +15,8 @@ from . import credentials, throttle
 
 auth = Blueprint('auth', __name__)
 # The deprecated environment tokens (AGENT_API_TOKEN, ROLE_SEARCH_TOKEN_SHA256)
-# predate accounts and act only for the migrated workspace owner.
-LEGACY_TOKEN_USER_ID = 1
+# predate accounts and act only for the account flagged owns_legacy_tokens (the
+# migrated/bootstrapped workspace owner, user #1); see credentials.legacy_owner_id.
 
 
 def error(message, status, field=None):
@@ -69,15 +69,10 @@ def throttled(reservation):
     return None
 
 
-def reserve_password_attempt(identity=None):
-    return throttled(lambda: throttle.reserve_attempt(identity))
 
 
 def legacy_owner():
-    try:
-        return credentials.read(LEGACY_TOKEN_USER_ID) is not None
-    except credentials.Unavailable:
-        return False
+    return credentials.legacy_owner_id()
 
 
 def require_auth(view):
@@ -88,10 +83,11 @@ def require_auth(view):
             token = current_app.config.get('AGENT_API_TOKEN')
             if not token or not hmac.compare_digest(authorization.encode('utf-8'), f'Bearer {token}'.encode('utf-8')):
                 return error('Authentication required', 401)
-            if not legacy_owner():
+            owner = legacy_owner()
+            if owner is None:
                 return error('Authentication required', 401)
             g.auth_type = 'bearer'
-            g.user_id = LEGACY_TOKEN_USER_ID
+            g.user_id = owner
         else:
             try:
                 valid = browser_authenticated()
@@ -225,7 +221,7 @@ def login():
     payload = payload if isinstance(payload, dict) else {}
     email = credentials.normalize_email(payload.get('email'))
     # Reserve before validation and hashing: unknown and malformed attempts count.
-    rejection = reserve_password_attempt(email)
+    rejection = throttled(lambda: throttle.reserve_login(email))
     if rejection:
         return rejection
     password = payload.get('password')
@@ -264,7 +260,7 @@ def change_password():
     if not isinstance(confirmation, str) or new != confirmation:
         return error('New passwords do not match', 400)
     observed = g.credential
-    rejection = reserve_password_attempt(observed.email)
+    rejection = throttled(lambda: throttle.reserve_verification(observed.user_id))
     if rejection:
         return rejection
     if not check_password_hash(observed.password_hash, old):

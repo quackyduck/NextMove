@@ -43,7 +43,9 @@ def admit(connection, user_id):
     """Raise 429 unless this account and the shared queue both have room."""
     if active_tasks(connection, user_id) >= MAX_ACTIVE:
         raise ServiceError(BUSY, 429)
-    if taskqueue.pending(connection) >= MAX_PENDING:
+    # Only tasks whose preview/receipt can still succeed count: when the worker
+    # is down, stale rows must not keep every account at 429.
+    if taskqueue.pending(connection, since=now() - timedelta(seconds=TASK_SECONDS)) >= MAX_PENDING:
         raise ServiceError(FULL, 429)
 
 
@@ -82,7 +84,13 @@ def give_up_preview(engine, _user_id, payload):
     finish(engine, payload['task_id'], 'failed', EXPIRED)
 
 
-@taskqueue.handler('extract_preview', give_up=give_up_preview)
+# The lease outlives the whole TASK_SECONDS deadline (fetch_page's 20 s budget
+# plus DNS for each redirect), so a live worker is never reclaimed mid-fetch; a
+# reclaimed task finds its preview expired and stops.
+LEASE_SECONDS = TASK_SECONDS + 15
+
+
+@taskqueue.handler('extract_preview', give_up=give_up_preview, lease_seconds=LEASE_SECONDS)
 def run_extraction(app, task):
     engine = app.extensions['jobtracker_db']['engine']
     identifier = task.payload['task_id']

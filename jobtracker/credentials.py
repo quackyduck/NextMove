@@ -11,6 +11,7 @@ import secrets
 
 import click
 from flask import current_app
+from flask.cli import AppGroup
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import generate_password_hash
@@ -57,9 +58,22 @@ def password_problem(password):
 
 
 def bootstrap(connection, password_hash, email):
-    """Fresh-schema only: the configured verifier becomes user #1."""
-    connection.execute(insert(User).values(id=1, email=email, password_hash=password_hash,
-                                           session_version=1, created_at=now()))
+    """Fresh-schema only: the configured verifier becomes user #1, the workspace owner."""
+    connection.execute(insert(User).values(id=1, email=email, password_hash=password_hash, session_version=1,
+                                           owns_legacy_tokens=True, created_at=now()))
+
+
+def legacy_owner_id():
+    """The account the deprecated environment tokens act for, or None.
+
+    Only the bootstrapped/migrated workspace owner carries the flag; a signed-up
+    account can never acquire it, even if IDs were ever reused.
+    """
+    try:
+        with engine().connect() as connection:
+            return connection.scalar(select(User.id).where(User.owns_legacy_tokens.is_(True)))
+    except SQLAlchemyError:
+        return None
 
 
 def engine():
@@ -125,16 +139,26 @@ def create_user(email, password_hash, invite_code=None):
                 if invite_id is None:
                     raise SignupError('This invite code is invalid, expired, or already used', 403, 'invite_code')
             if connection.scalar(select(User.id).where(User.email == email)) is not None:
-                # Checked after the invite so that, without one, emails cannot be probed.
-                raise SignupError('An account with this email already exists', 409, 'email')
-            user_id = connection.execute(insert(User).values(
-                email=email, password_hash=password_hash, session_version=1, created_at=now())).inserted_primary_key[0]
-            if invite_id is not None:
+                # Checked after the invite so that, without one, emails cannot be probed;
+                # and a duplicate uses the invite up, so one code answers one probe.
+                duplicate = True
+            else:
+                duplicate = False
+            if duplicate:
+                if invite_id is not None:
+                    connection.execute(update(InviteCode).where(InviteCode.id == invite_id).values(used_at=now()))
+                user_id = None
+            else:
+                user_id = connection.execute(insert(User).values(
+                    email=email, password_hash=password_hash, session_version=1, created_at=now())).inserted_primary_key[0]
+            if invite_id is not None and user_id is not None:
                 consumed = connection.execute(update(InviteCode).where(
                     InviteCode.id == invite_id, InviteCode.used_at.is_(None)
                 ).values(used_at=now(), used_by=user_id)).rowcount
                 if consumed != 1:
                     raise SignupError('This invite code is invalid, expired, or already used', 403, 'invite_code')
+        if user_id is None:
+            raise SignupError('An account with this email already exists', 409, 'email')
         return read(user_id)
     except IntegrityError:
         raise SignupError('An account with this email already exists', 409, 'email') from None
@@ -159,8 +183,8 @@ def _as_utc(value):
 
 
 def init_app(app):
-    users = app.cli.commands.get('user') or click.Group('user', help='Manage accounts (admin).')
-    invites = click.Group('invite', help='Create and list single-use signup invites (admin).')
+    users = AppGroup('user', help='Manage accounts (admin).')
+    invites = AppGroup('invite', help='Create and list single-use signup invites (admin).')
     app.cli.add_command(users)
     app.cli.add_command(invites)
 

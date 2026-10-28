@@ -65,7 +65,8 @@ def main():
     from . import create_app
     logging.basicConfig(level=os.environ.get('WORKER_LOG_LEVEL', 'INFO'),
                         format='%(asctime)s %(levelname)s %(name)s: %(message)s')
-    app = create_app()
+    # Wait for (never run) migrations: the web service owns schema upgrades.
+    app = create_app({'QUEUE_WORKER': True})
     stop = threading.Event()
     install_signal_handlers(stop)
     run(app, stop)

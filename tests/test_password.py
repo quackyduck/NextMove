@@ -97,7 +97,7 @@ def test_change_requires_browser_session_and_csrf(app):
 def test_current_password_verifications_share_persistent_throttle(app):
     client = app.test_client()
     headers = login(client)
-    for _ in range(9):
+    for _ in range(10):
         assert client.post('/api/v1/auth/password', json=payload(current_password='wrong'), headers=headers).status_code == 400
     response = client.post('/api/v1/auth/password', json=payload(), headers=headers)
     assert response.status_code == 429

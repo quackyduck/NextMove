@@ -78,9 +78,12 @@ def enqueue(connection, user_id, kind, payload, *, delay=0):
     return identifier
 
 
-def pending(connection):
-    return connection.scalar(select(func.count()).select_from(QueuedTask)
-                             .where(QueuedTask.status.in_(('queued', 'running'))))
+def pending(connection, since=None):
+    """Unfinished tasks, optionally only those created after `since`."""
+    query = select(func.count()).select_from(QueuedTask).where(QueuedTask.status.in_(('queued', 'running')))
+    if since is not None:
+        query = query.where(QueuedTask.created_at >= since)
+    return connection.scalar(query)
 
 
 def _claimable(moment):
@@ -101,37 +104,44 @@ def claim(engine):
     with engine.connect() as connection:
         if connection.scalar(select(QueuedTask.id).where(_claimable(moment)).limit(1)) is None:
             return None
-    exhausted = []
-    try:
-        with engine.begin() as connection:
-            if engine.dialect.name == 'sqlite':
-                connection.exec_driver_sql('BEGIN IMMEDIATE')
-            moment = now()
-            while True:
-                row = connection.execute(select(QueuedTask.__table__).where(_claimable(moment))
-                                         .order_by(QueuedTask.run_after, QueuedTask.created_at).limit(1)).mappings().first()
-                if row is None:
-                    return None
-                if row['attempts'] >= row['max_attempts'] or row['kind'] not in HANDLERS:
-                    # A lease expired on the last attempt (worker crash/timeout) or the
-                    # kind is unknown to this release: fail instead of looping forever.
-                    reason = 'Lease expired on final attempt' if row['kind'] in HANDLERS else 'Unknown task kind'
-                    connection.execute(update(QueuedTask).where(QueuedTask.id == row['id']).values(
-                        status='failed', lease_expires_at=None, claim_token=None, last_error=reason, updated_at=moment))
-                    exhausted.append(dict(row))
-                    continue
-                token = new_id()
-                spec = HANDLERS[row['kind']]
+    exhausted, claimed = [], None
+    with engine.begin() as connection:
+        if engine.dialect.name == 'sqlite':
+            connection.exec_driver_sql('BEGIN IMMEDIATE')
+        moment = now()
+        while claimed is None:
+            row = connection.execute(select(QueuedTask.__table__).where(_claimable(moment))
+                                     .order_by(QueuedTask.run_after, QueuedTask.created_at).limit(1)).mappings().first()
+            if row is None:
+                break
+            if row['attempts'] >= row['max_attempts'] or row['kind'] not in HANDLERS:
+                # A lease expired on the last attempt (worker crash/timeout) or the
+                # kind is unknown to this release: fail instead of looping forever.
+                reason = 'Lease expired on final attempt' if row['kind'] in HANDLERS else 'Unknown task kind'
                 connection.execute(update(QueuedTask).where(QueuedTask.id == row['id']).values(
-                    status='running', attempts=row['attempts'] + 1, claim_token=token, updated_at=moment,
-                    lease_expires_at=moment + timedelta(seconds=spec.lease_seconds)))
-                return Claim(row['id'], row['user_id'], row['kind'], row['payload'], row['attempts'] + 1,
-                             row['max_attempts'], token)
-    finally:
-        for row in exhausted:
-            spec = HANDLERS.get(row['kind'])
-            if spec and spec.give_up:
-                spec.give_up(engine, row['user_id'], row['payload'])
+                    status='failed', lease_expires_at=None, claim_token=None, last_error=reason, updated_at=moment))
+                exhausted.append(dict(row))
+                continue
+            token = new_id()
+            spec = HANDLERS[row['kind']]
+            connection.execute(update(QueuedTask).where(QueuedTask.id == row['id']).values(
+                status='running', attempts=row['attempts'] + 1, claim_token=token, updated_at=moment,
+                lease_expires_at=moment + timedelta(seconds=spec.lease_seconds)))
+            claimed = Claim(row['id'], row['user_id'], row['kind'], row['payload'], row['attempts'] + 1,
+                            row['max_attempts'], token)
+    # Only after the commit: a rolled-back claim must not report a failure.
+    for row in exhausted:
+        _give_up(engine, HANDLERS.get(row['kind']), row['user_id'], row['payload'], row['id'])
+    return claimed
+
+
+def _give_up(engine, spec, user_id, payload, task_id):
+    if spec is None or spec.give_up is None:
+        return
+    try:
+        spec.give_up(engine, user_id, payload)
+    except Exception as exc:  # noqa: BLE001 - never lose a claim to a failing hook
+        log.warning('give_up hook for task %s failed: %s', task_id, type(exc).__name__)
 
 
 def _finish(engine, task, **values):
@@ -157,8 +167,8 @@ def execute(app, task):
         if task.attempts < task.max_attempts:
             _finish(engine, task, status='queued', run_after=now() + timedelta(seconds=delay), last_error=summary)
             return 'retry'
-        if _finish(engine, task, status='failed', last_error=summary) and spec.give_up:
-            spec.give_up(engine, task.user_id, task.payload)
+        if _finish(engine, task, status='failed', last_error=summary):
+            _give_up(engine, spec, task.user_id, task.payload, task.id)
         return 'failed'
     _finish(engine, task, status='succeeded', last_error='')
     return 'succeeded'

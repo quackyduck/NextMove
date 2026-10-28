@@ -29,6 +29,7 @@ function App() {
 
   const [auth, setAuth] = useState(null),
     [email, setEmail] = useState(""),
+    [userId, setUserId] = useState(null),
     [password, setPassword] = useState(""),
     [jobs, setJobs] = useState([]),
     [page, setPage] = useState("pipeline"),
@@ -53,7 +54,10 @@ function App() {
     api("/auth/session")
       .then((data) => {
         setCsrf(data.csrf_token);
-        if (data.user) setEmail(data.user.email);
+        if (data.user) {
+          setEmail(data.user.email);
+          setUserId(data.user.id);
+        }
         setAuth(data.authenticated);
       })
       .catch((e) => {
@@ -118,7 +122,13 @@ function App() {
     ]);
     setExtras({ ...contacts, ...resumes, ...activities });
   }
-  async function sessionRecovered() {
+  async function sessionRecovered(data) {
+    if (data?.user && userId !== null && data.user.id !== userId) {
+      // A different account signed in: never carry the previous account's
+      // open role, drafts or files into it. Start a fresh workspace.
+      window.location.reload();
+      return;
+    }
     setReauthRequired(false);
     setError("");
     setNotice(
@@ -143,7 +153,10 @@ function App() {
       });
       setCsrf(data.csrf_token);
       setPassword("");
-      if (data.user) setEmail(data.user.email);
+      if (data.user) {
+        setEmail(data.user.email);
+        setUserId(data.user.id);
+      }
       setAuth(true);
     });
   }
