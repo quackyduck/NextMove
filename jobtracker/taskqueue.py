@@ -170,7 +170,8 @@ def execute(app, task):
         if _finish(engine, task, status='failed', last_error=summary):
             _give_up(engine, spec, task.user_id, task.payload, task.id)
         return 'failed'
-    _finish(engine, task, status='succeeded', last_error='')
+    if not _finish(engine, task, status='succeeded', last_error=''):
+        return 'lost'  # Lease was taken over; the newer claim owns the outcome.
     return 'succeeded'
 
 
