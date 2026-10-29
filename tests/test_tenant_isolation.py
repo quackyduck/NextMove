@@ -1,10 +1,11 @@
 """Tenant isolation matrix — RELEASE BLOCKER.
 
 User A owns a job, contact, resume (and its file), activity history, extraction
-preview, agent token and ingestion receipt. User B tries every endpoint with
-A's IDs through every credential B can hold: a browser session, a managed agent
-token, and the deprecated environment token (which acts for user #1, so B is
-user #1 here and A is a signed-up account). Every attempt must look exactly like
+preview, agent token, ingestion receipt, master resume and tailored draft. User
+B tries every endpoint with A's IDs through every credential B can hold: a
+browser session, a managed agent token, a harness grant, and the deprecated
+environment token (which acts for user #1, so B is user #1 here and A is a
+signed-up account). Every attempt must look exactly like
 a missing ID (404) or be refused before routing (401/403), and must change
 nothing of A's.
 
@@ -14,6 +15,7 @@ below. `test_every_route_is_classified` fails until you do.
 from dataclasses import dataclass, field
 import hashlib
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -21,8 +23,10 @@ from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, credentials, extraction_tasks, ingestion, taskqueue
+from jobtracker import create_app, credentials, extraction_tasks, harness, ingestion, taskqueue
 from jobtracker.models import Contact, now
+
+from test_documents import docx
 
 B_PASSWORD = 'b-owner-password'
 A_PASSWORD = 'a-tenant-password'
@@ -35,8 +39,8 @@ KEY = 'tenant-a-retry-key-' + 'k' * 16
 class Endpoint:
     method: str
     rule: str             # Flask rule, for the coverage check
-    path: str             # with {job}, {resume}, {extraction}, {token}, {receipt}
-    modes: tuple          # credentials this route accepts: session, agent, legacy
+    path: str             # with {job}, {resume}, {extraction}, {token}, {receipt}, {master}, {draft}
+    modes: tuple          # credentials this route accepts: session, agent, harness, legacy
     body: dict = field(default_factory=dict)
     upload: bool = False
 
@@ -56,6 +60,13 @@ ENDPOINTS = [
     Endpoint('GET', '/api/v1/extractions/<task_id>', '/api/v1/extractions/{extraction}', ('session', 'legacy')),
     Endpoint('POST', '/api/v1/agent-tokens/<token_id>/revoke', '/api/v1/agent-tokens/{token}/revoke', ('session',)),
     Endpoint('GET', '/api/v1/ingestions/<task_id>', '/api/v1/ingestions/{receipt}', ('agent',)),
+    Endpoint('GET', '/api/v1/me/master-resumes/<resume_id>/file', '/api/v1/me/master-resumes/{master}/file', ('harness',)),
+    Endpoint('GET', '/api/v1/me/jobs/<job_id>', '/api/v1/me/jobs/{job}', ('harness',)),
+    Endpoint('PUT', '/api/v1/me/jobs/<job_id>/posting', '/api/v1/me/jobs/{job}/posting', ('harness',),
+             {'text': 'Hijacked'}),
+    Endpoint('GET', '/api/v1/me/extractions/<task_id>', '/api/v1/me/extractions/{extraction}', ('harness',)),
+    Endpoint('GET', '/api/v1/me/drafts/<draft_id>', '/api/v1/me/drafts/{draft}', ('harness',)),
+    Endpoint('POST', '/api/v1/me/drafts/<draft_id>/approve', '/api/v1/me/drafts/{draft}/approve', ('harness',)),
 ]
 
 # Routes without an ID; each has a dedicated test below proving B sees only B's data.
@@ -80,6 +91,14 @@ COLLECTIONS = {
     ('GET', '/api/v1/profile/resume'): 'test_onboarding.py',
     ('POST', '/api/v1/profile/resume'): 'test_onboarding.py',
     ('GET', '/api/v1/profile/resume/download'): 'test_onboarding.py',
+    # Resume Agent harness (schema 11): service-signed, or caller-scoped by grant.
+    ('POST', '/api/v1/harness/accounts'): 'test_harness_api.py',
+    ('POST', '/api/v1/me/master-resumes'): 'test_harness_creations_belong_to_the_grant_owner',
+    ('POST', '/api/v1/me/jobs'): 'test_harness_creations_belong_to_the_grant_owner',
+    ('POST', '/api/v1/me/drafts'): 'test_harness_creations_belong_to_the_grant_owner',
+    ('POST', '/api/v1/me/activation-links'): 'test_harness_api.py',
+    ('GET', '/api/v1/auth/activation'): 'test_harness_api.py',
+    ('POST', '/api/v1/auth/activate'): 'test_harness_api.py',
 }
 
 
@@ -87,6 +106,7 @@ COLLECTIONS = {
 def world(tmp_path, monkeypatch):
     monkeypatch.setattr(extraction_tasks, 'extract_posting', lambda url: {'fields': FIELDS, 'warnings': []})
     monkeypatch.setattr(ingestion, 'extract_posting', lambda url: {'fields': {**FIELDS, 'url': url}, 'warnings': []})
+    monkeypatch.setattr(harness, 'extract_posting', lambda url: {'fields': {**FIELDS, 'url': url}, 'warnings': []})
     app = create_app({
         'TESTING': True, 'APP_ENV': 'development', 'SECRET_KEY': 'tenant-test-secret',
         'APP_PASSWORD_HASH': generate_password_hash(B_PASSWORD),  # user #1 = B
@@ -118,11 +138,22 @@ def world(tmp_path, monkeypatch):
     b_session = {'X-CSRF-Token': login.json['csrf_token']}
     b_token = b.post('/api/v1/agent-tokens', headers=b_session, json={
         'name': 'B agent', 'current_password': B_PASSWORD, 'permissions': ['roles:search', 'roles:ingest']}).json
+    with app.extensions['jobtracker_db']['engine'].begin() as connection:
+        a_grant = {'Authorization': 'Bearer ' + harness.create_grant(connection, 2)}
+        b_grant = {'Authorization': 'Bearer ' + harness.create_grant(connection, 1)}
+    master = a.post('/api/v1/me/master-resumes', headers=a_grant,
+                    data={'file': (io.BytesIO(b'A private master resume'), 'master.txt')}).json
+    draft = a.post('/api/v1/me/drafts', headers=a_grant, data={
+        'draft': json.dumps({'request_id': 'rq_a', 'revision': 1, 'job_id': job['id'],
+                             'master_resume_version_id': master['id']}),
+        'docx': (io.BytesIO(docx()), 'draft.docx')}).json
     ids = {'job': job['id'], 'resume': resume['id'], 'extraction': preview['id'],
-           'token': a_token['agent_token']['id'], 'receipt': receipt['id']}
-    return dict(app=app, a=a, a_headers=a_headers, a_agent=a_agent, ids=ids, b=b,
+           'token': a_token['agent_token']['id'], 'receipt': receipt['id'], 'master': master['id'],
+           'draft': draft['id']}
+    return dict(app=app, a=a, a_headers=a_headers, a_agent=a_agent, a_grant=a_grant, ids=ids, b=b,
                 credentials={'session': (b, b_session),
                              'agent': (app.test_client(), {'Authorization': 'Bearer ' + b_token['token']}),
+                             'harness': (app.test_client(), b_grant),
                              'legacy': (app.test_client(), {'Authorization': 'Bearer ' + LEGACY})})
 
 
@@ -140,6 +171,8 @@ def a_state(world):
         # last_used_at moves when this helper reads the receipt with A's own token.
         'tokens': [{**token, 'last_used_at': None} for token in a.get('/api/v1/agent-tokens').json['tokens']],
         'receipt': a.get(f"/api/v1/ingestions/{ids['receipt']}", headers=world['a_agent']).json,
+        'master': a.get(f"/api/v1/me/master-resumes/{ids['master']}/file", headers=world['a_grant']).data,
+        'draft': a.get(f"/api/v1/me/drafts/{ids['draft']}", headers=world['a_grant']).json,
     }
 
 
@@ -152,7 +185,7 @@ def send(client, headers, endpoint, ids):
     return client.open(path, method=endpoint.method, json=endpoint.body, headers=headers)
 
 
-@pytest.mark.parametrize('mode', ['session', 'agent', 'legacy'])
+@pytest.mark.parametrize('mode', ['session', 'agent', 'harness', 'legacy'])
 @pytest.mark.parametrize('endpoint', ENDPOINTS, ids=lambda e: f'{e.method} {e.rule}')
 def test_other_tenants_ids_are_not_found(world, endpoint, mode):
     before = a_state(world)
@@ -180,6 +213,8 @@ def test_every_route_is_classified(world):
 
 def test_lists_and_search_exclude_other_tenants(world):
     for mode, (client, headers) in world['credentials'].items():
+        if mode == 'harness':
+            continue  # Grants have no list or search routes.
         if mode != 'agent':
             assert client.get('/api/v1/jobs', headers=headers).json['jobs'] == []
         search = client.get('/api/v1/jobs/search', headers=headers,
@@ -237,9 +272,12 @@ def test_password_change_is_per_account(world):
 def test_files_live_under_their_owners_prefix(world):
     root = Path(world['app'].config['UPLOAD_FOLDER'])
     files = [path for path in root.rglob('*') if path.is_file()]
-    assert len(files) == 1 and files[0].parent == root / '2'
-    assert files[0].read_bytes() == b'A private resume'
-    assert (root / '2').stat().st_mode & 0o777 == 0o700
+    # The job resume, the master resume and the tailored draft, all under A's prefix.
+    assert len(files) == 3 and all(path.is_relative_to(root / '2') for path in files)
+    assert {path.parent.name for path in files} == {'2', 'master', 'drafts'}
+    assert next(path for path in files if path.parent == root / '2').read_bytes() == b'A private resume'
+    for directory in (root / '2', root / '2' / 'master', root / '2' / 'drafts'):
+        assert directory.stat().st_mode & 0o777 == 0o700
 
 
 def test_database_rejects_children_that_cross_tenants(world):
@@ -287,3 +325,28 @@ def test_legacy_tokens_act_only_for_the_flagged_owner(world):
     with engine.begin() as connection:
         connection.execute(text('UPDATE users SET owns_legacy_tokens=1 WHERE id=1'))
     assert client.get('/api/v1/jobs', headers=headers).json['jobs'] == []
+
+
+def test_harness_creations_belong_to_the_grant_owner(world):
+    client, headers = world['credentials']['harness']
+    job = client.post('/api/v1/me/jobs', headers=headers, json={'url': 'https://example.com/b-chat'}).json
+    taskqueue.drain(world['app'])
+    master = client.post('/api/v1/me/master-resumes', headers=headers,
+                         data={'file': (io.BytesIO(b'B master resume'), 'b.txt')}).json
+    draft = client.post('/api/v1/me/drafts', headers=headers, data={
+        'draft': json.dumps({'request_id': 'rq_b', 'revision': 1, 'job_id': job['id'],
+                             'master_resume_version_id': master['id']}),
+        'docx': (io.BytesIO(docx()), 'draft.docx')})
+    assert draft.status_code == 201
+    a, a_grant = world['a'], world['a_grant']
+    assert a.get(f"/api/v1/me/jobs/{job['id']}", headers=a_grant).status_code == 404
+    assert a.get(f"/api/v1/me/master-resumes/{master['id']}/file", headers=a_grant).status_code == 404
+    assert a.get(f"/api/v1/me/drafts/{draft.json['id']}", headers=a_grant).status_code == 404
+    session, browser = world['credentials']['session']
+    assert session.get(f"/api/v1/jobs/{job['id']}", headers=browser).status_code == 200
+    # B cannot attach a draft to A's job or A's master resume.
+    crossed = client.post('/api/v1/me/drafts', headers=headers, data={
+        'draft': json.dumps({'request_id': 'rq_x', 'revision': 1, 'job_id': world['ids']['job'],
+                             'master_resume_version_id': master['id']}),
+        'docx': (io.BytesIO(docx()), 'draft.docx')})
+    assert crossed.status_code == 404

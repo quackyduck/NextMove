@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 from sqlalchemy import create_engine, inspect
 
-from jobtracker import credentials, onboarding
+from jobtracker import credentials, migrations, onboarding
 from test_api import app, client, login  # noqa: F401
 from test_documents import PDF, docx
 
@@ -210,7 +210,8 @@ def test_schema_10_migration_matches_fresh_schema(app, tmp_path):
     connection.execute(f"VACUUM INTO '{legacy}'")
     connection.close()
     downgrade = sqlite3.connect(legacy)
-    downgrade.executescript('DROP TABLE onboarding_steps; DROP TABLE master_resumes; UPDATE schema_version SET version=9;')
+    downgrade.executescript('DROP TABLE tailored_drafts; DROP TABLE harness_grants; DROP TABLE activation_tokens; '
+                            'DROP TABLE onboarding_steps; DROP TABLE master_resumes; UPDATE schema_version SET version=9;')
     downgrade.close()
     create_app({'TESTING': True, 'APP_ENV': 'development', 'SECRET_KEY': 'test-secret',
                 'APP_PASSWORD_HASH': generate_password_hash('test-password'),
@@ -221,5 +222,5 @@ def test_schema_10_migration_matches_fresh_schema(app, tmp_path):
         assert shape(migrated) == shape(fresh)
         assert migrated.get_pk_constraint(table)['constrained_columns'] == fresh.get_pk_constraint(table)['constrained_columns']
     version = sqlite3.connect(legacy).execute('SELECT version FROM schema_version').fetchone()[0]
-    assert version == 10
+    assert version == migrations.SCHEMA_VERSION
     assert sqlite3.connect(legacy).execute('SELECT COUNT(*) FROM onboarding_steps').fetchone()[0] == 0

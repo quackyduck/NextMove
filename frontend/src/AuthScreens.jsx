@@ -146,3 +146,93 @@ export function SignupForm({ signup, onAuthenticated, onLogin }) {
     </AuthCard>
   );
 }
+
+export function activationToken() {
+  return new URLSearchParams(window.location.search).get("activate") || "";
+}
+
+function clearActivationToken() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("activate");
+  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+
+// Dashboard activation for an account created over chat: choose an email and password.
+// Opening the link only checks it; submitting the form is what uses it up.
+export function ActivateForm({ token, onAuthenticated, onLogin }) {
+  const id = useId();
+  const [valid, setValid] = useState(null);
+  const [values, setValues] = useState({ email: "", password: "", password_confirmation: "" });
+  const [errors, setErrors] = useState({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api(`/auth/activation?token=${encodeURIComponent(token)}`)
+      .then((data) => setValid(data.valid))
+      .catch((failure) => { setValid(false); setError(failure.message); });
+  }, [token]);
+  const bind = (field) => ({
+    value: values[field],
+    error: errors[field],
+    onChange: (event) => {
+      const value = event.target.value;
+      setValues((current) => ({ ...current, [field]: value }));
+      setErrors((current) => (current[field] ? { ...current, [field]: undefined } : current));
+    },
+  });
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setErrors({});
+    if (values.password !== values.password_confirmation) {
+      setErrors({ password_confirmation: "Passwords do not match" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await api("/auth/activate", { method: "POST", body: { ...values, email: values.email.trim(), token } });
+      setValues((current) => ({ ...current, password: "", password_confirmation: "" }));
+      setCsrf(data.csrf_token);
+      clearActivationToken();
+      await onAuthenticated(data);
+    } catch (failure) {
+      const field = failure.data?.field;
+      if (["email", "password", "password_confirmation"].includes(field)) setErrors({ [field]: failure.message });
+      else setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function signIn() {
+    clearActivationToken();
+    onLogin();
+  }
+  if (valid === null)
+    return <AuthCard><p role="status" className="mt-4">Checking your link…</p></AuthCard>;
+  if (!valid)
+    return (
+      <AuthCard>
+        <h1 className="mt-4">This link has expired.</h1>
+        <p>Activation links work once and expire after a day. Text <strong>dashboard</strong> in your chat with Next Move to get a new one.</p>
+        {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
+        <p className="auth-switch mt-3 mb-0">Already set a password? <button type="button" className="btn btn-link p-0 align-baseline" onClick={signIn}>Sign in</button></p>
+      </AuthCard>
+    );
+  return (
+    <AuthCard>
+      <h1 className="mt-4">Open your dashboard.</h1>
+      <p>Choose the email and password you will sign in with. Your resumes, roles and drafts from chat are already here.</p>
+      <form onSubmit={submit} noValidate>
+        <fieldset disabled={busy}>
+          <AuthField id={`${id}-email`} label="Email" type="email" autoComplete="email" required maxLength={254} {...bind("email")} />
+          <AuthField id={`${id}-password`} label="Password" type="password" autoComplete="new-password" required
+            minLength={8} maxLength={128} hint="8–128 characters." {...bind("password")} />
+          <AuthField id={`${id}-confirm`} label="Confirm password" type="password" autoComplete="new-password" required
+            maxLength={128} {...bind("password_confirmation")} />
+          {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
+          <button className="btn btn-primary w-100 mt-3">{busy ? "Activating…" : "Activate dashboard →"}</button>
+        </fieldset>
+      </form>
+    </AuthCard>
+  );
+}

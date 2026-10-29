@@ -18,7 +18,7 @@ import { MasterResume } from "./MasterResume.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
-import { LoginForm, SignupForm } from "./AuthScreens.jsx";
+import { ActivateForm, activationToken, LoginForm, SignupForm } from "./AuthScreens.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -77,7 +77,7 @@ function App() {
   const [auth, setAuth] = useState(null),
     [session, setSession] = useState({ user: null, signup: null }),
     [userId, setUserId] = useState(null),
-    [authScreen, setAuthScreen] = useState("login"),
+    [authScreen, setAuthScreen] = useState(() => (activationToken() ? "activate" : "login")),
     [onboarding, setOnboarding] = useState(null),
     // { id, guided } while a setup screen is open; guided walks the remaining steps.
     [setup, setSetup] = useState(null),
@@ -319,6 +319,8 @@ function App() {
         <p role="status">Opening your workspace…</p>
       </main>
     );
+  if (!auth && authScreen === "activate")
+    return <ActivateForm token={activationToken()} onAuthenticated={authenticated} onLogin={() => setAuthScreen("login")} />;
   if (!auth)
     return authScreen === "signup" && session.signup?.enabled ? (
       <SignupForm signup={session.signup} onAuthenticated={authenticated}

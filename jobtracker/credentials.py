@@ -16,7 +16,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
-from .models import InviteCode, User, now
+from .models import ActivationToken, InviteCode, User, now
 
 PASSWORD_MIN, PASSWORD_MAX = 8, 128
 EMAIL_MAX = 254
@@ -179,6 +179,56 @@ def create_user(email, password_hash, invite_code=None):
         raise Unavailable() from None
 
 
+def _activation_digest(token):
+    return hashlib.sha256(token.encode()).hexdigest() if isinstance(token, str) and 16 <= len(token) <= 128 else None
+
+
+def activation_valid(token):
+    """Whether a link can still activate its account. Reading never consumes it (link previews do this)."""
+    digest = _activation_digest(token)
+    if digest is None:
+        return False
+    try:
+        with engine().connect() as connection:
+            return connection.scalar(select(ActivationToken.id).join(User, User.id == ActivationToken.user_id).where(
+                ActivationToken.token_hash == digest, ActivationToken.used_at.is_(None),
+                ActivationToken.expires_at > now(), User.password_hash.is_(None))) is not None
+    except SQLAlchemyError:
+        raise Unavailable() from None
+
+
+def activate(token, email, password_hash):
+    """Give a messaging-first account its email and password, consuming the link, all or nothing."""
+    digest = _activation_digest(token)
+    invalid = SignupError('This activation link is invalid, expired, or already used. Ask for a new one in chat.',
+                          410, None)
+    if digest is None:
+        raise invalid
+    try:
+        with engine().begin() as connection:
+            if connection.dialect.name == 'sqlite':
+                connection.exec_driver_sql('BEGIN IMMEDIATE')
+            link = connection.execute(select(ActivationToken.id, ActivationToken.user_id).where(
+                ActivationToken.token_hash == digest, ActivationToken.used_at.is_(None),
+                ActivationToken.expires_at > now())).first()
+            if link is None:
+                raise invalid
+            if connection.scalar(select(User.id).where(User.email == email, User.id != link.user_id)) is not None:
+                raise SignupError('An account with this email already exists', 409, 'email')
+            activated = connection.execute(update(User).where(User.id == link.user_id, User.password_hash.is_(None))
+                                           .values(email=email, password_hash=password_hash,
+                                                   session_version=User.session_version + 1)).rowcount
+            consumed = connection.execute(update(ActivationToken).where(
+                ActivationToken.id == link.id, ActivationToken.used_at.is_(None)).values(used_at=now())).rowcount
+            if activated != 1 or consumed != 1:
+                raise invalid  # Already activated, or a simultaneous submission won.
+        return read(link.user_id)
+    except IntegrityError:
+        raise SignupError('An account with this email already exists', 409, 'email') from None
+    except SQLAlchemyError:
+        raise Unavailable() from None
+
+
 def create_invites(count, days):
     codes = []
     with engine().begin() as connection:
@@ -222,7 +272,8 @@ def init_app(app):
     def user_list():
         with engine().connect() as connection:
             for row in connection.execute(select(User.id, User.email, User.created_at).order_by(User.id)):
-                click.echo(f'{row.id}\t{row.email}\t{_as_utc(row.created_at).isoformat()}')
+                click.echo(f'{row.id}\t{row.email or "(messaging account, not activated)"}\t'
+                           f'{_as_utc(row.created_at).isoformat()}')
 
     def reset(credential):
         password = click.prompt('New password', hide_input=True, confirmation_prompt=True)
