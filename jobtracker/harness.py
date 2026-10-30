@@ -19,6 +19,7 @@ from functools import wraps
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import threading
 import time
@@ -39,6 +40,7 @@ GRANT_PREFIX = 'nm_harness_'
 SIGNATURE_SKEW_SECONDS = 300
 ACTIVATION_HOURS = 24
 DRAFT_LIMIT = 5 * 1024 * 1024
+FILE_STEM = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,119}')
 _nonces, _nonce_lock = {}, threading.Lock()
 
 
@@ -310,6 +312,10 @@ def _draft_metadata(raw):
         raise services.ServiceError('draft.revision must be a positive integer')
     if not isinstance(draft.get('job_id'), str) or not isinstance(draft.get('master_resume_version_id'), str):
         raise services.ServiceError('draft.job_id and draft.master_resume_version_id are required')
+    # The approved files' name, without extension, e.g. NicolasMelo_Resume_Acme_SrEng.
+    file_stem = draft.get('file_stem')
+    if file_stem is not None and not (isinstance(file_stem, str) and FILE_STEM.fullmatch(file_stem)):
+        raise services.ServiceError('draft.file_stem must be letters, digits, _ or -, at most 120 characters')
     return draft
 
 
@@ -382,7 +388,7 @@ def drafts_approve(draft_id):
     if not claimed:
         return jsonify(_draft(session.get(TailoredDraft, row.id)))
     root = storage.user_directory(current_app.config['UPLOAD_FOLDER'], user_id, create=True)
-    name = f'tailored-resume-r{row.revision}'
+    name = row.draft.get('file_stem') or f'tailored-resume-r{row.revision}'
     for source, suffix in ((row.docx_filename, '.docx'), (row.pdf_filename, '.pdf')):
         if source is None:
             continue

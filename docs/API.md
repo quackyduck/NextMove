@@ -219,9 +219,9 @@ The Resume Agent harness acts on JobTracker strictly as one user. These routes a
 - `GET /me/extractions/<id>`: `{id, status, error?}`. On success, the role's title, company, salary, notes and description are filled.
 - `GET /me/jobs/<id>`: the role. `posting` is its description, or null.
 - `PUT /me/jobs/<id>/posting` `{text}`: a pasted description, for postings that can't be read.
-- `POST /me/drafts` multipart: `draft` (JSON with `request_id`, `revision`, `job_id`, `master_resume_version_id`), a `docx` file, and an optional `pdf` file. The job and master resume must belong to the grant owner. A repeated `(request_id, revision)` returns the first draft with 200; a new one returns 201 `{id, approved, has_pdf, draft}`.
+- `POST /me/drafts` multipart: `draft` (JSON with `request_id`, `revision`, `job_id`, `master_resume_version_id`, and optionally `file_stem`: letters, digits, `_` or `-`, at most 120 characters), a `docx` file, and an optional `pdf` file. The job and master resume must belong to the grant owner. A repeated `(request_id, revision)` returns the first draft with 200; a new one returns 201 `{id, approved, has_pdf, draft}`.
 - `GET /me/drafts/<id>`: the same shape. There is no download route for drafts.
-- `POST /me/drafts/<id>/approve`: the only way a draft is exported. It files the draft's DOCX (and PDF) as resume versions on its job and records activity. It never changes the job's stage. Repeating it is a no-op.
+- `POST /me/drafts/<id>/approve`: the only way a draft is exported. It files the draft's DOCX (and PDF) as resume versions on its job, named `<file_stem>.docx` (default `tailored-resume-r<revision>`), and records activity. It never changes the job's stage. Repeating it is a no-op.
 - `POST /me/activation-links`: 201 `{url, activated: false, expires_at}`, a single-use link valid for 24 hours, built from `PUBLIC_BASE_URL`. An already activated account gets 200 `{url, activated: true}` with the dashboard URL.
 
 **Activation (browser).**

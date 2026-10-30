@@ -63,9 +63,9 @@ def add_job(client, app, grant):
     return created.json
 
 
-def save_draft(client, grant, job_id, resume_id, request_id='rq_0001', revision=1, pdf=True):
+def save_draft(client, grant, job_id, resume_id, request_id='rq_0001', revision=1, pdf=True, **fields):
     draft = {'request_id': request_id, 'revision': revision, 'job_id': job_id,
-             'master_resume_version_id': resume_id, 'bullets': [], 'skills': []}
+             'master_resume_version_id': resume_id, 'bullets': [], 'skills': [], **fields}
     data = {'draft': json.dumps(draft), 'docx': (io.BytesIO(docx()), 'draft.docx')}
     if pdf:
         data['pdf'] = (io.BytesIO(PDF), 'draft.pdf')
@@ -153,6 +153,21 @@ def test_drafts_are_idempotent_and_only_approval_files_them(client, app):
         again = client.post(f"/api/v1/me/drafts/{first.json['id']}/approve", headers=grant)
         assert again.status_code == 200 and len(services.list_resumes(user_id, job['id'])) == 2
         assert services.get_job(user_id, job['id'])['stage'] == 'needs_review'  # stage is the user's call
+
+
+def test_approval_files_drafts_under_the_harness_file_stem(client, app):
+    _, grant = account(client)
+    resume = upload_resume(client, grant).json
+    job = add_job(client, app, grant)
+    for bad in ('../escape', 'a/b', 'name.docx', '', 'x' * 121):
+        assert save_draft(client, grant, job['id'], resume['id'], file_stem=bad).status_code == 400
+    draft = save_draft(client, grant, job['id'], resume['id'], file_stem='NicolasMelo_Resume_Acme_SrEng').json
+    client.post(f"/api/v1/me/drafts/{draft['id']}/approve", headers=grant)
+    with app.app_context():
+        from jobtracker import services
+        user_id = harness.authenticate_grant(grant['Authorization'][7:], 'jobs:read')
+        assert sorted(r['original_filename'] for r in services.list_resumes(user_id, job['id'])) == [
+            'NicolasMelo_Resume_Acme_SrEng.docx', 'NicolasMelo_Resume_Acme_SrEng.pdf']
 
 
 def test_draft_needs_an_owned_job_and_resume_and_a_docx(client, app):
