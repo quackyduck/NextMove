@@ -189,6 +189,40 @@ def test_revoked_grant_is_refused(client, app):
     assert upload_resume(client, grant).status_code == 401
 
 
+def merge(app, *args):
+    return app.test_cli_runner().invoke(args=['user', 'merge-messaging', *map(str, args)])
+
+
+def test_merge_gives_a_messaging_accounts_grant_to_an_existing_account(client, app):
+    source, grant = account(client)
+    activation_token(client, grant)
+    result = merge(app, source, 1)
+    assert result.exit_code == 0, result.output
+    assert 'Moved 1 harness grant(s)' in result.output
+    assert upload_resume(client, grant).status_code == 201
+    with app.app_context():
+        engine = app.extensions['jobtracker_db']['engine']
+        with engine.connect() as connection:
+            assert connection.execute(text('SELECT user_id FROM master_resumes')).scalars().all() == [1]
+            assert connection.scalar(text('SELECT count(*) FROM users WHERE id = :id'), {'id': source}) == 0
+            assert connection.scalar(text('SELECT count(*) FROM activation_tokens')) == 0
+    link = client.post('/api/v1/me/activation-links', headers=grant)
+    assert link.json == {'url': 'https://nextmove.example.com/', 'activated': True}
+
+
+def test_merge_refuses_accounts_with_data_or_web_sign_in(client, app):
+    source, grant = account(client)
+    upload_resume(client, grant)
+    for args, message in (((source, 1), 'already has data in master_resumes'),
+                          ((1, source), 'has web sign-in'), ((source, source), 'two different'),
+                          ((source, 99), 'No account with ID 99')):
+        result = merge(app, *args)
+        assert result.exit_code != 0 and message in result.output, result.output
+    with app.app_context():
+        with app.extensions['jobtracker_db']['engine'].connect() as connection:
+            assert connection.execute(text('SELECT user_id FROM harness_grants')).scalars().all() == [source]
+
+
 def test_https_is_required_outside_development_unless_allowed(client, app):
     _, grant = account(client)
     app.config['APP_ENV'] = 'production'

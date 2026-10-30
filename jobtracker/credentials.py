@@ -12,11 +12,12 @@ import secrets
 import click
 from flask import current_app
 from flask.cli import AppGroup
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
-from .models import ActivationToken, InviteCode, User, now
+from .db import Base
+from .models import ActivationToken, HarnessGrant, InviteCode, User, now
 
 PASSWORD_MIN, PASSWORD_MAX = 8, 128
 EMAIL_MAX = 254
@@ -313,6 +314,42 @@ def init_app(app):
         if not changed:
             raise click.ClickException('No account with that ID')
         click.echo(f'User {user_id} now signs in as {normalized}.')
+
+    @users.command('merge-messaging')
+    @click.argument('source', type=int)
+    @click.argument('target', type=int)
+    def user_merge_messaging(source, target):
+        """Give an empty messaging account's harness access to an existing account, then delete it.
+
+        For linking someone's phone to the account they already use on the web: they text the agent once,
+        which creates the messaging account, and this moves that account's grants to the existing one.
+        """
+        if source == target:
+            raise click.ClickException('Choose two different accounts')
+        with engine().begin() as connection:
+            if connection.dialect.name == 'sqlite':
+                connection.exec_driver_sql('BEGIN IMMEDIATE')
+            found = {row.id: row for row in connection.execute(
+                select(User.id, User.email, User.password_hash).where(User.id.in_((source, target))))}
+            for user_id in (source, target):
+                if user_id not in found:
+                    raise click.ClickException(f'No account with ID {user_id}')
+            if found[source].email or found[source].password_hash:
+                raise click.ClickException(f'Account {source} has web sign-in; only a messaging account can be merged')
+            for table in Base.metadata.sorted_tables:
+                if table in (HarnessGrant.__table__, ActivationToken.__table__, User.__table__):
+                    continue
+                for key in table.foreign_keys:
+                    if key.column.table is User.__table__ and connection.scalar(
+                            select(func.count()).select_from(table).where(key.parent == source)):
+                        raise click.ClickException(f'Account {source} already has data in {table.name}; '
+                                                   'merge only an empty messaging account')
+            moved = connection.execute(update(HarnessGrant).where(HarnessGrant.user_id == source)
+                                       .values(user_id=target)).rowcount
+            connection.execute(delete(ActivationToken).where(ActivationToken.user_id == source))
+            connection.execute(delete(User).where(User.id == source))
+        click.echo(f'Moved {moved} harness grant(s) from account {source} to account {target}, '
+                   f'and deleted account {source}.')
 
     @app.cli.command('reset-workspace-password')
     def reset_workspace_password():
