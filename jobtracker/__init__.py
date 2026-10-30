@@ -10,6 +10,12 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash
 
 
+def secret_setting(name):
+    """NAME, or the contents of the file named by NAME_FILE (container secrets)."""
+    path = os.getenv(f'{name}_FILE')
+    return Path(path).read_text().strip() if path else os.getenv(name)
+
+
 def create_app(test_config=None):
     load_dotenv()
     app = Flask(__name__, static_folder=None, instance_relative_config=True)
@@ -30,6 +36,12 @@ def create_app(test_config=None):
         SIGNUP_REQUIRES_INVITE=os.getenv('SIGNUP_REQUIRES_INVITE', '1') != '0',
         BOOTSTRAP_ADMIN_EMAIL=os.getenv('BOOTSTRAP_ADMIN_EMAIL'),
         QUEUE_POLL_SECONDS=float(os.getenv('QUEUE_POLL_SECONDS', '1')),
+        # Resume Agent harness (jobtracker/harness.py). Unset secret = account creation refused.
+        HARNESS_SERVICE_SECRET=secret_setting('HARNESS_SERVICE_SECRET'),
+        # Only for the private container network; the public proxy never routes harness paths.
+        HARNESS_ALLOW_HTTP=os.getenv('HARNESS_ALLOW_HTTP') == '1',
+        # Absolute dashboard URL for activation links sent over chat.
+        PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL', ''),
         TRUSTED_HOSTS=[host.strip() for host in os.getenv('APP_ALLOWED_HOSTS', '').split(',') if host.strip()] or None,
         APP_ROOT_PATH=os.getenv('APP_ROOT_PATH', ''),
         SESSION_COOKIE_NAME='next_move_session',
@@ -77,6 +89,8 @@ def create_app(test_config=None):
     app.register_blueprint(auth, url_prefix='/api/v1')
     from .profile import profile
     app.register_blueprint(profile, url_prefix='/api/v1')
+    from .harness import harness
+    app.register_blueprint(harness, url_prefix='/api/v1')
 
     @app.get('/health')
     @app.get('/api/v1/health')

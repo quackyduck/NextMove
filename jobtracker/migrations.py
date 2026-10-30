@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -188,6 +188,54 @@ def upgrade_v9_to_v10(connection):
     connection.execute(text('UPDATE schema_version SET version=10'))
 
 
+def upgrade_v10_to_v11(connection):
+    """Messaging-first accounts and the Resume Agent harness API.
+
+    users.email and users.password_hash become nullable: an account created from
+    chat has neither until dashboard activation. SQLite cannot drop NOT NULL in
+    place, so users is rebuilt row for row (IDs, generations, flags kept), and
+    the AUTOINCREMENT high-water mark is carried over so no ID is ever reissued.
+    """
+    sequence = connection.execute(text("SELECT seq FROM sqlite_sequence WHERE name='users'")).scalar()
+
+    def rebuild():
+        connection.execute(text(
+            'CREATE TABLE users_new (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, email VARCHAR(254), '
+            'password_hash VARCHAR(512), session_version INTEGER NOT NULL, '
+            "owns_legacy_tokens BOOLEAN DEFAULT '0' NOT NULL, created_at DATETIME NOT NULL, "
+            'CHECK (session_version > 0), UNIQUE (email))'))
+        connection.execute(text(
+            'INSERT INTO users_new (id, email, password_hash, session_version, owns_legacy_tokens, created_at) '
+            'SELECT id, email, password_hash, session_version, owns_legacy_tokens, created_at FROM users'))
+        connection.exec_driver_sql('DROP TABLE users')
+        connection.exec_driver_sql('ALTER TABLE users_new RENAME TO users')
+        connection.execute(text(
+            'CREATE UNIQUE INDEX uq_users_legacy_owner ON users (owns_legacy_tokens) WHERE owns_legacy_tokens = 1'))
+    with_deferred_foreign_keys(connection, rebuild)
+    if sequence is not None:
+        connection.execute(text("UPDATE sqlite_sequence SET seq=MAX(seq, :seq) WHERE name='users'"), {'seq': sequence})
+    connection.execute(text(
+        'CREATE TABLE harness_grants (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'prefix VARCHAR(20) NOT NULL, token_hash VARCHAR(64) NOT NULL UNIQUE, scopes JSON NOT NULL, '
+        'created_at DATETIME NOT NULL, last_used_at DATETIME, revoked_at DATETIME)'))
+    connection.execute(text('CREATE INDEX ix_harness_grants_user_id ON harness_grants (user_id)'))
+    connection.execute(text(
+        'CREATE TABLE activation_tokens (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'token_hash VARCHAR(64) NOT NULL UNIQUE, created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, '
+        'used_at DATETIME)'))
+    connection.execute(text('CREATE INDEX ix_activation_tokens_user_id ON activation_tokens (user_id)'))
+    connection.execute(text(
+        'CREATE TABLE tailored_drafts (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'job_id VARCHAR(36) NOT NULL, master_resume_id VARCHAR(36) NOT NULL REFERENCES master_resumes (id), '
+        'request_id VARCHAR(64) NOT NULL, revision INTEGER NOT NULL, draft JSON NOT NULL, '
+        'docx_filename VARCHAR(100) NOT NULL UNIQUE, pdf_filename VARCHAR(100) UNIQUE, created_at DATETIME NOT NULL, '
+        'approved_at DATETIME, CHECK (revision > 0), '
+        'CONSTRAINT fk_tailored_drafts_job_owner FOREIGN KEY (job_id, user_id) REFERENCES jobs (id, user_id), '
+        'CONSTRAINT uq_tailored_drafts_request UNIQUE (user_id, request_id, revision))'))
+    connection.execute(text('CREATE INDEX ix_tailored_drafts_job_owner ON tailored_drafts (job_id, user_id)'))
+    connection.execute(text('UPDATE schema_version SET version=11'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -216,5 +264,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [9]:
         upgrade_v9_to_v10(connection)
         versions = [10]
+    if versions == [10]:
+        upgrade_v10_to_v11(connection)
+        versions = [11]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

@@ -204,3 +204,27 @@ Schema 10 adds the `onboarding_steps` and `master_resumes` tables.
 - `GET /profile/resume` → `{resume: latest | null, versions: [...]}` with
   `id, version, original_filename, media_type, size, sha256, created_at`.
 - `GET /profile/resume/download[?version=N]` → the file as an attachment (404 when none).
+
+## Resume Agent harness and messaging-first accounts (schema 11)
+
+The Resume Agent harness acts on JobTracker strictly as one user. These routes are internal: the public proxy refuses `/api/v1/harness/` and `/api/v1/me/`, and the harness calls JobTracker over the private container network. `HARNESS_ALLOW_HTTP=1` waives the HTTPS check for that network only. Schema 11 makes `users.email` and `users.password_hash` nullable, and adds `harness_grants`, `activation_tokens` and `tailored_drafts`.
+
+**Account creation.** `POST /harness/accounts` is signed with `HARNESS_SERVICE_SECRET` (or `HARNESS_SERVICE_SECRET_FILE`), using the headers `X-RA-Timestamp`, `X-RA-Nonce` and `X-RA-Signature`. The signature is the HMAC-SHA256 of `timestamp\nnonce\nMETHOD\npath\nsha256(body)`. Requests older than 5 minutes and replayed nonces get 401, and so does a server with no secret configured. The route returns 201 `{user_id, grant}`. The account has no email or password, and therefore no browser sign-in, until activation. It is never merged with another account by phone number or email. Only a SHA-256 of the grant persists.
+
+**Grant routes.** Every `/me` route takes `Authorization: Bearer nm_harness_...` and is scoped to the grant's owner: another account's IDs are 404. Grants are not browser, agent or legacy credentials, and those credentials are 401 on `/me`.
+
+- `POST /me/master-resumes` multipart `file`: the same checks as `POST /profile/resume`. Returns 201 `{id, version, created}`, or 200 when the bytes match the latest version.
+- `GET /me/master-resumes/<id>/file`: the file, with `X-Original-Filename` (percent-encoded).
+- `POST /me/jobs` `{url}`: creates the role at `needs_review` and queues posting extraction on the worker. It uses the same per-account admission as previews; when the queue is busy, `extraction_id` is null. Returns 202 `{id, url, title, company, stage, posting, extraction_id}`.
+- `GET /me/extractions/<id>`: `{id, status, error?}`. On success, the role's title, company, salary, notes and description are filled.
+- `GET /me/jobs/<id>`: the role. `posting` is its description, or null.
+- `PUT /me/jobs/<id>/posting` `{text}`: a pasted description, for postings that can't be read.
+- `POST /me/drafts` multipart: `draft` (JSON with `request_id`, `revision`, `job_id`, `master_resume_version_id`, and optionally `file_stem`: letters, digits, `_` or `-`, at most 120 characters), a `docx` file, and an optional `pdf` file. The job and master resume must belong to the grant owner. A repeated `(request_id, revision)` returns the first draft with 200; a new one returns 201 `{id, approved, has_pdf, draft}`.
+- `GET /me/drafts/<id>`: the same shape. There is no download route for drafts.
+- `POST /me/drafts/<id>/approve`: the only way a draft is exported. It files the draft's DOCX (and PDF) as resume versions on its job, named `<file_stem>.docx` (default `tailored-resume-r<revision>`), and records activity. It never changes the job's stage. Repeating it is a no-op.
+- `POST /me/activation-links`: 201 `{url, activated: false, expires_at}`, a single-use link valid for 24 hours, built from `PUBLIC_BASE_URL`. An already activated account gets 200 `{url, activated: true}` with the dashboard URL.
+
+**Activation (browser).**
+
+- `GET /auth/activation?token=` → `{valid}`. Reading never consumes the link, so previews and scanners are harmless.
+- `POST /auth/activate` `{token, email, password, password_confirmation}`. This sets the email and password, consumes the link, and signs in, all in one transaction. A used, expired or unknown link gets 410. An email already in use gets 409. The route shares the signup throttle. The dashboard opens activation from `/?activate=<token>`.

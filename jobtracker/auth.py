@@ -282,3 +282,42 @@ def change_password():
 def logout():
     session.clear()
     return jsonify(authenticated=False, csrf_token=None)
+
+
+@auth.get('/auth/activation')
+def activation_status():
+    try:
+        return jsonify(valid=credentials.activation_valid(request.args.get('token', '')))
+    except credentials.Unavailable:
+        return error('Activation temporarily unavailable; try again later', 503)
+
+
+@auth.post('/auth/activate')
+def activate():
+    """Set the email and password of an account created from chat, then sign it in."""
+    if not same_origin():
+        return error('Invalid request origin', 403)
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return error('A JSON object is required', 400)
+    email = credentials.normalize_email(payload.get('email'))
+    if email is None:
+        return error('Enter a valid email address', 400, 'email')
+    password = payload.get('password')
+    problem = credentials.password_problem(password)
+    if problem:
+        return error(problem, 400, 'password')
+    if payload.get('password_confirmation') != password:
+        return error('Passwords do not match', 400, 'password_confirmation')
+    # Shares the signup budget: each guess at a link costs the same as a signup attempt.
+    rejection = throttled(throttle.reserve_signup)
+    if rejection:
+        return rejection
+    try:
+        g.credential = credentials.activate(payload.get('token'), email, generate_password_hash(password))
+    except credentials.SignupError as exc:
+        return error(str(exc), exc.status, exc.field)
+    except credentials.Unavailable:
+        return error('Activation temporarily unavailable; try again later', 503)
+    issue_session(g.credential)
+    return signed_in()

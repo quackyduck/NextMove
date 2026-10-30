@@ -108,8 +108,10 @@ class User(Base):
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Normalized (trimmed, lowercase) at every boundary; unique per account.
-    email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
-    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Both are NULL for a messaging-first account until dashboard activation
+    # (schema 11): such an account has no browser sign-in at all.
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     # The migrated/bootstrapped workspace owner: AGENT_API_TOKEN and
     # ROLE_SEARCH_TOKEN_SHA256 act for this account only. Never set by sign-up.
@@ -234,3 +236,53 @@ class MasterResume(Base):
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+HARNESS_SCOPES = ("resumes:read", "resumes:write", "jobs:read", "jobs:write", "drafts:write")
+
+
+class HarnessGrant(Base):
+    """A user's delegation to the Resume Agent harness. Only a SHA-256 of the token persists."""
+    __tablename__ = "harness_grants"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    prefix: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    scopes: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ActivationToken(Base):
+    """Single-use, expiring dashboard activation for a messaging-first account (hash only)."""
+    __tablename__ = "activation_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TailoredDraft(Base):
+    """A harness-generated resume draft. Never exported until approved, which files it as a job resume."""
+    __tablename__ = "tailored_drafts"
+    __table_args__ = (
+        CheckConstraint("revision > 0"),
+        ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_tailored_drafts_job_owner"),
+        # A redelivered harness request returns the existing draft instead of a duplicate.
+        UniqueConstraint("user_id", "request_id", "revision", name="uq_tailored_drafts_request"),
+        Index("ix_tailored_drafts_job_owner", "job_id", "user_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    master_resume_id: Mapped[str] = mapped_column(ForeignKey("master_resumes.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    draft: Mapped[dict] = mapped_column(JSON, nullable=False)
+    docx_filename: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    pdf_filename: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
