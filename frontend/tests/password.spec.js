@@ -5,7 +5,7 @@ const original = process.env.E2E_PASSWORD || "local-demo-only";
 const changed = "New-workspace-password-2026";
 
 async function login(page, password = original) {
-  await page.goto(base);
+  await page.goto(`${base}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in →" }).click();

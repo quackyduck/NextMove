@@ -60,11 +60,19 @@ cd frontend && npm run build && cd ..
 .venv/bin/python scripts/design_screenshots.py affirm-palette --dark --strict
 ```
 
-This captures sign-in, signup and validation, onboarding, pipeline table and
+This captures the homepage, sign-in, signup and validation, onboarding, pipeline table and
 board, details, manual/URL capture, agent access, password and session recovery
 at 1440×900 and 390×844 in both themes. Screenshots and `contrast.json` live in
 `docs/design/screenshots/affirm-palette/`. The strict check runs axe's
 `color-contrast` rule and the suite also checks pipeline keyboard focus.
+
+## Homepage
+
+Signed-out visitors at `/` see the homepage (`frontend/src/Home.jsx`): the wordmark, a large
+sentence-case headline with the raspberry full stop, three white panels for what works today, and a
+coral-wash "Coming soon" panel for the iMessage agent. It never presents the agent as available.
+Sign-in and signup have their own addresses, `?signin` and `?signup`; signing out returns to `?signin`.
+At phone widths the mascot is hidden and the panels stack.
 
 ## Mascot and name
 

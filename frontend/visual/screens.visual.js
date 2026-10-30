@@ -31,7 +31,7 @@ const roles = [
 ];
 
 async function login(page, { navigate = true } = {}) {
-  if (navigate) await page.goto(root);
+  if (navigate) await page.goto(`${root}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
@@ -90,6 +90,9 @@ for (const scheme of schemes) {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await page.setViewportSize(size);
       await page.goto(root);
+      await expect(page.getByRole("heading", { name: "Make your next move." })).toBeVisible();
+      await shoot(page, "home", viewport, scheme);
+      await page.goto(`${root}?signin`);
       await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
       await shoot(page, "login", viewport, scheme);
 

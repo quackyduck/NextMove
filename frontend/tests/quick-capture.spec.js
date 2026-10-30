@@ -3,7 +3,7 @@ const workspacePath = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`
 
 async function openQuick(page) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
   await page.getByRole("button", { name: "Sign in →" }).click();

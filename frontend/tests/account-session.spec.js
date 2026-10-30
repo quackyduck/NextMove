@@ -6,7 +6,7 @@ test("password change and expired-session recovery work together without losing 
   page,
   context,
 }) => {
-  await page.goto(base);
+  await page.goto(`${base}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Password", { exact: true })
