@@ -35,7 +35,7 @@ async function press(page, locator) {
 }
 
 async function signUp(page, email, password = "Onboarding-pass-2026") {
-  await page.goto(path);
+  await page.goto(`${path}?signin`);
   await press(page, page.getByRole("button", { name: "Create an account" }));
   await expect(page.getByRole("heading", { name: "Create your account." })).toBeVisible();
   await typeInto(page, page.getByLabel("Email", { exact: true }), email);
@@ -153,7 +153,7 @@ test("skip both steps, log out mid-flow, resume, and finish from the checklist",
 });
 
 test("signup shows field-level errors and keeps the form", async ({ page }, testInfo) => {
-  await page.goto(path);
+  await page.goto(`${path}?signin`);
   await page.getByRole("button", { name: "Create an account" }).click();
   const email = page.getByLabel("Email", { exact: true });
   await email.fill(uniqueEmail("errors"));

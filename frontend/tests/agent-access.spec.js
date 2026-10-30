@@ -4,7 +4,7 @@ const api = `${path}api/v1`;
 const password = process.env.E2E_PASSWORD || "local-demo-only";
 
 async function openAccess(page) {
-  await page.goto(path);
+  await page.goto(`${path}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in →" }).click();

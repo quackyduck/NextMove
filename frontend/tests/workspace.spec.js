@@ -7,7 +7,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   page,
 }) => {
   const title = `Platform engineer ${Date.now()}`;
-  await page.goto(workspacePath === "/" ? "/" : workspacePath.slice(0, -1));
+  await page.goto(workspacePath === "/" ? "/?signin" : `${workspacePath.slice(0, -1)}?signin`);
   expect(new URL(page.url()).pathname).toBe(workspacePath);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
@@ -90,7 +90,7 @@ test("capture, persist, progress, contact, resume and responsive board", async (
 test("invalid login and empty intake surface recoverable errors", async ({
   page,
 }) => {
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill("incorrect-demo-password");
   await page.getByRole("button", { name: "Sign in →" }).click();
@@ -114,7 +114,7 @@ test("invalid login and empty intake surface recoverable errors", async ({
 test("partial intake retains failed contact and field labels stay distinct", async ({
   page,
 }) => {
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Password", { exact: true })
@@ -160,7 +160,7 @@ test("partial intake retains failed contact and field labels stay distinct", asy
 test("late detail response cannot replace pipeline after navigating back", async ({
   page,
 }) => {
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Password", { exact: true })
@@ -208,7 +208,7 @@ test("late detail response cannot replace pipeline after navigating back", async
 test("outreach badge persists past its stage and can be corrected independently", async ({
   page,
 }) => {
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page
     .getByLabel("Password", { exact: true })
@@ -270,7 +270,7 @@ test("priority and next actions stay hidden while existing values survive edits"
     next_action: "Private follow-up reminder",
     next_action_date: "2026-11-05",
   };
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD || "local-demo-only");
   await page.getByRole("button", { name: "Sign in →" }).click();

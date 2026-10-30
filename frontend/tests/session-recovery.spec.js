@@ -4,7 +4,7 @@ const apiPath = `${workspacePath}api/v1`;
 const password = process.env.E2E_PASSWORD || "local-demo-only";
 
 async function login(page) {
-  await page.goto(workspacePath);
+  await page.goto(`${workspacePath}?signin`);
   await page.getByLabel("Email", { exact: true }).fill(process.env.E2E_EMAIL || "owner@localhost");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in →" }).click();

@@ -18,7 +18,8 @@ import { MasterResume } from "./MasterResume.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
-import { ActivateForm, activationToken, LoginForm, SignupForm } from "./AuthScreens.jsx";
+import { ActivateForm, activationToken, initialAuthScreen, LoginForm, SignupForm } from "./AuthScreens.jsx";
+import { Home } from "./Home.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -77,7 +78,7 @@ function App() {
   const [auth, setAuth] = useState(null),
     [session, setSession] = useState({ user: null, signup: null }),
     [userId, setUserId] = useState(null),
-    [authScreen, setAuthScreen] = useState(() => (activationToken() ? "activate" : "login")),
+    [authScreen, setAuthScreen] = useState(initialAuthScreen),
     [onboarding, setOnboarding] = useState(null),
     // { id, guided } while a setup screen is open; guided walks the remaining steps.
     [setup, setSetup] = useState(null),
@@ -237,7 +238,7 @@ function App() {
     setCsrf(null);
     // A full page load discards every unsaved draft, selected file and pending
     // request, so the next person signing in on this tab starts clean.
-    window.location.assign(import.meta.env.BASE_URL);
+    window.location.assign(`${import.meta.env.BASE_URL}?signin`);
   }
   async function create(e) {
     e.preventDefault();
@@ -319,6 +320,7 @@ function App() {
         <p role="status">Opening your workspace…</p>
       </main>
     );
+  if (!auth && authScreen === "home" && !error) return <Home signupEnabled={Boolean(session.signup?.enabled)} />;
   if (!auth && authScreen === "activate")
     return <ActivateForm token={activationToken()} onAuthenticated={authenticated} onLogin={() => setAuthScreen("login")} />;
   if (!auth)

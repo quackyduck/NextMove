@@ -8,7 +8,7 @@ function AuthCard({ children }) {
   return (
     <main className="login">
       <div className="login-card">
-        <div className="auth-brand"><BrandIdentity /></div>
+        <a className="auth-brand" href={import.meta.env.BASE_URL} aria-label="My Next Moov home"><BrandIdentity /></a>
         {children}
       </div>
     </main>
@@ -145,6 +145,15 @@ export function SignupForm({ signup, onAuthenticated, onLogin }) {
       <p className="auth-switch mt-3 mb-0">Already have an account? <button type="button" className="btn btn-link p-0 align-baseline" onClick={onLogin}>Sign in</button></p>
     </AuthCard>
   );
+}
+
+// Signed-out visitors land on the homepage; ?signin and ?signup open the forms directly.
+export function initialAuthScreen() {
+  if (activationToken()) return "activate";
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("signup")) return "signup";
+  if (params.has("signin")) return "login";
+  return "home";
 }
 
 export function activationToken() {
