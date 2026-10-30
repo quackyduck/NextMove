@@ -36,6 +36,7 @@ Administrators manage accounts from the server shell (`flask --app jobtracker ..
 | `user list` | ID, email and creation time |
 | `user reset-password EMAIL` | Prompts for a new password (never an argument) and signs that user out everywhere |
 | `user set-email ID EMAIL` | Changes a sign-in email, e.g. user #1's migration placeholder `owner@localhost` |
+| `user merge-messaging SOURCE TARGET` | Links a phone to an existing account: moves the harness grants of messaging account SOURCE (never activated, no data) to account TARGET, then deletes SOURCE |
 | `reset-workspace-password` | Legacy alias for resetting user #1 |
 | `worker [--once]` | Runs the queue worker (same as `python -m jobtracker.worker`) |
 
