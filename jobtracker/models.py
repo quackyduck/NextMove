@@ -286,3 +286,53 @@ class TailoredDraft(Base):
     pdf_filename: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# OAuth 2.1 for third-party agents (MCP clients and API callers); see oauth.py.
+OAUTH_SCOPES = ("jobs:read", "jobs:write", "resumes:read", "resumes:write")
+
+
+class OAuthClient(Base):
+    """A dynamically registered public client (PKCE, no secret)."""
+    __tablename__ = "oauth_clients"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    redirect_uris: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class OAuthGrant(Base):
+    """One user's consent to one client: the connection they see and revoke."""
+    __tablename__ = "oauth_grants"
+    __table_args__ = (Index("ix_oauth_grants_user_client", "user_id", "client_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    client_id: Mapped[str] = mapped_column(ForeignKey("oauth_clients.id"), nullable=False)
+    scopes: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OAuthCode(Base):
+    """Single-use authorization code bound to its PKCE challenge and redirect URI (hash only)."""
+    __tablename__ = "oauth_codes"
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    grant_id: Mapped[str] = mapped_column(ForeignKey("oauth_grants.id"), nullable=False, index=True)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OAuthToken(Base):
+    """Access or refresh token of a grant (hash only). Refresh tokens rotate on use."""
+    __tablename__ = "oauth_tokens"
+    __table_args__ = (CheckConstraint("kind IN ('access','refresh')"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    grant_id: Mapped[str] = mapped_column(ForeignKey("oauth_grants.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

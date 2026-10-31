@@ -152,8 +152,18 @@ export function initialAuthScreen() {
   if (activationToken()) return "activate";
   const params = new URLSearchParams(window.location.search);
   if (params.has("signup")) return "signup";
-  if (params.has("signin")) return "login";
+  if (params.has("signin") || oauthReturn()) return "login";
   return "home";
+}
+
+// An agent's OAuth consent page sends signed-out users here; after sign-in they
+// go back to it. Only the app's own authorize path is accepted (no open redirect).
+export function oauthReturn() {
+  const target = new URLSearchParams(window.location.search).get("oauth_return") || "";
+  // The fixed prefix keeps this a same-origin path whatever the query holds.
+  return /^oauth\/authorize\?/.test(target)
+    ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}/${target}`
+    : "";
 }
 
 export function activationToken() {

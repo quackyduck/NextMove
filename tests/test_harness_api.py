@@ -281,7 +281,8 @@ def test_schema_11_upgrade_keeps_users_and_the_id_sequence(app, tmp_path):
     engine.dispose()
     with sqlite3.connect(path) as connection:
         connection.executescript(
-            'PRAGMA foreign_keys=OFF; DROP TABLE tailored_drafts; DROP TABLE harness_grants; '
+            'PRAGMA foreign_keys=OFF; DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; '
+            'DROP TABLE oauth_clients; DROP TABLE tailored_drafts; DROP TABLE harness_grants; '
             'DROP TABLE activation_tokens; ALTER TABLE users RENAME TO users_v11; '
             'CREATE TABLE users (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, email VARCHAR(254) NOT NULL UNIQUE, '
             "password_hash VARCHAR(512) NOT NULL, session_version INTEGER NOT NULL, owns_legacy_tokens BOOLEAN DEFAULT '0' "

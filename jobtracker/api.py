@@ -7,7 +7,7 @@ import zipfile
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 from . import services, storage
-from .auth import require_auth, require_browser_auth, require_agent_token, require_resume_upload_access
+from .auth import require_browser_auth, require_agent_token, require_resume_upload_access, require_scope
 from .search_access import require_search_access
 
 api = Blueprint('api', __name__)
@@ -33,19 +33,19 @@ def jobs_search():
 
 
 @api.get('/jobs')
-@require_auth
+@require_scope('jobs:read')
 def jobs_list():
     return jsonify(jobs=services.list_jobs(g.user_id))
 
 
 @api.post('/jobs')
-@require_auth
+@require_scope('jobs:write')
 def jobs_create():
     return jsonify(services.create_job(g.user_id, payload())), 201
 
 
 @api.post('/jobs/extract')
-@require_auth
+@require_scope('jobs:write')
 def jobs_extract():
     from .extraction_tasks import start_extraction
     data = payload()
@@ -59,7 +59,7 @@ def jobs_extract():
 
 
 @api.get('/extractions/<task_id>')
-@require_auth
+@require_scope('jobs:read')
 def extraction_status(task_id):
     from .extraction_tasks import get_extraction
     return jsonify(get_extraction(g.user_id, task_id))
@@ -84,6 +84,36 @@ def agent_tokens_create():
 def agent_tokens_revoke(token_id):
     from .agent_tokens import revoke_token
     return jsonify(agent_token=revoke_token(g.user_id, token_id))
+
+
+@api.get('/oauth/connections')
+@require_browser_auth
+def oauth_connections_list():
+    from .oauth import list_connections
+    return jsonify(connections=list_connections(g.user_id))
+
+
+@api.post('/oauth/connections/<grant_id>/revoke')
+@require_browser_auth
+def oauth_connections_revoke(grant_id):
+    from .oauth import disconnect
+    if not disconnect(g.user_id, grant_id):
+        raise services.ServiceError('Connection not found', 404)
+    return jsonify(revoked=True)
+
+
+@api.get('/openapi.json')
+def openapi():
+    """The published API contract; the server URL follows this deployment."""
+    import json
+    from .oauth import base_url
+    spec = json.loads((Path(__file__).parent / 'openapi.json').read_text())
+    base = base_url()
+    spec['servers'] = [{'url': base + '/api/v1'}]
+    flow = spec['components']['securitySchemes']['oauth2']['flows']['authorizationCode']
+    flow['authorizationUrl'], flow['tokenUrl'], flow['refreshUrl'] = (
+        base + '/oauth/authorize', base + '/oauth/token', base + '/oauth/token')
+    return jsonify(spec)
 
 
 @api.get('/agent-connection')
@@ -115,37 +145,37 @@ def ingestions_status(task_id):
 
 
 @api.get('/jobs/<job_id>')
-@require_auth
+@require_scope('jobs:read')
 def jobs_get(job_id):
     return jsonify(services.get_job(g.user_id, job_id))
 
 
 @api.patch('/jobs/<job_id>')
-@require_auth
+@require_scope('jobs:write')
 def jobs_update(job_id):
     return jsonify(services.update_job(g.user_id, job_id, payload()))
 
 
 @api.get('/jobs/<job_id>/activities')
-@require_auth
+@require_scope('jobs:read')
 def activities_list(job_id):
     return jsonify(activities=services.list_activities(g.user_id, job_id))
 
 
 @api.get('/jobs/<job_id>/contacts')
-@require_auth
+@require_scope('jobs:read')
 def contacts_list(job_id):
     return jsonify(contacts=services.list_contacts(g.user_id, job_id))
 
 
 @api.post('/jobs/<job_id>/contacts')
-@require_auth
+@require_scope('jobs:write')
 def contacts_create(job_id):
     return jsonify(services.create_contact(g.user_id, job_id, payload())), 201
 
 
 @api.get('/jobs/<job_id>/resumes')
-@require_auth
+@require_scope('resumes:read')
 def resumes_list(job_id):
     return jsonify(resumes=services.list_resumes(g.user_id, job_id))
 
@@ -177,7 +207,7 @@ def validate_document(filename, data):
 
 
 @api.post('/jobs/<job_id>/resumes')
-@require_resume_upload_access
+@require_scope('resumes:write', fallback=require_resume_upload_access)
 def resumes_create(job_id):
     services.get_job(g.user_id, job_id)
     upload = request.files.get('file')
@@ -209,7 +239,7 @@ def resumes_create(job_id):
 
 
 @api.get('/resumes/<resume_id>/download')
-@require_auth
+@require_scope('resumes:read')
 def resumes_download(resume_id):
     resume = services.get_resume(g.user_id, resume_id)
     # Only the owner's directory is consulted; another account's file is unreachable.

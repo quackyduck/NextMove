@@ -151,6 +151,26 @@ def require_resume_upload_access(view):
     return wrapped
 
 
+def require_scope(scope, fallback=require_auth):
+    """An OAuth access token carrying `scope`, or whatever `fallback` already accepts.
+
+    OAuth tokens (nm_oat_) are recognized by prefix and never reach the fallback,
+    so they cannot satisfy browser-only routes; other credentials keep their rules.
+    """
+    def decorator(view):
+        from .oauth import ACCESS_PREFIX, require_oauth
+        delegated, existing_access = require_oauth(scope)(view), fallback(view)
+
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            scheme, _, raw = request.headers.get('Authorization', '').partition(' ')
+            if scheme.lower() == 'bearer' and raw.startswith(ACCESS_PREFIX):
+                return delegated(*args, **kwargs)
+            return existing_access(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
 def same_origin():
     origin = request.headers.get('Origin')
     return not origin or origin.rstrip('/') == request.host_url.rstrip('/')

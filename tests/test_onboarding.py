@@ -210,7 +210,8 @@ def test_schema_10_migration_matches_fresh_schema(app, tmp_path):
     connection.execute(f"VACUUM INTO '{legacy}'")
     connection.close()
     downgrade = sqlite3.connect(legacy)
-    downgrade.executescript('DROP TABLE tailored_drafts; DROP TABLE harness_grants; DROP TABLE activation_tokens; '
+    downgrade.executescript('DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; '
+                            'DROP TABLE oauth_clients; DROP TABLE tailored_drafts; DROP TABLE harness_grants; DROP TABLE activation_tokens; '
                             'DROP TABLE onboarding_steps; DROP TABLE master_resumes; UPDATE schema_version SET version=9;')
     downgrade.close()
     create_app({'TESTING': True, 'APP_ENV': 'development', 'SECRET_KEY': 'test-secret',

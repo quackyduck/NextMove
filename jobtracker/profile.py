@@ -6,7 +6,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file
 from sqlalchemy import insert, select
 
 from . import documents, onboarding, services, storage
-from .auth import require_browser_auth
+from .auth import require_browser_auth, require_scope
 from .db import get_session
 from .models import MasterResume, new_id, now
 
@@ -30,7 +30,8 @@ def current_user_id():
 
 
 # Browser session only: agent tokens and the legacy bearer token never reach
-# personal profile data or onboarding state.
+# personal profile data or onboarding state. The master resume routes also take
+# OAuth tokens the user approved for resumes (see oauth.py); onboarding never does.
 require_user = require_browser_auth
 
 
@@ -59,7 +60,7 @@ def onboarding_update(step_id):
 
 
 @profile.get('/profile/resume')
-@require_user
+@require_scope('resumes:read', fallback=require_browser_auth)
 def resume_get():
     versions = get_session().scalars(select(MasterResume).where(
         MasterResume.user_id == current_user_id()).order_by(MasterResume.version.desc())).all()
@@ -68,7 +69,7 @@ def resume_get():
 
 
 @profile.post('/profile/resume')
-@require_user
+@require_scope('resumes:write', fallback=require_browser_auth)
 def resume_upload():
     # Applies before werkzeug parses (and spools) the multipart body.
     request.max_content_length = REQUEST_LIMIT
@@ -107,7 +108,7 @@ def save_version(user_id, stored):
 
 
 @profile.get('/profile/resume/download')
-@require_user
+@require_scope('resumes:read', fallback=require_browser_auth)
 def resume_download():
     user_id = current_user_id()
     query = select(MasterResume).where(MasterResume.user_id == user_id)

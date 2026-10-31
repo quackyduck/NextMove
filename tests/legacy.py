@@ -64,7 +64,7 @@ def downgrade_to_v8(app):
                 connection.execute(f'DROP TABLE "{table}_v9"')
         for (sql,) in legacy.execute("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
             connection.execute(sql)
-        for table in ('tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes',
+        for table in ('oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes',
                       'users', 'invite_codes', 'queued_tasks'):
             connection.execute(f'DROP TABLE IF EXISTS "{table}"')
         if credential:

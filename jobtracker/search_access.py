@@ -8,6 +8,7 @@ from flask import current_app, g, request
 
 from . import throttle
 from .auth import error, legacy_owner, require_auth, require_agent_token
+from .oauth import ACCESS_PREFIX, require_oauth
 
 
 def budgeted(view):
@@ -30,6 +31,7 @@ def require_search_access(view):
     charged = budgeted(view)
     existing_access = require_auth(charged)
     managed_access = require_agent_token(charged, permission='roles:search')
+    oauth_access = require_oauth('jobs:read')(charged)
 
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -47,6 +49,8 @@ def require_search_access(view):
         scheme, _, raw = authorization.partition(' ')
         if scheme.lower() == 'bearer' and raw.startswith('nm_ingest_'):
             return managed_access(*args, **kwargs)
+        if scheme.lower() == 'bearer' and raw.startswith(ACCESS_PREFIX):
+            return oauth_access(*args, **kwargs)
         verifier = current_app.config.get('ROLE_SEARCH_TOKEN_SHA256')
         if verifier and re.fullmatch(r'[0-9a-f]{64}', verifier) and authorization.startswith('Bearer '):
             token = authorization[7:]
