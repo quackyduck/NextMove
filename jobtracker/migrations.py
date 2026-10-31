@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -236,6 +236,30 @@ def upgrade_v10_to_v11(connection):
     connection.execute(text('UPDATE schema_version SET version=11'))
 
 
+def upgrade_v11_to_v12(connection):
+    """OAuth 2.1 clients, per-user grants, codes and tokens for third-party agents."""
+    connection.execute(text(
+        'CREATE TABLE oauth_clients (id VARCHAR(64) NOT NULL PRIMARY KEY, name VARCHAR(200) NOT NULL, '
+        'redirect_uris JSON NOT NULL, created_at DATETIME NOT NULL)'))
+    connection.execute(text(
+        'CREATE TABLE oauth_grants (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'client_id VARCHAR(64) NOT NULL REFERENCES oauth_clients (id), scopes JSON NOT NULL, '
+        'created_at DATETIME NOT NULL, last_used_at DATETIME, revoked_at DATETIME)'))
+    connection.execute(text('CREATE INDEX ix_oauth_grants_user_client ON oauth_grants (user_id, client_id)'))
+    connection.execute(text(
+        'CREATE TABLE oauth_codes (code_hash VARCHAR(64) NOT NULL PRIMARY KEY, '
+        'grant_id VARCHAR(36) NOT NULL REFERENCES oauth_grants (id), redirect_uri TEXT NOT NULL, '
+        'code_challenge VARCHAR(128) NOT NULL, expires_at DATETIME NOT NULL, used_at DATETIME)'))
+    connection.execute(text('CREATE INDEX ix_oauth_codes_grant_id ON oauth_codes (grant_id)'))
+    connection.execute(text(
+        'CREATE TABLE oauth_tokens (id VARCHAR(36) NOT NULL PRIMARY KEY, '
+        'grant_id VARCHAR(36) NOT NULL REFERENCES oauth_grants (id), kind VARCHAR(10) NOT NULL, '
+        'token_hash VARCHAR(64) NOT NULL UNIQUE, created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, '
+        "used_at DATETIME, CHECK (kind IN ('access','refresh')))"))
+    connection.execute(text('CREATE INDEX ix_oauth_tokens_grant_id ON oauth_tokens (grant_id)'))
+    connection.execute(text('UPDATE schema_version SET version=12'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -267,5 +291,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [10]:
         upgrade_v10_to_v11(connection)
         versions = [11]
+    if versions == [11]:
+        upgrade_v11_to_v12(connection)
+        versions = [12]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

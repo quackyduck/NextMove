@@ -18,7 +18,7 @@ import { MasterResume } from "./MasterResume.jsx";
 
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
-import { ActivateForm, activationToken, initialAuthScreen, LoginForm, SignupForm } from "./AuthScreens.jsx";
+import { ActivateForm, activationToken, initialAuthScreen, LoginForm, oauthReturn, SignupForm } from "./AuthScreens.jsx";
 import { Home } from "./Home.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
@@ -107,6 +107,7 @@ function App() {
         setCsrf(data.csrf_token);
         setSession({ user: data.user || null, signup: data.signup || null });
         if (data.user) setUserId(data.user.id);
+        if (data.authenticated && oauthReturn()) return window.location.assign(oauthReturn());
         setAuth(data.authenticated);
       })
       .catch((e) => {
@@ -223,6 +224,7 @@ function App() {
     }
   }
   function authenticated(data) {
+    if (oauthReturn()) return window.location.assign(oauthReturn());
     deferred(false);
     setError("");
     setSession((current) => ({ ...current, user: data.user || current.user }));

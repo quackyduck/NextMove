@@ -35,6 +35,10 @@ Python tests create temporary databases/uploads. The UI test launcher starts its
 
 Configure `AGENT_API_TOKEN` in your private `.env` and restart the server. Requests use `Authorization: Bearer <token>`; never put the token in a URL. Browser sessions use CSRF tokens returned by login. See [API contract](docs/API.md) and `scripts/agent_example.py --help` for a create-job/contact/resume workflow. The example reads `JOBTRACKER_AGENT_TOKEN` from its environment; use the same value as the server's `AGENT_API_TOKEN`.
 
+## Connect any agent (MCP and OAuth)
+
+Assistants that support MCP connectors (Claude, ChatGPT, Cursor and others) connect at `/mcp`: the user signs in, picks what the agent may do, and can disconnect it under **Agent access**. Other agents use the same OAuth tokens on the [published OpenAPI contract](docs/API.md#third-party-agents-oauth-mcp-and-openapi-schema-12) at `/api/v1/openapi.json`. See [MCP.md](docs/MCP.md) for the tools, scopes and security model.
+
 ## Operations and next steps
 
 [Expansion roadmap](docs/ROADMAP.md) maps the current system and specifies onboarding, the agent API, resume tailoring, job crawl, the apply agent, independent deployment and donations, with eval and test plans for each.

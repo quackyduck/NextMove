@@ -6,6 +6,14 @@ export const SCOPE_LABELS = {
   "roles:ingest": "Add roles from URLs and upload resumes",
 };
 
+// What a connected app (OAuth) was allowed on the consent screen.
+const CONNECTION_SCOPE_LABELS = {
+  "jobs:read": "See roles",
+  "jobs:write": "Add and move roles",
+  "resumes:read": "Read resumes",
+  "resumes:write": "Upload resumes",
+};
+
 const formatDate = (value) => value ? new Date(value).toLocaleString() : "Never";
 
 // Checks a raw token from this browser. Credential failures belong to the agent
@@ -81,6 +89,8 @@ export async function copySecret(secret) {
 
 export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
   const [tokens, setTokens] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [disconnecting, setDisconnecting] = useState(null);
   const [created, setCreated] = useState(null);
   const secret = created?.token || "";
   const [testToken, setTestToken] = useState("");
@@ -95,12 +105,14 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
 
   async function refresh() {
     setTokens((await api("/agent-tokens")).tokens);
+    setConnections((await api("/oauth/connections")).connections);
   }
   useEffect(() => {
     if (reauthRequired) return;
     let active = true;
     setLoading(true);
-    api("/agent-tokens").then(data => { if (active) setTokens(data.tokens); })
+    Promise.all([api("/agent-tokens"), api("/oauth/connections")])
+      .then(([data, apps]) => { if (active) { setTokens(data.tokens); setConnections(apps.connections); } })
       .catch(error => { if (active && !error.authenticationRequired) setError(error.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -131,6 +143,14 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
       } finally { setTestToken(""); }
     });
   }
+  function disconnect(connection) {
+    run(async () => {
+      await api(`/oauth/connections/${connection.id}/revoke`, { method: "POST" });
+      setDisconnecting(null);
+      setNotice(`Disconnected ${connection.client_name}. It can no longer read or change your workspace.`);
+      await refresh();
+    });
+  }
   function revokeToken(token) {
     run(async () => {
       await api(`/agent-tokens/${token.id}/revoke`, { method: "POST" });
@@ -150,6 +170,27 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
       </header>
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
+      <section className="form-panel mb-4" aria-label="Connect an AI assistant">
+        <h2 className="section-heading mt-0">Connect an AI assistant</h2>
+        <p>Assistants that support MCP connectors (Claude, ChatGPT, Cursor and others) connect without a token. Add this server URL as a custom connector, then sign in and choose what it may do:</p>
+        <pre className="agent-url">{base}/mcp</pre>
+        <p className="form-text">Other agents can use the OAuth-protected API described at <code>{base}/api/v1/openapi.json</code>.</p>
+        <h3 className="h6 mt-3">Connected apps</h3>
+        {!loading && !connections.length && <p className="mb-0">No apps connected yet.</p>}
+        {connections.map(connection => (
+          <article className="agent-token" key={connection.id}>
+            <h3>{connection.client_name}</h3>
+            <p>{connection.scopes.map(scope => CONNECTION_SCOPE_LABELS[scope] || scope).join(", ")}</p>
+            <dl><dt>Connected</dt><dd>{formatDate(connection.created_at)}</dd><dt>Last used</dt><dd>{formatDate(connection.last_used_at)}</dd></dl>
+            {disconnecting === connection.id ? (
+              <div role="group" aria-label={`Confirm disconnecting ${connection.client_name}`}>
+                <p>Disconnect this app? It loses access immediately. Roles and resumes it added stay saved.</p>
+                <div className="d-flex gap-2"><button className="btn btn-danger" disabled={busy} onClick={() => disconnect(connection)}>Confirm disconnect</button><button className="btn btn-outline-secondary" disabled={busy} onClick={() => setDisconnecting(null)}>Cancel</button></div>
+              </div>
+            ) : <button className="btn btn-outline-danger" disabled={busy} onClick={() => setDisconnecting(connection.id)}>Disconnect {connection.client_name}</button>}
+          </article>
+        ))}
+      </section>
       {secret ? (
         <NewTokenPanel secret={secret} busy={busy}
           onCopy={() => run(async () => { await copySecret(secret); setNotice("Token copied. Store it securely; do not paste it into a conversation."); })}

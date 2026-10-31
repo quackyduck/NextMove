@@ -227,20 +227,25 @@ def jobs_create():
     services._payload(data, {'url'})
     validate_url(data.get('url'))
     job = services.create_job(g.user_id, {'url': data['url'].strip(), 'stage': 'needs_review'})
+    return jsonify(**_job(job), extraction_id=queue_fill(g.user_id, job)), 202
+
+
+def queue_fill(user_id, job):
+    """Queue filling a saved role from its posting URL; the task id, or None when the queue is busy."""
     extraction_id = new_id()
     try:
         with _engine().begin() as connection:
             if connection.dialect.name == 'sqlite':
                 connection.exec_driver_sql('BEGIN IMMEDIATE')
             tasks.expire_tasks(connection)
-            tasks.admit(connection, g.user_id)
+            tasks.admit(connection, user_id)
             connection.execute(ExtractionTask.__table__.insert().values(
-                id=extraction_id, user_id=g.user_id, status='running', result={}, created_at=now()))
-            taskqueue.enqueue(connection, g.user_id, 'harness_fill_job',
+                id=extraction_id, user_id=user_id, status='running', result={}, created_at=now()))
+            taskqueue.enqueue(connection, user_id, 'harness_fill_job',
                               {'task_id': extraction_id, 'job_id': job['id'], 'url': job['url']})
     except services.ServiceError:
-        extraction_id = None  # Busy: the role is saved; the user can paste the description instead.
-    return jsonify(**_job(job), extraction_id=extraction_id), 202
+        return None  # Busy: the role is saved; the user can paste the description instead.
+    return extraction_id
 
 
 @harness.get('/me/jobs/<job_id>')

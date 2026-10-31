@@ -42,6 +42,9 @@ def create_app(test_config=None):
         HARNESS_ALLOW_HTTP=os.getenv('HARNESS_ALLOW_HTTP') == '1',
         # Absolute dashboard URL for activation links sent over chat.
         PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL', ''),
+        # Browser origins (besides this one) allowed to call /mcp, e.g. a local MCP inspector.
+        MCP_ALLOWED_ORIGINS=[origin.strip().rstrip('/') for origin in os.getenv('MCP_ALLOWED_ORIGINS', '').split(',')
+                             if origin.strip()],
         TRUSTED_HOSTS=[host.strip() for host in os.getenv('APP_ALLOWED_HOSTS', '').split(',') if host.strip()] or None,
         APP_ROOT_PATH=os.getenv('APP_ROOT_PATH', ''),
         SESSION_COOKIE_NAME='next_move_session',
@@ -91,6 +94,13 @@ def create_app(test_config=None):
     app.register_blueprint(profile, url_prefix='/api/v1')
     from .harness import harness
     app.register_blueprint(harness, url_prefix='/api/v1')
+    # Third-party agents: OAuth 2.1 (root, for well-known discovery), MCP and signed file links.
+    from .oauth import oauth
+    app.register_blueprint(oauth)
+    from .mcp import mcp
+    app.register_blueprint(mcp)
+    from .resume_files import files
+    app.register_blueprint(files, url_prefix='/api/v1')
 
     @app.get('/health')
     @app.get('/api/v1/health')

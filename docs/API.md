@@ -83,7 +83,7 @@ The tool only uploads the file. It deliberately leaves progress changes to the c
 
 ## Not implemented yet
 
-OpenAPI generation and spreadsheet import remain future work. URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
+Spreadsheet import remains future work. The OpenAPI document is published at `/api/v1/openapi.json` (see below). URL extraction and review are available asynchronously through `/jobs/extract`; `POST /jobs` itself does not fetch URLs.
 
 ## Outreach badge
 
@@ -229,3 +229,18 @@ The Resume Agent harness acts on JobTracker strictly as one user. These routes a
 
 - `GET /auth/activation?token=` → `{valid}`. Reading never consumes the link, so previews and scanners are harmless.
 - `POST /auth/activate` `{token, email, password, password_confirmation}`. This sets the email and password, consumes the link, and signs in, all in one transaction. A used, expired or unknown link gets 410. An email already in use gets 409. The route shares the signup throttle. The dashboard opens activation from `/?activate=<token>`.
+
+## Third-party agents: OAuth, MCP and OpenAPI (schema 12)
+
+Agents connect with OAuth 2.1 and use either the MCP server at `/mcp` or this API with the same access tokens. The contract is published at `GET /openapi.json` (no authentication). It covers the routes OAuth tokens may call, with the scope each one requires. See [MCP.md](MCP.md) for the consent flow, tools, token lifetimes and security model.
+
+| Route | Credentials | Scope |
+| --- | --- | --- |
+| `GET /jobs`, `GET /jobs/{id}`, `/activities`, `GET /contacts`, `GET /extractions/{id}`, `GET /jobs/search` | session, legacy, OAuth | `jobs:read` |
+| `POST /jobs`, `PATCH /jobs/{id}`, `POST /jobs/extract`, `POST /contacts` | session, legacy, OAuth | `jobs:write` |
+| `GET /jobs/{id}/resumes`, `GET /resumes/{id}/download`, `GET /profile/resume`, `GET /profile/resume/download` | session (and legacy for job resumes), OAuth | `resumes:read` |
+| `POST /jobs/{id}/resumes`, `POST /profile/resume` | session (plus legacy and `roles:ingest` for job resumes), OAuth | `resumes:write` |
+| `GET /oauth/connections`, `POST /oauth/connections/{id}/revoke` | browser session only | — |
+| `GET /files/{token}`, `POST /uploads/{token}` | the signed link itself | issued by MCP tools |
+
+Schema 12 adds `oauth_clients`, `oauth_grants`, `oauth_codes` and `oauth_tokens`. Set `PUBLIC_BASE_URL` in production: it is the OAuth issuer and the base URL of MCP links.
