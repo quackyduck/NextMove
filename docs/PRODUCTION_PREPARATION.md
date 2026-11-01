@@ -1,5 +1,7 @@
 # NextMove demo deployment preparation
 
+> **Test server.** This document describes the nicolasmelo.com/nextmove install, which is now the test server. Production is https://mynextmoov.com; see [Deployments](DEPLOYMENTS.md).
+
 Prepared October 19, 2026 on `deploy/production-preparation`, based on
 `fea2185caa8f2b0797240ebf00e178fad906fe3c`. Production credentials were created with explicit approval. A private loopback
 preview was installed and then stopped when the user required main-only deployment;

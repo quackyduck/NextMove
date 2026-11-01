@@ -1,5 +1,7 @@
 # Next Move — DigitalOcean deployment plan
 
+> **Test server.** This document describes the nicolasmelo.com/nextmove install, which is now the test server. Production is https://mynextmoov.com; see [Deployments](DEPLOYMENTS.md).
+
 Prepared October 19, 2026. This is an execution checklist for a future deployment; creating this document does not provision infrastructure or publish the app.
 
 Demo scope update, October 19: the user selected `/nextmove/` on the existing

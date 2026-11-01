@@ -27,7 +27,7 @@ def test_private_file_post_and_poll_keep_token_out_of_output(tmp_path, monkeypat
     assert requests[0].get_header('Authorization') == 'Bearer ' + TOKEN
     assert json.loads(requests[0].data) == {'url': 'https://example.com/job'}
     assert requests[0].get_header('Idempotency-key') == 'a' * 32
-    assert requests[1].full_url == 'https://nicolasmelo.com/nextmove/api/v1/ingestions/' + IDENTIFIER
+    assert requests[1].full_url == 'https://mynextmoov.com/api/v1/ingestions/' + IDENTIFIER
     output = capsys.readouterr()
     assert TOKEN not in output.out + output.err
     assert 'saved-job' in output.out and 'Idempotency-Key' in output.err
@@ -80,7 +80,7 @@ def test_connection_mode_checks_token_without_submitting_or_printing_secret(monk
     monkeypatch.setattr(ingest_url, 'build_opener', lambda *args: Opener())
     assert ingest_url.main() == 0
     assert len(requests) == 1 and requests[0].data is None
-    assert requests[0].full_url == 'https://nicolasmelo.com/nextmove/api/v1/agent-connection'
+    assert requests[0].full_url == 'https://mynextmoov.com/api/v1/agent-connection'
     output = capsys.readouterr()
     assert TOKEN not in output.out + output.err
     assert 'connected' in output.out and 'Idempotency-Key' not in output.err

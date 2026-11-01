@@ -53,7 +53,7 @@ Check out the reviewed version of this repository and run from that folder:
 
 ```sh
 python3 scripts/ingest_url.py --token-file "$HOME/.config/nextmove/agent-token" \
-  --base-url https://nicolasmelo.com/nextmove --test-connection
+  --base-url https://mynextmoov.com --test-connection
 ```
 
 Expect `connected: true`, the token name, and both permissions. A 401 means an
@@ -79,7 +79,7 @@ HTTPS access to your site. No database, server login, or workspace password is n
 Example request:
 
 > Use $nextmove-url-intake to check this posting and add it if it is new:
-> https://careers.example/jobs/123. Use https://nicolasmelo.com/nextmove and
+> https://careers.example/jobs/123. Use https://mynextmoov.com and
 > the private token file at ~/.config/nextmove/agent-token. Pause on possible
 > duplicates and leave new roles for my review.
 
@@ -132,7 +132,7 @@ Add roles token:
 ```sh
 python3 scripts/agent_example.py 'ROLE_UUID' '/absolute/path/resume.pdf' \
   --token-file "$HOME/.config/nextmove/agent-token" \
-  --base-url https://nicolasmelo.com/nextmove
+  --base-url https://mynextmoov.com
 ```
 
 Hosted agents may omit `--token-file` to use `NEXTMOVE_INGEST_TOKEN`. PDF, DOCX, and

@@ -4,6 +4,10 @@ Private, single-user job search tracker: Flask + SQLAlchemy/SQLite API, React + 
 
 Use **Quick capture** to paste a posting URL, review the extracted company, title, salary, and qualifications, and save a potential role. Key qualifications are saved in notes, and the extracted description is retained. The compact view works on phones; manual intake remains available. Celery/Redis and Numbers import are future milestones.
 
+## Where it runs
+
+Production is **https://mynextmoov.com**. Agents connect to its MCP server at `https://mynextmoov.com/mcp` ([MCP and OAuth](docs/MCP.md)). https://nicolasmelo.com/nextmove is the test server. [Deployments](docs/DEPLOYMENTS.md) explains both and how to release.
+
 ## Run the local demo
 
 Prerequisites: Python 3.11+ (tested with 3.14), Node.js 22.12+ and npm. From the repository root:
@@ -43,11 +47,11 @@ Assistants that support MCP connectors (Claude, ChatGPT, Cursor and others) conn
 
 [Expansion roadmap](docs/ROADMAP.md) maps the current system and specifies onboarding, the agent API, resume tailoring, job crawl, the apply agent, independent deployment and donations, with eval and test plans for each.
 
-[Implementation plan and milestone checklist](docs/PLAN.md) describes the parallel agent roles and incremental demos. [Operations and deployment runbook](docs/OPERATIONS.md) includes verified local backup/restore and the gates for a future private DigitalOcean deployment. Nothing has been provisioned or deployed.
+[Implementation plan and milestone checklist](docs/PLAN.md) describes the parallel agent roles and incremental demos. [Operations and deployment runbook](docs/OPERATIONS.md) includes verified local backup/restore and the test server's operations.
 
 [DigitalOcean deployment plan](docs/DEPLOYMENT_PLAN.md) provides the phased checklist for a private preview, production preparation, HTTPS cutover, recovery, and later Celery rollout.
 
-[Production preparation](docs/PRODUCTION_PREPARATION.md) records the inspected existing host, pending user decisions, local runtime templates, persistent login defense, and remaining validation. These templates have not been installed or deployed.
+[Production preparation](docs/PRODUCTION_PREPARATION.md) records how the test server at nicolasmelo.com/nextmove was prepared. Its `deploy/` templates are the ones installed there.
 
 Outreach is both a stage and a lasting fact: entering Outreach marks **Outreach made**, which stays visible on the table and board after you progress. The checkbox in intake/details lets you record past outreach or correct it; saving a contact alone does not mark it. The schema-2 upgrade preserves evidenced outreach from existing stage history. See the [operations notes](docs/OPERATIONS.md#outreach-badge-release--schema-2) before upgrading an existing workspace.
 

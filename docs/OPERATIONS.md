@@ -1,5 +1,7 @@
 # Operations and deployment runbook
 
+> **Test server.** This document describes the nicolasmelo.com/nextmove install, which is now the test server. Production is https://mynextmoov.com; see [Deployments](DEPLOYMENTS.md).
+
 Status: local manual tracker only. No infrastructure has been provisioned and no deployment is authorized by these instructions. Celery/Redis and URL extraction are not implemented; pasted descriptions keep intake useful.
 
 Demo scope update, October 19: the user selected `/nextmove/` on the existing

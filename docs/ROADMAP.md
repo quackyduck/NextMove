@@ -14,7 +14,7 @@ Three principles carry through every component below:
 
 ## Map of the current system
 
-Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), live at `nicolasmelo.com/nextmove/` with invite-only signup, URL extraction on a background worker, scoped agent tokens and duplicate search. It is a Flask + SQLAlchemy/SQLite modular monolith serving a React/Vite + Bootstrap UI with its own design system ([DESIGN.md](DESIGN.md)), with 392 pytest and 28 Playwright tests run in GitHub Actions.
+Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), live at `mynextmoov.com` (with `nicolasmelo.com/nextmove/` as the test server) with invite-only signup, URL extraction on a background worker, scoped agent tokens and duplicate search. It is a Flask + SQLAlchemy/SQLite modular monolith serving a React/Vite + Bootstrap UI with its own design system ([DESIGN.md](DESIGN.md)), with 392 pytest and 28 Playwright tests run in GitHub Actions.
 
 ### Components
 
@@ -35,7 +35,7 @@ Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), 
 
 ### Deployment state
 
-- **Live** at `nicolasmelo.com/nextmove/` on the 458 MiB Droplet shared with BuyItAgain and the homepage: nginx, one Gunicorn worker (`next-move`) and the queue worker (`next-move-worker`); no Docker or Redis. Deploys come from verified `origin/main` with a rollback checkpoint per release.
+- **Live** at `mynextmoov.com` on a 4 GiB Droplet running Docker Compose (Caddy, web, worker, Resume Agent). `nicolasmelo.com/nextmove/` is the test server, on the 458 MiB Droplet shared with BuyItAgain and the homepage: nginx, one Gunicorn worker (`next-move`) and the queue worker (`next-move-worker`); no Docker or Redis. See [Deployments](DEPLOYMENTS.md). Deploys come from verified `origin/main` with a rollback checkpoint per release.
 - Schema 10 (`de129f0`) deployed October 28, 2026; every existing row and file was verified unchanged and now belongs to user #1.
 - Memory after that release: web about 64 MiB, worker about 44 MiB, about 140 MiB available, plus a 1 GiB swap file added as a safety net. A move to Kubernetes and another platform is planned before wider launch.
 
