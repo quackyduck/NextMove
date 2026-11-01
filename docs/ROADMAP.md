@@ -329,6 +329,44 @@ The system is free to use. A public page shows what it costs to run and a sugges
 | Usage analytics | Funnel from signup to first application to offer, to steer the roadmap; privacy-preserving | No |
 | Numbers/CSV import | Already planned in Milestone 4; also an onboarding shortcut for people with spreadsheets | No |
 
+### Planned enhancements (proposed, not yet scheduled)
+
+Ideas noted 2026-10-31. Each needs a design pass before it is placed in a milestone.
+
+**E1. Multiple template resumes per role type**
+
+Today each user has one master resume (versioned). Users aiming at more than one kind of role (for example "Platform engineer" and "Engineering manager") should be able to keep several named templates and tailor from whichever fits.
+
+- A template has a name, an optional target-role description, and its own version history; one is marked the default.
+- A job can record which template it was tailored from; the tailoring agent (§5) takes a template ID instead of assuming the single master resume.
+- The agent may suggest a template for a posting, but the user (or an explicit API call) chooses it.
+- Open questions: does onboarding still create a single "master" that becomes the first template? Do templates share one confirmed skills list or keep one each?
+
+Status: implementation is in progress in the `feat/resume-templates-*` PRs.
+
+**E2. Job-hunt sessions**
+
+A session is one job search. It runs from when the user starts looking until they accept an offer, then it is frozen.
+
+- Every job, contact, activity and resume version belongs to a session. **Only one session is active at a time**; the dashboard shows it by default.
+- Setting a job's outcome to `accepted` asks whether to conclude the session. Concluding **freezes** it: its jobs become read-only, open next actions are frozen with them (kept as they were, but no longer due or reminded), and agents can no longer write to it.
+- When the user starts looking again they can **extend** the frozen session (unfreeze it and continue with the same pipeline, next actions included) or **start a new session** with an empty pipeline. Templates (E1) carry over; tailoring rules (E3) can be copied or started fresh.
+- **Duplicates come forward**: if a role added to the new session matches a job from a past session, that job (with its history, contacts and resumes) is moved into the new session instead of creating a second copy.
+- **Reset**: a button lets the user start over completely, with an explicit confirmation step.
+- Past sessions stay browsable and searchable.
+- Open questions: what exactly does Reset clear (only sessions and jobs, or templates and rules too)? Does a concluded session's accepted job carry into the next session as "current role"? How do agent tokens and OAuth grants scope to sessions?
+
+**E3. Resume tailoring rules**
+
+Users describe in their own words how tailored resumes should change, and the API serves these rules to any agent that tailors from a template.
+
+- Rules are stored per session, optionally per template (E1). Starting a new session (E2) offers the previous session's rules to copy, or the user can start with a clean set; past rules stay available either way.
+- Rule examples: "keep it to one page", "always lead with the summary", "never drop the Acme role", "prefer US spelling".
+- The API exposes them (for example `GET /me/tailoring-rules`, or included in the template payload) so the harness, the MCP server and the in-house tailoring agent all receive the same instructions.
+- Rules are user preferences and **never override** the no-fabrication constraints in §5: a rule like "add Kubernetes to my skills" is only honored if the skill is in the confirmed skills list. The validator stays the final authority.
+- Drafts record which rules version they were produced under, so a rejected draft can be traced to its instructions.
+- Eval: add rule-adherence cases to the tailoring golden set (rule followed, plus rules that conflict with the forbidden list are refused).
+
 ## Cross-cutting: evals, testing, safety
 
 One eval harness and one test strategy serve every component, so each new agent arrives with its golden set and thresholds instead of inventing them.
