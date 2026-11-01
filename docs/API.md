@@ -76,7 +76,7 @@ After saving a role, use an existing managed token with `roles:ingest` permissio
 
 ```sh
 python3 scripts/agent_example.py '<job UUID>' '/absolute/path/revised-resume.pdf' \
-  --token-file /path/to/private/token --base-url https://nicolasmelo.com/nextmove
+  --token-file /path/to/private/token --base-url https://mynextmoov.com
 ```
 
 The tool only uploads the file. It deliberately leaves progress changes to the caller. Resume files are private and only served by authenticated download routes. Exact server-enforced limits are documented in the application configuration.

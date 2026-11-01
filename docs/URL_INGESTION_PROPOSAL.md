@@ -19,7 +19,7 @@ Unlike mobile Quick capture, this endpoint **automatically saves** after success
 
 ## API contract
 
-Proposed production endpoint: `https://nicolasmelo.com/nextmove/api/v1/ingestions`
+Proposed production endpoint: `https://mynextmoov.com/api/v1/ingestions`
 
 ```http
 POST /nextmove/api/v1/ingestions

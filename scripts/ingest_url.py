@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--search', action='store_true', help='Search saved roles without submitting')
     parser.add_argument('--company', help='Company search signal')
     parser.add_argument('--title', help='Title search signal')
-    parser.add_argument('--base-url', default='https://nicolasmelo.com/nextmove')
+    parser.add_argument('--base-url', default='https://mynextmoov.com')
     parser.add_argument('--token-file', type=Path, help='Mode-0600 file containing only the token')
     parser.add_argument('--idempotency-key', default=None, help='Reuse this key for retries; default: new UUID')
     parser.add_argument('--wait', action='store_true', help='Poll until the role is saved or ingestion fails')

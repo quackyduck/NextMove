@@ -7,7 +7,7 @@ People can use My Next Moov from the agent they already have (Claude, ChatGPT, C
 | MCP server | `{base}/mcp` | Agents that support MCP connectors. They discover the tools themselves. |
 | REST API | `{base}/api/v1`, described at `{base}/api/v1/openapi.json` | Agents and scripts that call HTTP APIs. |
 
-`{base}` is `PUBLIC_BASE_URL`, for example `https://nicolasmelo.com/nextmove`.
+`{base}` is `PUBLIC_BASE_URL`. In production it is `https://mynextmoov.com`, so the MCP server is `https://mynextmoov.com/mcp`. The test server uses `https://nicolasmelo.com/nextmove` ([Deployments](DEPLOYMENTS.md)).
 
 ## Connecting an agent
 
