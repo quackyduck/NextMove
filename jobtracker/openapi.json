@@ -1196,7 +1196,7 @@
           "Resume templates"
         ],
         "operationId": "createResumeTemplate",
-        "summary": "Create an empty resume template (at most 10). It becomes the default only once it has a version.",
+        "summary": "Create an empty resume template (at most 10). It becomes the default only once it has a version. OAuth tokens need an existing default and stop at 5 templates.",
         "security": [
           {
             "oauth2": [
@@ -1218,7 +1218,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1244,13 +1244,27 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "$ref": "#/components/responses/Error"
+            "description": "A taken name, an 11th template, or (OAuth tokens) a 6th: connected apps stop at 5 templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1309,7 +1323,7 @@
           "Resume templates"
         ],
         "operationId": "updateResumeTemplate",
-        "summary": "Rename, describe, or make this the default (is_default accepts only true; 409 when the template has no versions; the previous default stops being one). The response omits versions.",
+        "summary": "Rename, describe, or make this the default (is_default accepts only true; 409 when the template has no versions; the previous default stops being one). The response omits versions. Browser sessions only in effect: OAuth tokens get 403.",
         "security": [
           {
             "oauth2": [
@@ -1338,7 +1352,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1379,7 +1393,14 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or it is an OAuth token: connected apps cannot rename, edit or promote templates (checked after the 404 for unknown IDs).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1390,7 +1411,7 @@
           "Resume templates"
         ],
         "operationId": "uploadResumeTemplateVersion",
-        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op). If the account has no default yet, this template becomes it.",
+        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op). If the account has no default yet, this template becomes it. OAuth tokens get 403 until the account has a default.",
         "security": [
           {
             "oauth2": [
@@ -1468,7 +1489,14 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet (checked after the 404 for unknown IDs).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/Error"
@@ -1920,7 +1948,7 @@
           "name": {
             "type": "string",
             "maxLength": 100,
-            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, e.g. \"Engineering manager\""
+            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
           },
           "description": {
             "type": "string",

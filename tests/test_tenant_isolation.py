@@ -280,6 +280,8 @@ def test_creations_belong_to_the_caller(world):
     taskqueue.drain(world['app'])
     assert client.get(f"/api/v1/extractions/{preview['id']}", headers=headers).json['status'] == 'succeeded'
     assert all(token['name'] == 'A agent' for token in world['a'].get('/api/v1/agent-tokens').json['tokens'])
+    session, browser = world['credentials']['session']  # Connected apps create templates once B has a default.
+    session.post('/api/v1/profile/resume', headers=browser, data={'file': (io.BytesIO(b'B master'), 'b.txt')})
     for mode in ('session', 'oauth'):
         client, headers = world['credentials'][mode]
         mine = client.post('/api/v1/templates', headers=headers, json={'name': f'B {mode}'})
@@ -397,7 +399,9 @@ def test_mcp_tools_cannot_reach_other_tenants(world):
         'name': 'upload_resume', 'arguments': {'target': 'master', 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='}}})
     own = mine.json['result']['structuredContent']['resume']['id']
     attempts += [('diff_resumes', {'from_id': own, 'to_id': ids['master']}),
-                 ('diff_resumes', {'from_id': ids['template'], 'to_id': own})]
+                 ('diff_resumes', {'from_id': ids['template'], 'to_id': own}),
+                 ('create_resume_upload_link', {'template_id': ids['template']}),
+                 ('upload_resume', {'template_id': ids['template'], 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='})]
     for name, arguments in attempts:
         response = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                                                               'params': {'name': name, 'arguments': arguments}})

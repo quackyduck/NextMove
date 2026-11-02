@@ -164,8 +164,8 @@ def save_upload(user_id, target, upload, template_id=None):
     return {'target': target, 'resume': result, 'created': True}
 
 
-def upload_bytes(user_id, target, filename, data):
-    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename))
+def upload_bytes(user_id, target, filename, data, template_id=None):
+    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename), template_id)
 
 
 def metadata(record):
@@ -186,8 +186,11 @@ def download_link(base, grant_id, resume_id):
     return {'url': f'{base}/api/v1/files/{token}', 'expires_in': DOWNLOAD_SECONDS}
 
 
-def upload_link(base, grant_id, target):
-    token = _serializer('upload').dumps({'g': grant_id, 't': target})
+def upload_link(base, grant_id, target, template_id=None):
+    """A link for `target`; with `template_id` (target 'master'), a version of that template. Redeeming checks the
+    template again against the grant's owner, so a link can only ever land in that account's own template."""
+    claims = {'g': grant_id, 't': target, **({'m': template_id} if template_id else {})}
+    token = _serializer('upload').dumps(claims)
     url = f'{base}/api/v1/uploads/{token}'
     return {'url': url, 'expires_in': UPLOAD_SECONDS, 'method': 'POST', 'field': 'file',
             'example': f'curl -sS -F "file=@resume.docx" "{url}"'}
@@ -220,6 +223,9 @@ def upload(token):
     request.max_content_length = REQUEST_LIMIT
     user_id, claims = _redeem('upload', token, UPLOAD_SECONDS, 'resumes:write')
     g.user_id = user_id
-    result = save_upload(user_id, claims['t'], request.files.get('file'))
+    if claims.get('m'):
+        from .resume_templates import get_template
+        get_template(user_id, claims['m'])  # 404 before any bytes are written; checked again under the lock.
+    result = save_upload(user_id, claims['t'], request.files.get('file'), claims.get('m'))
     return jsonify(result), 201 if result['created'] else 200
 

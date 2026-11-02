@@ -23,6 +23,10 @@ templates = Blueprint('templates', __name__)
 TEMPLATES, VERSIONS = ResumeTemplate.__table__, MasterResume.__table__
 DEFAULT_NAME, NOT_FOUND = 'Main resume', 'Template not found'
 MAX_TEMPLATES, NAME_LIMIT, DESCRIPTION_LIMIT = 10, 100, 2000
+AGENT_TEMPLATES = 5  # Connected apps create templates only below this; the rest of the 10 are the user's.
+NO_DEFAULT = ('The user has no master resume yet. Ask them to upload their main resume in My Next Moov, or upload it '
+              'as the master resume (MCP upload_resume target "master", or POST /profile/resume); resume templates '
+              'can be created and filled once it exists.')
 # difflib is quadratic: 2,000 paragraphs a side stays well under a second. The text cap bounds the response size.
 MAX_PARAGRAPHS, MAX_TEXT, MAX_CHANGES = 2000, 100_000, 500
 FIELDS = ('id', 'name', 'description', 'is_default', 'created_at', 'updated_at')
@@ -124,21 +128,48 @@ def _fields(data, allowed):
     return fields
 
 
+def name_key(name):
+    """What two names must not share: NFKC (full-width, ligatures), case and runs of whitespace folded.
+    Other scripts stay distinct (a Cyrillic "а" is a different letter, not a look-alike we can rule out)."""
+    return ' '.join(unicodedata.normalize('NFKC', name).casefold().split())
+
+
 def _check_name(connection, user_id, name, except_id=None):
     rows = connection.execute(select(TEMPLATES.c.id, TEMPLATES.c.name).where(TEMPLATES.c.user_id == user_id)).all()
-    if any(row.id != except_id and row.name.casefold() == name.casefold() for row in rows):
+    if any(row.id != except_id and name_key(row.name) == name_key(name) for row in rows):
         raise services.ServiceError('A template with this name already exists', 409)
     return rows
 
 
-def create_template(user_id, data):
-    """A new, empty template; it becomes the default only once it has a version."""
+def agent_check(user_id, action):
+    """The policy for connected apps (OAuth tokens, over REST or MCP) once the caller's ownership is settled.
+
+    Apps never choose the default: they can't rename or edit templates or promote one ('update'), and until the
+    user has a default they can't create templates or fill a named one ('create', 'upload'). A default never goes
+    away once it exists (it only moves), so checking it outside the write lock is safe.
+    """
+    if action == 'update':
+        raise services.ServiceError('Connected apps cannot rename, edit or promote resume templates; the user does that '
+                                    'in My Next Moov', 403)
+    if default_template(user_id)[0] is None:
+        raise services.ServiceError(NO_DEFAULT, 403)
+
+
+def create_template(user_id, data, agent=False):
+    """A new, empty template; it becomes the default only once it has a version. A connected app (`agent`) also
+    needs an existing default and stops at AGENT_TEMPLATES, leaving the rest of the account's slots to the user."""
     fields = _fields(data, {'name', 'description'})
     if 'name' not in fields:
         raise services.ServiceError('name is required')
+    if agent:
+        agent_check(user_id, 'create')
     with write_lock() as connection:
-        if len(_check_name(connection, user_id, fields['name'])) >= MAX_TEMPLATES:
+        count = len(_check_name(connection, user_id, fields['name']))
+        if count >= MAX_TEMPLATES:
             raise services.ServiceError(f'You can keep up to {MAX_TEMPLATES} resume templates', 409)
+        if agent and count >= AGENT_TEMPLATES:
+            raise services.ServiceError(f'Connected apps can create templates only while there are fewer than '
+                                        f'{AGENT_TEMPLATES}; ask the user to add more in My Next Moov', 409)
         values = {'description': '', **fields, 'id': new_id(), 'user_id': user_id, 'is_default': False,
                   'created_at': now(), 'updated_at': now()}
         connection.execute(insert(TEMPLATES).values(**values))
@@ -173,7 +204,7 @@ def target_template(connection, user_id, template_id=None):
         return default
     else:
         rows = connection.execute(select(TEMPLATES.c.id, TEMPLATES.c.name).where(TEMPLATES.c.user_id == user_id)).all()
-        named = [row.id for row in rows if len(rows) == 1 or row.name.casefold() == DEFAULT_NAME.casefold()]
+        named = [row.id for row in rows if len(rows) == 1 or name_key(row.name) == name_key(DEFAULT_NAME)]
         template_id = named[0] if named else None
         if template_id is None and len(rows) >= MAX_TEMPLATES:
             raise services.ServiceError('Upload into one of your resume templates', 409)
@@ -300,7 +331,7 @@ def templates_list():
 @templates.post('/templates')
 @require_scope('resumes:write', fallback=require_browser_auth)
 def templates_create():
-    return jsonify(create_template(g.user_id, request.get_json(silent=True))), 201
+    return jsonify(create_template(g.user_id, request.get_json(silent=True), agent=g.auth_type == 'oauth')), 201
 
 
 @templates.get('/templates/<template_id>')
@@ -312,6 +343,9 @@ def templates_get(template_id):
 @templates.patch('/templates/<template_id>')
 @require_scope('resumes:write', fallback=require_browser_auth)
 def templates_update(template_id):
+    if g.auth_type == 'oauth':
+        get_template(g.user_id, template_id)  # Unknown and other accounts' IDs: 404 first, as on every route.
+        agent_check(g.user_id, 'update')
     return jsonify(update_template(g.user_id, template_id, request.get_json(silent=True)))
 
 
@@ -320,6 +354,8 @@ def templates_update(template_id):
 def templates_upload(template_id):
     request.max_content_length = REQUEST_LIMIT
     get_template(g.user_id, template_id)  # 404 before any bytes are written; checked again under the lock.
+    if g.auth_type == 'oauth':
+        agent_check(g.user_id, 'upload')
     saved = save_upload(g.user_id, 'master', request.files.get('file'), template_id)
     return jsonify(resume=saved['resume'], created=saved['created']), 201 if saved['created'] else 200
 

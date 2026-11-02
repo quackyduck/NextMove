@@ -1,16 +1,16 @@
 """Resume templates (schema 13): named master resumes with per-template versions, diffs, and MCP access."""
+import base64
 import io
 import sqlite3
-
 from urllib.parse import urlsplit
 
 from sqlalchemy import text
 
-from jobtracker import create_app, migrations, resume_templates
+from jobtracker import create_app, migrations, resume_files, resume_templates
 from accounts import add_user, sign_in
 from legacy import rewind_resume_templates
 from test_documents import PDF, docx
-from test_mcp_oauth import WORD_NS, app, call, client, connect, ok, rpc  # noqa: F401  (fixtures)
+from test_mcp_oauth import WORD_NS, app, bearer, call, client, connect, ok, rpc  # noqa: F401  (fixtures)
 
 PLATFORM, MANAGER, MASTER = docx(), b'Engineering manager who grows teams\n', '/api/v1/profile/resume'
 
@@ -108,11 +108,11 @@ def test_oauth_scopes_and_mcp_master_list_follow_the_default_template(client):
     reader = {'Authorization': 'Bearer ' + tokens['access_token']}
     assert client.post('/api/v1/templates', headers=reader, json={'name': 'X'}).status_code == 403
     tokens, _ = connect(client)
-    headers = {'Authorization': 'Bearer ' + tokens['access_token']}
+    headers = sign_in(client)  # Only the user creates and fills templates before a default exists.
     manager = create(client, headers, name='EM')['id']
     first = upload(client, headers, f'/api/v1/templates/{manager}/versions', MANAGER).json['resume']
     assert client.get(MASTER).json['template']['id'] == manager  # The first template to get a version is the default.
-    upload(client, headers, f"/api/v1/templates/{create(client, headers, name='IC')['id']}/versions", PLATFORM)
+    upload(client, bearer(tokens), f"/api/v1/templates/{create(client, bearer(tokens), name='IC')['id']}/versions", PLATFORM)
     assert [r['id'] for r in ok(client, tokens, 'list_resumes')['master']] == [first['id']]
     link = urlsplit(ok(client, tokens, 'create_resume_upload_link', target='master')['url']).path
     assert client.post(link, data={'file': (io.BytesIO(b'Later\n'), 'r.txt')}).json['resume']['template_id'] == manager
@@ -285,3 +285,115 @@ def test_mcp_reads_templates_and_differences(client, app):
     assert result['summary']['changed'] == 2 and result['to']['template']['name'] == 'Engineering manager'
     assert ok(client, tokens, 'list_resumes')['template'] == {'id': listed[0]['id'], 'name': 'Main resume'}
     assert 'cannot be empty' in call(client, tokens, 'read_resume', template_id='')['content'][0]['text']
+
+
+
+def b64(data):
+    return base64.b64encode(data).decode()
+
+
+def test_mcp_creates_templates_only_with_resumes_write(client):
+    reader, _ = connect(client, chosen=['resumes:read'])
+    assert 'create_template' not in {t['name'] for t in rpc(client, reader, 'tools/list')['result']['tools']}
+    refused = call(client, reader, 'create_template', name='Engineering manager')
+    assert refused['isError'] and 'resumes:write' in refused['content'][0]['text']
+    tokens, _ = connect(client)
+    ok(client, tokens, 'upload_resume', target='master', filename='ic.txt', content_base64='SUM=')
+    created = ok(client, tokens, 'create_template', name='  Engineering manager ', description='People leadership')
+    assert {key: created['template'][key] for key in ('name', 'description', 'is_default', 'version_count')} == {
+        'name': 'Engineering manager', 'description': 'People leadership', 'is_default': False, 'version_count': 0}
+    for arguments, message in (({'name': ' '}, 'name cannot be empty'), ({'name': 'x' * 101}, 'exceeds 100'),
+                               ({'name': 'A\u202eB'}, 'control or formatting'), ({'name': 7}, 'name must be text'),
+                               ({'name': 'ENGINEERING MANAGER'}, 'already exists'), ({}, 'name is required'),
+                               ({'name': 'PM', 'is_default': True}, 'Unknown arguments')):
+        result = call(client, tokens, 'create_template', **arguments)
+        assert result['isError'] and message in result['content'][0]['text'], (arguments, result)
+    for index in range(3):  # Main resume and Engineering manager exist: agents stop at 5 of the 10.
+        ok(client, tokens, 'create_template', name=f'Role {index}')
+    capped = call(client, tokens, 'create_template', name='One more')
+    assert capped['isError'] and 'fewer than 5' in capped['content'][0]['text']
+    rest = client.post('/api/v1/templates', headers=bearer(tokens), json={'name': 'One more'})
+    assert rest.status_code == 409 and rest.json == {'error': capped['content'][0]['text']}  # REST: the same policy.
+    assert create(client, sign_in(client), name='One more')['name'] == 'One more'  # The user's own slots remain.
+    assert {'update_template', 'set_default_template'}.isdisjoint(t['name'] for t in rpc(client, tokens, 'tools/list')['result']['tools'])
+
+
+def test_template_names_collide_across_case_spacing_and_width(client):
+    session = sign_in(client)
+    create(client, session, name='Main resume')
+    for name in ('main RESUME', 'Main  resume', 'Main\u00a0resume', '\uff2d\uff41\uff49\uff4e resume'):
+        assert client.post('/api/v1/templates', headers=session, json={'name': name}).status_code == 409, name
+    assert create(client, session, name='M\u0430in resume')['name'] == 'M\u0430in resume'  # Cyrillic: another script.
+
+
+def test_agents_never_choose_the_default(client):
+    tokens, _ = connect(client)
+    users = create(client, sign_in(client), name='Product manager')['id']  # The user's own template, still empty.
+    for name, arguments in (('create_template', {'name': 'Senior PM'}), ('create_resume_upload_link', {'template_id': users}),
+                            ('upload_resume', {'template_id': users, 'filename': 'a.txt', 'content_base64': 'YQ=='})):
+        result = call(client, tokens, name, **arguments)
+        assert result['isError'] and 'no master resume yet' in result['content'][0]['text'], name
+    agent = bearer(tokens)  # The same policy for OAuth tokens on REST.
+    assert client.post('/api/v1/templates', headers=agent, json={'name': 'Senior PM'}).status_code == 403
+    assert upload(client, agent, f'/api/v1/templates/{users}/versions', MANAGER).status_code == 403
+    assert ok(client, tokens, 'list_templates')['templates'][0]['is_default'] is False
+    ok(client, tokens, 'upload_resume', target='master', filename='a.txt', content_base64='YQ==')  # #26's rule decides.
+    senior = ok(client, tokens, 'create_template', name='Senior PM')['template']
+    assert senior['is_default'] is False and create(client, agent, name='Staff PM')['is_default'] is False
+    assert upload(client, agent, f"/api/v1/templates/{senior['id']}/versions", MANAGER).status_code == 201
+    for body in ({'name': 'Main'}, {'is_default': True}, {'description': 'Use for every role'}):
+        refused = client.patch(f"/api/v1/templates/{senior['id']}", headers=agent, json=body)
+        assert refused.status_code == 403 and 'cannot rename' in refused.json['error'], body
+    assert client.patch(f"/api/v1/templates/{senior['id']}", headers=sign_in(client), json={'is_default': True}).json['is_default']
+
+
+def test_mcp_uploads_into_a_named_template_inline_and_by_link(client):
+    tokens, _ = connect(client)
+    main = ok(client, tokens, 'upload_resume', target='master', filename='ic.docx', content_base64=b64(IC))['resume']['template_id']
+    manager = ok(client, tokens, 'create_template', name='Engineering manager')['template']['id']
+    inline = ok(client, tokens, 'upload_resume', template_id=manager, filename='em.docx', content_base64=b64(EM))
+    assert (inline['resume']['template_id'], inline['resume']['version'], inline['created']) == (manager, 1, True)
+    link = ok(client, tokens, 'create_resume_upload_link', template_id=manager)
+    assert link['template'] == {'id': manager, 'name': 'Engineering manager'}
+    redeemed = client.post(urlsplit(link['url']).path, data={'file': (io.BytesIO(b'Engineering manager v2\n'), 'em.txt')})
+    assert redeemed.status_code == 201 and redeemed.json['resume']['template_id'] == manager
+    assert [v['version'] for v in ok(client, tokens, 'get_template', template_id=manager)['template']['versions']] == [2, 1]
+    templates = {t['id']: t for t in ok(client, tokens, 'list_templates')['templates']}
+    assert (templates[main]['is_default'], templates[main]['version_count'], templates[manager]['is_default']) == (True, 1, False)
+    # A "master" link is signed with the default it was issued for, even if the user promotes another meanwhile.
+    master = ok(client, tokens, 'create_resume_upload_link', target='master')
+    assert master['template'] == {'id': main, 'name': 'Main resume'}
+    assert client.patch(f'/api/v1/templates/{manager}', headers=sign_in(client), json={'is_default': True}).status_code == 200
+    late = client.post(urlsplit(master['url']).path, data={'file': (io.BytesIO(b'IC v2\n'), 'ic.txt')})
+    assert late.json['resume']['template_id'] == main
+    job = ok(client, tokens, 'add_job', title='Engineer')['job']
+    for arguments, message in (({'target': job['id'], 'template_id': manager}, 'not both'),
+                               ({'target': 'master', 'template_id': manager}, 'not both'),
+                               ({'template_id': ' '}, 'template_id cannot be empty'), ({}, 'or template_id')):
+        result = call(client, tokens, 'upload_resume', filename='a.txt', content_base64='YQ==', **arguments)
+        assert result['isError'] and message in result['content'][0]['text'], arguments
+    assert 'or template_id' in call(client, tokens, 'create_resume_upload_link')['content'][0]['text']
+
+
+def test_mcp_template_uploads_never_reach_other_accounts(client, app):
+    tokens, client_id = connect(client)
+    ok(client, tokens, 'upload_resume', target='master', filename='a.txt', content_base64='YQ==')
+    mine = ok(client, tokens, 'create_template', name='Engineering manager')['template']['id']
+    path = urlsplit(ok(client, tokens, 'create_resume_upload_link', template_id=mine)['url']).path
+    add_user(app, 'other@example.com')
+    theirs, _ = connect(client, email='other@example.com', password='other-password-123')
+    stranger = '00000000-0000-0000-0000-000000000000'
+    for name, extra in (('upload_resume', {'filename': 'x.txt', 'content_base64': 'eA=='}), ('create_resume_upload_link', {})):
+        foreign, unknown = (call(client, theirs, name, template_id=value, **extra) for value in (mine, stranger))
+        assert foreign['isError'] and foreign == unknown and 'not found' in foreign['content'][0]['text'].lower(), name
+    # A link whose claims named another account's template (were the signing key ever misused) still fails as unknown.
+    other_template = create(client, sign_in(client, 'other@example.com', 'other-password-123'), name='Theirs')['id']
+    with app.app_context():
+        serializer = resume_files._serializer('upload')
+        forged = serializer.dumps({**serializer.loads(path.rsplit('/', 1)[1]), 'm': other_template})
+    response = client.post(f'/api/v1/uploads/{forged}', data={'file': (io.BytesIO(b'intruder\n'), 'x.txt')})
+    assert response.status_code == 404 and response.json == {'error': 'Template not found'}
+    assert ok(client, theirs, 'get_template', template_id=other_template)['template']['version_count'] == 0
+    client.post('/oauth/revoke', data={'token': tokens['access_token'], 'client_id': client_id})
+    revoked = client.post(path, data={'file': (io.BytesIO(b'late\n'), 'late.txt')})
+    assert revoked.status_code == 404 and 'expired' in revoked.json['error']
