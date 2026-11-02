@@ -316,3 +316,12 @@ def test_schema_11_upgrade_keeps_users_and_the_id_sequence(app, tmp_path):
     assert new_id == 8  # the deleted account's ID 7 is never reissued
     login = upgraded.test_client().post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'})
     assert login.status_code == 200
+
+
+def test_draft_metadata_with_an_unpaired_surrogate_is_refused(client, app):
+    _, grant = account(client)
+    resume = upload_resume(client, grant).json
+    job = add_job(client, app, grant)
+    response = save_draft(client, grant, job['id'], resume['id'], request_id='rq_\ud800')
+    assert response.status_code == 400 and response.json == {'error': 'draft must be a JSON object'}
+    assert save_draft(client, grant, job['id'], resume['id'], note='\U0001F600').status_code == 201

@@ -540,3 +540,23 @@ def test_schema_11_databases_upgrade_to_12(app, tmp_path):
     assert {'oauth_clients', 'oauth_grants', 'oauth_codes', 'oauth_tokens'} <= tables
     tokens, _ = connect(upgraded.test_client())
     assert tokens['token_type'] == 'Bearer'
+
+
+def test_unpaired_surrogates_are_parse_errors(client):
+    assert client.post('/oauth/register', json={'redirect_uris': [REDIRECT], 'client_name': 'Agent \ud800'}).json == {
+        'error': 'invalid_client_metadata', 'error_description': 'A JSON object is required'}
+    tokens, _ = connect(client)
+    response = client.post('/mcp', headers={**bearer(tokens), 'MCP-Protocol-Version': '2025-06-18'}, json={
+        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+        'params': {'name': 'add_job', 'arguments': {'title': 'Engineer', 'company': '\ud800'}}})
+    assert response.status_code == 400 and response.json['error'] == {'code': -32700, 'message': 'Parse error'}
+    assert ok(client, tokens, 'list_jobs')['total'] == 0
+    response = client.post('/mcp', headers={**bearer(tokens), 'Content-Type': 'application/json'},
+                           data='{"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"x": ' + '[' * 100000
+                                + ']' * 100000 + '}}')
+    assert response.status_code == 400 and response.json['error']['code'] == -32700
+    response = client.post('/mcp', headers={**bearer(tokens), 'Content-Type': 'application/json'},
+                           data=b'{"jsonrpc": "2.0", "id": 1, "method": "ping\xff"}')
+    assert response.status_code == 400 and response.json['error']['code'] == -32700
+    job = ok(client, tokens, 'add_job', title='Engineer', company='Acme \U0001F600')['job']
+    assert ok(client, tokens, 'get_job', job_id=job['id'])['job']['company'] == 'Acme \U0001F600'

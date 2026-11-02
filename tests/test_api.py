@@ -125,3 +125,51 @@ def test_outreach_badge_api_persistence_and_validation(client):
     assert result.json['stage'] == 'applied'
     assert result.json['outreach_completed'] is False
     assert client.patch(f'/api/v1/jobs/{job["id"]}', json={'outreach_completed': 'false'}, headers=headers).status_code == 400
+
+
+def test_unpaired_surrogates_are_malformed_json_and_pairs_are_kept(client):
+    headers = {'Authorization': 'Bearer test-agent-token'}
+    for body in ('{"title": "Engineer", "company": "\\ud800"}', '{"title": "Engineer", "\\udfff": 1}',
+                 b'{"title": "Engineer", "company": "\xed\xa0\x80"}', b'{"title": "Engineer \xff"}'):
+        # Escaped, as a key, as raw surrogate bytes, and as invalid UTF-8.
+        response = client.post('/api/v1/jobs', data=body, content_type='application/json', headers=headers)
+        assert response.status_code == 400 and response.json == {'error': 'A JSON object is required'}
+    assert client.get('/api/v1/jobs', headers=headers).json['jobs'] == []
+    job = client.post('/api/v1/jobs', data='{"title": "Engineer", "company": "Acme \\ud83d\\ude00"}',
+                      content_type='application/json', headers=headers).json
+    assert job['company'] == 'Acme \U0001F600'
+    changed = client.patch(f'/api/v1/jobs/{job["id"]}', json={'notes': ['\udc00'], 'version': job['version']},
+                           headers=headers)
+    assert changed.status_code == 400
+    changed = client.patch(f'/api/v1/jobs/{job["id"]}', json={'notes': 'Ship it \U0001F680', 'version': job['version']},
+                           headers=headers)
+    assert changed.status_code == 200
+    assert client.get(f'/api/v1/jobs/{job["id"]}', headers=headers).json['notes'] == 'Ship it \U0001F680'
+
+
+def test_deeply_nested_json_is_malformed_not_a_crash(client):
+    headers = {'Authorization': 'Bearer test-agent-token'}
+    for depth, status in ((63, 400), (64, 400), (100000, 400)):  # 63 reaches the service, which rejects the list.
+        body = '{"title": "Engineer", "notes": ' + '[' * depth + ']' * depth + '}'
+        response = client.post('/api/v1/jobs', data=body, content_type='application/json', headers=headers)
+        assert response.status_code == status
+        assert (response.json == {'error': 'A JSON object is required'}) is (depth >= 64)
+    deep = '{"email": ' + '[' * 100000 + ']' * 100000 + '}'
+    malformed = client.post('/api/v1/auth/login', data='{', content_type='application/json')
+    nested = client.post('/api/v1/auth/login', data=deep, content_type='application/json')
+    assert nested.status_code == malformed.status_code != 500 and nested.json == malformed.json
+
+
+@pytest.mark.parametrize('path', ['/api/v1/jobs', '/api/v1/jobs/search', '/oauth/authorize'])
+@pytest.mark.parametrize('query', [b'q=\xed\xa0\x80', b'client_id=\xff'])
+def test_query_strings_must_be_utf8(client, path, query):
+    # WSGI servers pass the raw bytes through as latin-1; Werkzeug decodes them strictly.
+    response = client.get(path, environ_overrides={'QUERY_STRING': query.decode('latin-1')},
+                          headers={'Authorization': 'Bearer test-agent-token'})
+    assert response.status_code == 400 and response.json == {'error': 'The query string must be valid UTF-8'}
+
+
+def test_utf8_query_strings_still_work(client):
+    query = 'q=%F0%9F%98%80'  # An emoji, percent-encoded as browsers send it.
+    assert client.get('/api/v1/jobs', environ_overrides={'QUERY_STRING': query},
+                      headers={'Authorization': 'Bearer test-agent-token'}).status_code == 200
