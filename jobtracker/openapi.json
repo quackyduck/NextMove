@@ -1244,13 +1244,20 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "$ref": "#/components/responses/Error"
+            "description": "A taken name, an 11th template, or (OAuth tokens) a 6th: connected apps stop at 5 templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet. Over OAuth, creation also stops at 5 templates (409).",
+            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet.",
             "content": {
               "application/json": {
                 "schema": {
