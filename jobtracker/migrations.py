@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -125,6 +125,26 @@ def with_deferred_foreign_keys(connection, step):
     connection.exec_driver_sql('PRAGMA defer_foreign_keys=OFF')
 
 
+def rebuild_resumes(connection, owner='user_id', source=False):
+    """Rebuild resumes with frozen DDL: as schema 9 created it, or with schema 14's source column."""
+    columns = 'id, job_id, original_filename, stored_filename, media_type, size, sha256, created_at'
+    connection.execute(text(
+        'CREATE TABLE resumes_new (id VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, job_id VARCHAR(36) NOT NULL, '
+        'original_filename VARCHAR(500) NOT NULL, stored_filename VARCHAR(100) NOT NULL, media_type VARCHAR(200) NOT NULL, '
+        'size INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, created_at DATETIME NOT NULL, '
+        + ('source_master_resume_id VARCHAR(36), ' if source else '') +
+        'PRIMARY KEY (id), CHECK (size >= 0), '
+        'CONSTRAINT fk_resumes_job_owner FOREIGN KEY(job_id, user_id) REFERENCES jobs (id, user_id), '
+        + ('CONSTRAINT fk_resumes_source_owner FOREIGN KEY(source_master_resume_id, user_id) '
+           'REFERENCES master_resumes (id, user_id), ' if source else '') +
+        'FOREIGN KEY(user_id) REFERENCES users (id), UNIQUE (stored_filename))'))
+    connection.exec_driver_sql(f'INSERT INTO resumes_new (user_id, {columns}) SELECT {owner}, {columns} FROM resumes')
+    connection.exec_driver_sql('DROP TABLE resumes')
+    connection.exec_driver_sql('ALTER TABLE resumes_new RENAME TO resumes')
+    connection.execute(text('CREATE INDEX ix_resumes_user_id ON resumes (user_id)'))
+    connection.execute(text('CREATE INDEX ix_resumes_job_owner_created ON resumes (job_id, user_id, created_at, id)'))
+
+
 def bootstrap_email(value):
     from .credentials import normalize_email
     email = normalize_email(value) if value else PLACEHOLDER_ADMIN_EMAIL
@@ -159,9 +179,14 @@ def upgrade_v8_to_v9(connection, admin_email=None, bootstrap_hash=None):
         id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
         session_version=credential.session_version, owns_legacy_tokens=True, created_at=models.now()))
 
+    # The other tenant tables are still rebuilt from the current model: the next column added to any of them needs
+    # frozen schema-9 DDL here too, as resumes has.
     def rebuild():
         for name in TENANT_TABLES:
-            rebuild_table(connection, getattr(models, name), {'user_id': '1'})
+            if name == 'Resume':
+                rebuild_resumes(connection, owner='1')  # Frozen: the model has since gained a column.
+            else:
+                rebuild_table(connection, getattr(models, name), {'user_id': '1'})
     with_deferred_foreign_keys(connection, rebuild)
     connection.exec_driver_sql('DROP TABLE workspace_credentials')
     connection.execute(text('UPDATE schema_version SET version=9'))
@@ -300,6 +325,14 @@ def upgrade_v12_to_v13(connection):
     connection.execute(text('UPDATE schema_version SET version=13'))
 
 
+def upgrade_v13_to_v14(connection):
+    """A job's resume can record the template version it was tailored from. Existing resumes record none.
+    master_resumes gains the (id, user_id) key that resumes' composite owner FK references."""
+    connection.execute(text('CREATE UNIQUE INDEX uq_master_resumes_id_user ON master_resumes (id, user_id)'))
+    with_deferred_foreign_keys(connection, lambda: rebuild_resumes(connection, source=True))
+    connection.execute(text('UPDATE schema_version SET version=14'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -337,5 +370,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [12]:
         upgrade_v12_to_v13(connection)
         versions = [13]
+    if versions == [13]:
+        upgrade_v13_to_v14(connection)
+        versions = [14]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

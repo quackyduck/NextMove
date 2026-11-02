@@ -66,6 +66,22 @@ test("capture, persist, progress, contact, resume and responsive board", async (
   const downloadEvent = page.waitForEvent("download");
   await resume.click();
   expect((await downloadEvent).suggestedFilename()).toBe("demo-resume.pdf");
+  // An agent files a resume tailored from a template version; the role names it.
+  const api = `${workspacePath}api/v1`;
+  const session = await (await page.request.get(`${api}/auth/session`)).json();
+  const headers = { "X-CSRF-Token": session.csrf_token };
+  const text = (name, body) => ({ name, mimeType: "text/plain", buffer: Buffer.from(body) });
+  const master = await (await page.request.post(`${api}/profile/resume`, {
+    headers, multipart: { file: text("master.txt", "Platform engineer\n") },
+  })).json();
+  const job = (await (await page.request.get(`${api}/jobs`)).json()).jobs.find((item) => item.title === title);
+  const tailored = await page.request.post(`${api}/jobs/${job.id}/resumes`, {
+    headers, multipart: { source_resume_id: master.resume.id, file: text("tailored.txt", "Tailored\n") },
+  });
+  expect(tailored.status()).toBe(201);
+  await page.reload();
+  await page.getByRole("button", { name: title }).click();
+  await expect(page.getByRole("link", { name: /tailored\.txt/ })).toContainText("Tailored from Main resume v1");
   await page
     .getByRole("button", { name: "Your pipeline", exact: false })
     .first()

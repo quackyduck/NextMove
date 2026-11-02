@@ -131,6 +131,7 @@ def start(legacy, **overrides):
 def assert_upgraded(legacy):
     after = rows(legacy.path)
     assert after.pop('version') == [(migrations.SCHEMA_VERSION,)]
+    assert [row.pop('source_master_resume_id') for row in after['resumes']] == [None] * len(after['resumes'])
     assert after == {table: legacy.before[table] for table in TABLES}
     for table in TABLES:
         assert query(legacy.path, f'SELECT DISTINCT user_id FROM {table}') == [(1,)]

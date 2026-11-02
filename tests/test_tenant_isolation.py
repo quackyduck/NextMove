@@ -26,7 +26,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, credentials, extraction_tasks, harness, ingestion, oauth, taskqueue
+from jobtracker import create_app, credentials, extraction_tasks, harness, ingestion, oauth, resume_files, taskqueue
 from jobtracker.models import OAUTH_SCOPES, Contact, OAuthClient, OAuthGrant, OAuthToken, now
 
 from test_documents import docx
@@ -410,6 +410,33 @@ def test_mcp_tools_cannot_reach_other_tenants(world):
     listed = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                                                         'params': {'name': 'list_jobs', 'arguments': {'outcome': 'all'}}})
     assert listed.json['result']['structuredContent']['jobs'] == []
+    assert a_state(world) == before
+
+
+def test_other_tenants_template_versions_cannot_be_a_resume_source(world):
+    """B names A's template version as the source of B's own job resume: refused exactly like an unknown ID."""
+    before, ids, engine = a_state(world), world['ids'], world['app'].extensions['jobtracker_db']['engine']
+    (b, session), (client, oauth_headers) = world['credentials']['session'], world['credentials']['oauth']
+    job = b.post('/api/v1/jobs', headers=session, json={'title': 'B role'}).json['id']
+    for source in (ids['master'], str(uuid.uuid4())):
+        response = b.post(f'/api/v1/jobs/{job}/resumes', headers=session,
+                          data={'file': (io.BytesIO(b'B'), 'b.txt'), 'source_resume_id': source})
+        assert (response.status_code, response.json) == (404, {'error': 'Source resume version not found'})
+        for name, extra in (('upload_resume', {'filename': 'b.txt', 'content_base64': 'Qg=='}),
+                            ('create_resume_upload_link', {})):
+            result = client.post('/mcp', headers=oauth_headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+                'name': name, 'arguments': {'target': job, 'source_resume_id': source, **extra}}}).json['result']
+            assert result['isError'] and 'Source resume version not found' in result['content'][0]['text'], name
+    with engine.connect() as connection:
+        b_grant = connection.scalar(text('SELECT id FROM oauth_grants WHERE user_id=1'))
+    with world['app'].test_request_context():  # A link whose claims were forged (were the key ever misused).
+        link = resume_files.upload_link('', b_grant, job, source_id=ids['master'])['url']
+    response = client.post(link, data={'file': (io.BytesIO(b'B'), 'b.txt')})
+    assert (response.status_code, response.json) == (404, {'error': 'Source resume version not found'})
+    assert b.get(f'/api/v1/jobs/{job}/resumes').json['resumes'] == []
+    b.post(f'/api/v1/jobs/{job}/resumes', headers=session, data={'file': (io.BytesIO(b'B'), 'b.txt')})
+    with pytest.raises(IntegrityError), engine.begin() as connection:  # The database refuses it too.
+        connection.execute(text('UPDATE resumes SET source_master_resume_id=:id WHERE user_id=1'), {'id': ids['master']})
     assert a_state(world) == before
 
 

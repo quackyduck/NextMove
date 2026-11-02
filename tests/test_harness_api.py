@@ -166,6 +166,7 @@ def test_drafts_are_idempotent_and_only_approval_files_them(client, app):
         assert approved.status_code == 200 and approved.json['approved'] is True
         resumes = services.list_resumes(user_id, job['id'])
         assert sorted(r['original_filename'] for r in resumes) == ['tailored-resume-r1.docx', 'tailored-resume-r1.pdf']
+        assert [r['source']['resume_id'] for r in resumes] == [resume['id']] * 2  # The draft's template version.
         again = client.post(f"/api/v1/me/drafts/{first.json['id']}/approve", headers=grant)
         assert again.status_code == 200 and len(services.list_resumes(user_id, job['id'])) == 2
         assert services.get_job(user_id, job['id'])['stage'] == 'needs_review'  # stage is the user's call

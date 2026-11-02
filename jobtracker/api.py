@@ -7,7 +7,7 @@ import zipfile
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 from . import services, storage
-from .auth import require_browser_auth, require_agent_token, require_resume_upload_access, require_scope
+from .auth import can_read_resumes, require_browser_auth, require_agent_token, require_resume_upload_access, require_scope
 from .search_access import require_search_access
 
 api = Blueprint('api', __name__)
@@ -159,7 +159,7 @@ def jobs_update(job_id):
 @api.get('/jobs/<job_id>/activities')
 @require_scope('jobs:read')
 def activities_list(job_id):
-    return jsonify(activities=services.list_activities(g.user_id, job_id))
+    return jsonify(activities=services.list_activities(g.user_id, job_id, sources=can_read_resumes()))
 
 
 @api.get('/jobs/<job_id>/contacts')
@@ -210,6 +210,7 @@ def validate_document(filename, data):
 @require_scope('resumes:write', fallback=require_resume_upload_access)
 def resumes_create(job_id):
     services.get_job(g.user_id, job_id)
+    source = services.source_version(g.user_id, request.form.get('source_resume_id') or None)  # Before any bytes.
     upload = request.files.get('file')
     if upload is None or not upload.filename:
         raise services.ServiceError('A resume file is required', 400)
@@ -231,11 +232,12 @@ def resumes_create(job_id):
             'media_type': media_type,
             'size': len(data),
             'sha256': hashlib.sha256(data).hexdigest(),
+            'source_master_resume_id': source,
         })
     except Exception:
         target.unlink(missing_ok=True)
         raise
-    return jsonify(result), 201
+    return jsonify(result if can_read_resumes() else services.without_source_details(result)), 201
 
 
 @api.get('/resumes/<resume_id>/download')

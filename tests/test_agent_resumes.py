@@ -52,6 +52,27 @@ def test_existing_add_roles_tokens_can_append_versions_without_other_authority(c
     assert client.post('/api/v1/jobs', headers=headers, json={'title': 'Not allowed'}).status_code == 401
 
 
+def test_add_roles_tokens_can_name_their_own_template_version_only(client, app):
+    from accounts import add_user, sign_in
+    browser = login(client)
+    mine = client.post('/api/v1/profile/resume', headers=browser,
+                       data={'file': (io.BytesIO(b'Main\n'), 'm.txt')}).json['resume']['id']
+    add_user(app, 'other@example.com')
+    other = app.test_client()
+    theirs = other.post('/api/v1/profile/resume', headers=sign_in(other, 'other@example.com', 'other-password-123'),
+                        data={'file': (io.BytesIO(b'Theirs\n'), 't.txt')}).json['resume']['id']
+    headers = bearer(create(client, browser))
+    path = f"/api/v1/jobs/{client.post('/api/v1/jobs', headers=browser, json={'title': 'Role'}).json['id']}/resumes"
+    send = lambda source: client.post(path, headers=headers, data={'file': (io.BytesIO(b'T'), 't.txt'),
+                                                                    'source_resume_id': source})
+    own = send(mine)  # The token cannot read templates, so it gets back only the ID it sent.
+    assert own.status_code == 201 and own.json['source'] == {'resume_id': mine}
+    foreign, unknown = send(theirs), send('00000000-0000-0000-0000-000000000000')
+    assert (foreign.status_code, foreign.json) == (unknown.status_code, unknown.json) == (
+        404, {'error': 'Source resume version not found'})
+    assert client.get(path).json['resumes'][0]['source']['template_name'] == 'Main resume'
+
+
 @pytest.mark.parametrize('failure', ['expired', 'revoked', 'invalid', 'missing', 'legacy_search'])
 def test_invalid_upload_credentials_do_not_write_files(client, app, failure):
     browser = login(client)

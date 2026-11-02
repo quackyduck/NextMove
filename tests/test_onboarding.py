@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine, inspect
 
 from jobtracker import credentials, migrations, onboarding
+from legacy import rewind_resume_sources
 from test_api import app, client, login  # noqa: F401
 from test_documents import PDF, docx
 
@@ -210,6 +211,7 @@ def test_schema_10_migration_matches_fresh_schema(app, tmp_path):
     connection.execute(f"VACUUM INTO '{legacy}'")
     connection.close()
     downgrade = sqlite3.connect(legacy)
+    rewind_resume_sources(downgrade)
     downgrade.executescript('DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; '
                             'DROP TABLE oauth_clients; DROP TABLE tailored_drafts; DROP TABLE harness_grants; DROP TABLE activation_tokens; '
                             'DROP TABLE onboarding_steps; DROP TABLE master_resumes; DROP TABLE resume_templates; UPDATE schema_version SET version=9;')

@@ -71,6 +71,9 @@ class Contact(Base):
 class Resume(Base):
     __tablename__ = "resumes"
     __table_args__ = (CheckConstraint("size >= 0"), ForeignKeyConstraint(["job_id", "user_id"], ["jobs.id", "jobs.user_id"], name="fk_resumes_job_owner"),
+        # The template version a resume was tailored from is always the same account's.
+        ForeignKeyConstraint(["source_master_resume_id", "user_id"], ["master_resumes.id", "master_resumes.user_id"],
+                             name="fk_resumes_source_owner"),
         Index("ix_resumes_job_owner_created", "job_id", "user_id", "created_at", "id"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
@@ -81,6 +84,7 @@ class Resume(Base):
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    source_master_resume_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class Activity(Base):
@@ -247,6 +251,7 @@ class MasterResume(Base):
         # A version can never belong to another account's template.
         ForeignKeyConstraint(["template_id", "user_id"], ["resume_templates.id", "resume_templates.user_id"],
                              name="fk_master_resumes_template_owner"),
+        Index("uq_master_resumes_id_user", "id", "user_id", unique=True),  # Target of resumes' source FK.
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
