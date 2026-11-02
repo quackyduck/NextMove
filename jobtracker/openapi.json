@@ -1218,7 +1218,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1338,7 +1338,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1920,7 +1920,7 @@
           "name": {
             "type": "string",
             "maxLength": 100,
-            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, e.g. \"Engineering manager\""
+            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
           },
           "description": {
             "type": "string",

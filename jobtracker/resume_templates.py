@@ -124,21 +124,30 @@ def _fields(data, allowed):
     return fields
 
 
+def name_key(name):
+    """What two names must not share: NFKC (full-width, ligatures), case and runs of whitespace folded.
+    Other scripts stay distinct (a Cyrillic "а" is a different letter, not a look-alike we can rule out)."""
+    return ' '.join(unicodedata.normalize('NFKC', name).casefold().split())
+
+
 def _check_name(connection, user_id, name, except_id=None):
     rows = connection.execute(select(TEMPLATES.c.id, TEMPLATES.c.name).where(TEMPLATES.c.user_id == user_id)).all()
-    if any(row.id != except_id and row.name.casefold() == name.casefold() for row in rows):
+    if any(row.id != except_id and name_key(row.name) == name_key(name) for row in rows):
         raise services.ServiceError('A template with this name already exists', 409)
     return rows
 
 
-def create_template(user_id, data):
-    """A new, empty template; it becomes the default only once it has a version."""
+def create_template(user_id, data, cap=MAX_TEMPLATES):
+    """A new, empty template; it becomes the default only once it has a version. `cap` (at most MAX_TEMPLATES)
+    lets a caller such as MCP stop below the account limit."""
     fields = _fields(data, {'name', 'description'})
     if 'name' not in fields:
         raise services.ServiceError('name is required')
     with write_lock() as connection:
-        if len(_check_name(connection, user_id, fields['name'])) >= MAX_TEMPLATES:
-            raise services.ServiceError(f'You can keep up to {MAX_TEMPLATES} resume templates', 409)
+        if len(_check_name(connection, user_id, fields['name'])) >= min(cap, MAX_TEMPLATES):
+            raise services.ServiceError(f'You can keep up to {MAX_TEMPLATES} resume templates' if cap >= MAX_TEMPLATES
+                                        else f'Connected apps can create templates only while there are fewer than '
+                                             f'{cap}; ask the user to add more in My Next Moov', 409)
         values = {'description': '', **fields, 'id': new_id(), 'user_id': user_id, 'is_default': False,
                   'created_at': now(), 'updated_at': now()}
         connection.execute(insert(TEMPLATES).values(**values))
@@ -173,7 +182,7 @@ def target_template(connection, user_id, template_id=None):
         return default
     else:
         rows = connection.execute(select(TEMPLATES.c.id, TEMPLATES.c.name).where(TEMPLATES.c.user_id == user_id)).all()
-        named = [row.id for row in rows if len(rows) == 1 or row.name.casefold() == DEFAULT_NAME.casefold()]
+        named = [row.id for row in rows if len(rows) == 1 or name_key(row.name) == name_key(DEFAULT_NAME)]
         template_id = named[0] if named else None
         if template_id is None and len(rows) >= MAX_TEMPLATES:
             raise services.ServiceError('Upload into one of your resume templates', 409)
