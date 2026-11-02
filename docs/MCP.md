@@ -43,13 +43,16 @@ No scope allows deleting anything, changing the password, managing tokens or con
 | `add_note` | jobs:write | Appends `[YYYY-MM-DD · <agent name>] text` |
 | `update_job` | jobs:write | Requires `version`; a stale version comes back as a tool error telling the agent to re-read |
 | `add_contact` | jobs:write | Saving a contact does not mark outreach |
-| `list_resumes` | resumes:read | Master versions, plus a role's attachments when given `job_id` |
-| `read_resume` | resumes:read | DOCX/TXT as `{id, text, kind, style}` paragraphs; defaults to the latest master |
+| `list_resumes` | resumes:read | The default template (`{id, name}`) and its versions, plus a role's attachments when given `job_id` |
+| `list_templates` | resumes:read | Resume templates (one per kind of role): name, description, default flag, version count, latest version |
+| `get_template` | resumes:read | One template with every version, newest first |
+| `diff_resumes` | resumes:read | Paragraph-level diff of two templates (latest versions) or resume versions, with each change's section heading; DOCX/TXT only, first 500 changes |
+| `read_resume` | resumes:read | DOCX/TXT as `{id, text, kind, style}` paragraphs; by `resume_id`, by `template_id` (its latest version), or the latest master |
 | `get_resume_download_link` | resumes:read | Signed URL, valid 5 minutes |
 | `create_resume_upload_link` | resumes:write | Signed URL for a multipart `POST` with field `file`, valid 15 minutes |
 | `upload_resume` | resumes:write | Base64 content up to 5 MB, for agents that can't make HTTP requests |
 
-The server's `initialize` instructions tell agents the stage order, that uploading a resume is not applying, and to confirm stage or outcome changes unless the user asked for that exact change.
+The server's `initialize` instructions tell agents the stage order, that uploading a resume is not applying, and to confirm stage or outcome changes unless the user asked for that exact change. They also explain resume templates: before tailoring for a role, pick the template whose name and description fit it (asking the user when none clearly does), and use `diff_resumes` to compare. Templates are read-only over MCP for now (`upload_resume` with target `master` still adds a version to the default template); create templates and upload into them with the REST `/templates` routes.
 
 ## Protocol details
 
@@ -74,6 +77,7 @@ The server's `initialize` instructions tell agents the stage order, that uploadi
 - A client's name is self-declared. The consent page says so and shows the redirect host.
 - Signed file links are bearer capabilities tied to a connection. They stop working when they expire, when the connection is revoked, or when the scope is removed. An upload link can be used more than once within its 15 minutes, and each use adds a version (an identical master upload is a no-op).
 - `read_resume` reads `word/document.xml` with the standard library and refuses any DTD. PDFs are not parsed.
+- `diff_resumes` uses the same reader and refuses documents over 2,000 paragraphs, so the quadratic paragraph match stays bounded; another account's template or resume IDs fail exactly like unknown ones.
 - The tenant isolation suite covers OAuth tokens on every route and every MCP tool.
 
 ## Next steps

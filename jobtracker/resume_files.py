@@ -6,6 +6,7 @@ its scopes) also disables every link issued under it. Links are bearer
 capabilities: keep their lifetimes short and never log them.
 """
 import io
+import itertools
 import xml.etree.ElementTree as ElementTree
 import zipfile
 
@@ -55,12 +56,13 @@ def latest_master(user_id):
     return latest_version(user_id)
 
 
-def read_paragraphs(path, media_type):
-    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction)."""
+def read_paragraphs(path, media_type, limit=None):
+    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction).
+    With `limit`, stops after limit + 1 paragraphs so callers can refuse oversized documents cheaply."""
     if media_type == 'text/plain':
         lines = path.read_text(encoding='utf-8').splitlines()
-        return [{'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
-                for index, line in enumerate(lines) if line.strip()]
+        return list(itertools.islice(({'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
+                                      for index, line in enumerate(lines) if line.strip()), limit and limit + 1))
     if media_type != documents.MEDIA_TYPES['.docx']:
         return None
     try:
@@ -85,6 +87,8 @@ def read_paragraphs(path, media_type):
         numbered = paragraph.find(f'{WORD}pPr/{WORD}numPr') is not None
         paragraphs.append({'id': f'p{index}', 'text': text, 'kind': 'bullet' if numbered else _kind(style, text),
                            'style': style})
+        if limit and len(paragraphs) > limit:
+            break
     return paragraphs
 
 

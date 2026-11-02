@@ -79,6 +79,9 @@ ENDPOINTS = [
     Endpoint('POST', '/api/v1/templates/<template_id>/versions', '/api/v1/templates/{template}/versions',
              ('session', 'oauth'), upload=True),
     Endpoint('GET', '/api/v1/templates/<template_id>/download', '/api/v1/templates/{template}/download', ('session', 'oauth')),
+    # Diffs take a template ID (its latest version) or a resume version ID on either side.
+    Endpoint('GET', '/api/v1/resume-diff', '/api/v1/resume-diff?from={template}&to={template}', ('session', 'oauth')),
+    Endpoint('GET', '/api/v1/resume-diff', '/api/v1/resume-diff?from={resume}&to={master}', ('session', 'oauth')),
 ]
 
 # Routes without an ID; each has a dedicated test below proving B sees only B's data.
