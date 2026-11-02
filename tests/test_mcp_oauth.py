@@ -446,6 +446,25 @@ def test_resumes_with_a_dtd_are_refused(client):
     assert refused['isError'] and 'could not be read' in refused['content'][0]['text']
 
 
+@pytest.mark.parametrize('codec, bom', [('utf-16-le', b'\xff\xfe'), ('utf-16-be', b'\xfe\xff')])
+def test_utf16_dtds_are_refused_and_utf16_documents_still_read(client, codec, bom):
+    # A UTF-16 document.xml hides '<!DOCTYPE' from a byte search; the parser itself must refuse it.
+    tokens, _ = connect(client)
+    entities = '<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">'
+    bomb = RESUME_XML.decode().replace('encoding="UTF-8"?>', f'encoding="UTF-16"?><!DOCTYPE d [{entities}]>')
+    bomb = bomb.replace('Experience', '&b;')
+    ok(client, tokens, 'upload_resume', target='master', filename='r.docx',
+       content_base64=base64.b64encode(docx(document=bom + bomb.encode(codec))).decode())
+    refused = call(client, tokens, 'read_resume')
+    assert refused['isError'] and 'could not be read' in refused['content'][0]['text']
+    assert 'aaaaaaaaaa' not in refused['content'][0]['text']
+    plain = bom + RESUME_XML.decode().replace('encoding="UTF-8"', 'encoding="UTF-16"').encode(codec)
+    ok(client, tokens, 'upload_resume', target='master', filename='r.docx',
+       content_base64=base64.b64encode(docx(document=plain)).decode())
+    assert [p['text'] for p in ok(client, tokens, 'read_resume')['paragraphs']] == [
+        'Experience', 'Led a platform team', 'Python\tGo']
+
+
 def test_upload_links_accept_one_file_and_die_with_the_connection(client):
     tokens, client_id = connect(client)
     job = ok(client, tokens, 'add_job', title='Engineer')['job']

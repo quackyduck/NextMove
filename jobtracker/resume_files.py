@@ -66,9 +66,9 @@ def read_paragraphs(path, media_type):
     try:
         with zipfile.ZipFile(path) as archive:
             data = documents._capped(archive, 'word/document.xml', MAX_DOCUMENT_XML)
-        if b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+        if b'<!DOCTYPE' in data or b'<!ENTITY' in data:  # Cheap first check; _parse_without_dtd is the real guard.
             raise ValueError('DTDs are not allowed')
-        root = ElementTree.fromstring(data)
+        root = _parse_without_dtd(data)
     except (zipfile.BadZipFile, KeyError, ValueError, ElementTree.ParseError):
         raise services.ServiceError('This resume could not be read as a Word document', 422) from None
     body = root.find(f'{WORD}body')
@@ -86,6 +86,18 @@ def read_paragraphs(path, media_type):
         paragraphs.append({'id': f'p{index}', 'text': text, 'kind': 'bullet' if numbered else _kind(style, text),
                            'style': style})
     return paragraphs
+
+
+class _NoDTD(ElementTree.TreeBuilder):
+    def doctype(self, *args):
+        raise ValueError('DTDs are not allowed')
+
+
+def _parse_without_dtd(data):
+    """Parse XML, refusing any DOCTYPE before expat reads its entities, whatever the document's encoding."""
+    parser = ElementTree.XMLParser(target=_NoDTD())
+    parser.feed(data)
+    return parser.close()
 
 
 def _kind(style, text):
