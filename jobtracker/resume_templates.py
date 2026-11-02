@@ -2,7 +2,9 @@
 
 The default template is "the master resume" wherever none is named: the first template, or "Main resume" on the
 first upload, until another is promoted. Nothing is deleted. Writes take the SQLite write lock before reading.
+Comparing two resumes is a paragraph-level diff of their text (DOCX and TXT; PDFs have no text layer we read).
 """
+import difflib
 from contextlib import contextmanager
 from datetime import timezone
 
@@ -20,6 +22,7 @@ templates = Blueprint('templates', __name__)
 TEMPLATES, VERSIONS = ResumeTemplate.__table__, MasterResume.__table__
 DEFAULT_NAME, NOT_FOUND = 'Main resume', 'Template not found'
 MAX_TEMPLATES, NAME_LIMIT, DESCRIPTION_LIMIT = 10, 100, 2000
+MAX_PARAGRAPHS, MAX_CHANGES = 2000, 500  # difflib is quadratic: 2,000 a side stays well under a second.
 FIELDS = ('id', 'name', 'description', 'is_default', 'created_at', 'updated_at')
 
 
@@ -159,6 +162,100 @@ def target_template(connection, user_id, template_id=None):
     return found
 
 
+# Comparing ----------------------------------------------------------------
+def _resolve(user_id, identifier, field):
+    """(record, path, template or None) for a template ID (its latest version) or any resume version the caller owns."""
+    from .resume_files import locate
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise services.ServiceError(f'{field} is required: a template ID or a resume version ID')
+    identifier, connection = identifier.strip(), get_session().connection()
+    template = connection.execute(select(TEMPLATES).where(TEMPLATES.c.id == identifier, TEMPLATES.c.user_id == user_id)
+                                  ).mappings().first()
+    if template is not None:
+        rows = versions(connection, user_id, template['id'])
+        if not rows:
+            raise services.ServiceError(f'Template "{template["name"]}" has no uploaded version yet', 409)
+        identifier = rows[0]['id']
+    try:
+        record, path, _ = locate(user_id, identifier)
+    except services.ServiceError:  # Unknown and another account's IDs alike.
+        raise services.ServiceError(f'{field}: no template or resume with this ID', 404) from None
+    if template is None and isinstance(record, MasterResume):
+        template = owned(connection, user_id, record.template_id)
+    if path is None or not path.is_file():
+        raise services.ServiceError('Resume file is unavailable', 404)
+    return record, path, template
+
+
+def _paragraphs(record, path):
+    from .resume_files import read_paragraphs
+    paragraphs = read_paragraphs(path, record.media_type, MAX_PARAGRAPHS)
+    if paragraphs is None:
+        raise services.ServiceError(f'"{record.original_filename}" is a PDF; only DOCX and TXT resumes can be compared. '
+                                    'Upload a DOCX or TXT version to compare it.', 422)
+    if len(paragraphs) > MAX_PARAGRAPHS:
+        raise services.ServiceError(f'"{record.original_filename}" has more than {MAX_PARAGRAPHS} paragraphs, '
+                                    'too many to compare', 422)
+    return paragraphs
+
+
+def _sections(paragraphs):
+    """The heading each paragraph sits under ('' before the first heading)."""
+    current, result = '', []
+    for paragraph in paragraphs:
+        current = paragraph['text'] if paragraph['kind'] == 'heading' else current
+        result.append(current)
+    return result
+
+
+def diff_paragraphs(old, new):
+    """Paragraph-level changes turning `old` into `new`: (changes, summary).
+
+    Each change is {op: added|removed|changed, section, from, to}, with `from`/`to` {id, text, kind} or None.
+    A replaced run is paired in order as "changed"; any surplus is added or removed. `section` is the heading the
+    paragraph sits under in `new` (in `old` for a removal).
+    """
+    sections = _sections(old), _sections(new)
+    view = lambda item: {'id': item['id'], 'text': item['text'], 'kind': item['kind']}
+    matcher = difflib.SequenceMatcher(a=[item['text'] for item in old], b=[item['text'] for item in new], autojunk=False)
+    changes, summary = [], {'added': 0, 'removed': 0, 'changed': 0, 'unchanged': 0}
+
+    def record(op, i=None, j=None):
+        summary[op] += 1
+        changes.append({'op': op, 'section': sections[1][j] if j is not None else sections[0][i],
+                        'from': None if i is None else view(old[i]), 'to': None if j is None else view(new[j])})
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            summary['unchanged'] += i2 - i1
+            continue
+        paired = min(i2 - i1, j2 - j1) if tag == 'replace' else 0
+        for offset in range(paired):
+            record('changed', i1 + offset, j1 + offset)
+        for i in range(i1 + paired, i2):
+            record('removed', i=i)
+        for j in range(j1 + paired, j2):
+            record('added', j=j)
+    return changes, summary
+
+
+def compare(user_id, from_id, to_id):
+    """Differences between two resumes; each ID is a template (its latest version) or a resume version.
+    `summary` counts every change; `changes` holds the first MAX_CHANGES, and `truncated` says whether more exist."""
+    from .resume_files import metadata
+    sides = [_resolve(user_id, from_id, 'from'), _resolve(user_id, to_id, 'to')]
+    result = {name: {**metadata(record), 'template': template and {'id': template['id'], 'name': template['name']}}
+              for name, (record, _, template) in zip(('from', 'to'), sides)}
+    old, new = (_paragraphs(record, path) for record, path, _ in sides)
+    identical = sides[0][0].sha256 == sides[1][0].sha256
+    if identical:  # Same bytes: nothing to diff.
+        changes, summary = [], {'added': 0, 'removed': 0, 'changed': 0, 'unchanged': len(old)}
+    else:
+        changes, summary = diff_paragraphs(old, new)
+    return {**result, 'identical': identical, 'summary': summary,
+            'changes': changes[:MAX_CHANGES], 'truncated': len(changes) > MAX_CHANGES}
+
+
 # Routes -------------------------------------------------------------------
 @templates.get('/templates')
 @require_scope('resumes:read', fallback=require_browser_auth)
@@ -198,3 +295,9 @@ def templates_upload(template_id):
 def templates_download(template_id):
     get_template(g.user_id, template_id)
     return send_version(g.user_id, template_id, request.args.get('version'))
+
+
+@templates.get('/resume-diff')
+@require_scope('resumes:read', fallback=require_browser_auth)
+def resume_diff():
+    return jsonify(compare(g.user_id, request.args.get('from'), request.args.get('to')))

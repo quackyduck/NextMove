@@ -14,9 +14,10 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import resume_files, services
+from . import resume_files, resume_templates, services
 from .models import OUTCOMES, STAGES
 from .oauth import base_url, require_oauth
+from .profile import public
 
 mcp = Blueprint('mcp', __name__)
 PROTOCOL_VERSIONS = ('2025-11-25', '2025-06-18', '2025-03-26')
@@ -32,7 +33,11 @@ INSTRUCTIONS = (
     + '. Outcome (active, rejected, withdrawn, closed, accepted, not_interested) is separate from stage. '
     'Only move a role to a stage that reflects work the user actually did: uploading a resume is not applying. '
     'Resume uploads always add a new version; nothing is ever deleted. Confirm with the user before changing '
-    'stage or outcome unless they asked for that exact change.'
+    'stage or outcome unless they asked for that exact change. '
+    'The user may keep several resume templates, one per kind of role (list_templates); "the master resume" is the '
+    'default template. Before tailoring a resume for a role, pick the template whose name and description fit that '
+    'role (ask the user if none clearly does), read it with read_resume template_id, and use diff_resumes to see how '
+    'templates, versions or tailored resumes differ.'
 )
 MAX_INLINE_UPLOAD = 5 * 1024 * 1024
 JOB_ID = {'type': 'string', 'description': 'Role ID from list_jobs'}
@@ -247,17 +252,43 @@ def add_contact(arguments):
 
 
 # Resumes ----------------------------------------------------------------
-@tool('list_resumes', 'resumes:read', 'List the user\'s master resume versions (newest first) and, with job_id, '
-      'the resume versions attached to that role.', {'job_id': JOB_ID}, read_only=True, title='List resumes')
+TEMPLATE_ID = {'type': 'string', 'description': 'Template ID from list_templates'}
+COMPARABLE = {'type': 'string', 'description': 'A template ID (compares its latest version) or a resume version ID '
+                                               '(a template version, or a resume attached to a role)'}
+
+
+@tool('list_templates', 'resumes:read', 'List the user\'s resume templates: one master resume per kind of role '
+      '(e.g. "Engineering manager"), each with its own versions. Returns each template\'s name, description, '
+      'whether it is the default, its version count and latest version. Pick the one that fits a role before tailoring.',
+      read_only=True, title='List resume templates')
+def list_templates(arguments):
+    return {'templates': resume_templates.list_templates(g.user_id)}
+
+
+@tool('get_template', 'resumes:read', 'Read one resume template with every version, newest first (version number, '
+      'file name, type, size, upload time). Pass a version id to read_resume or diff_resumes.',
+      {'template_id': TEMPLATE_ID}, ['template_id'], read_only=True, title='Get resume template')
+def get_template(arguments):
+    return {'template': resume_templates.get_template(g.user_id, _text_arg(arguments, 'template_id', required=True))}
+
+
+@tool('diff_resumes', 'resumes:read', 'Compare two resumes paragraph by paragraph: two templates, two versions, or a '
+      'template against a resume tailored for a role. Returns counts and each added, removed or changed paragraph '
+      'with the section heading it sits under (the first 500 changes; truncated says if there were more). '
+      'DOCX and TXT only.', {'from_id': COMPARABLE, 'to_id': COMPARABLE}, ['from_id', 'to_id'], read_only=True,
+      title='Compare resumes')
+def diff_resumes(arguments):
+    return resume_templates.compare(g.user_id, _text_arg(arguments, 'from_id', required=True),
+                                    _text_arg(arguments, 'to_id', required=True))
+
+
+@tool('list_resumes', 'resumes:read', 'List the versions of the user\'s default resume template (the master resume, '
+      'newest first) and, with job_id, the resume versions attached to that role. Use list_templates for the others.',
+      {'job_id': JOB_ID}, read_only=True, title='List resumes')
 def list_resumes(arguments):
-    from sqlalchemy import select
-    from .db import get_session
-    from .models import MasterResume, ResumeTemplate
-    # "The master resume" is the default template; other templates number their own versions.
-    masters = get_session().scalars(select(MasterResume).join(ResumeTemplate).where(
-        MasterResume.user_id == g.user_id, ResumeTemplate.is_default.is_(True))
-                                    .order_by(MasterResume.version.desc())).all()
-    result = {'master': [resume_files.metadata(record) for record in masters]}
+    template, versions = resume_templates.default_template(g.user_id)
+    result = {'template': template and {'id': template['id'], 'name': template['name']},
+              'master': [{**public(row), 'kind': 'master'} for row in versions]}
     job_id = _text_arg(arguments, 'job_id')
     if job_id:
         services.get_job(g.user_id, job_id)
@@ -266,15 +297,22 @@ def list_resumes(arguments):
 
 
 @tool('read_resume', 'resumes:read', 'Read a resume\'s text as paragraphs (id, text, kind: heading, bullet or '
-      'body). Defaults to the latest master resume. DOCX and TXT only; for a PDF use get_resume_download_link.',
-      {'resume_id': {'type': 'string', 'description': 'From list_resumes; omit for the latest master resume'}},
-      read_only=True, title='Read resume')
+      'body). Give a resume_id, or a template_id for that template\'s latest version; with neither, reads the latest '
+      'master resume (the default template). DOCX and TXT only; for a PDF use get_resume_download_link.', {
+          'resume_id': {'type': 'string', 'description': 'A version ID from list_resumes, get_template or get_job'},
+          'template_id': TEMPLATE_ID,
+      }, read_only=True, title='Read resume')
 def read_resume(arguments):
-    resume_id = _text_arg(arguments, 'resume_id')
+    resume_id, template_id = _text_arg(arguments, 'resume_id'), _text_arg(arguments, 'template_id')
+    if resume_id and template_id:
+        raise ToolError('Give resume_id or template_id, not both')
     if not resume_id:
-        latest = resume_files.latest_master(g.user_id)
+        if template_id:
+            resume_templates.get_template(g.user_id, template_id)  # Unknown and other accounts' IDs: not found.
+        latest = resume_templates.latest_version(g.user_id, template_id or None)
         if latest is None:
-            raise ToolError('No master resume yet. Ask the user to upload one, or use upload_resume.')
+            raise ToolError('This template has no uploaded version yet.' if template_id else
+                            'No master resume yet. Ask the user to upload one, or use upload_resume.')
         resume_id = latest.id
     record, path, _ = resume_files.locate(g.user_id, resume_id)
     if path is None or not path.is_file():
