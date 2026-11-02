@@ -241,7 +241,7 @@ Agents connect with OAuth 2.1 and use either the MCP server at `/mcp` or this AP
 | `POST /jobs`, `PATCH /jobs/{id}`, `POST /jobs/extract`, `POST /contacts` | session, legacy, OAuth | `jobs:write` |
 | `GET /jobs/{id}/resumes`, `GET /resumes/{id}/download`, `GET /profile/resume`, `GET /profile/resume/download` | session (and legacy for job resumes), OAuth | `resumes:read` |
 | `POST /jobs/{id}/resumes`, `POST /profile/resume` | session (plus legacy and `roles:ingest` for job resumes), OAuth | `resumes:write` |
-| `GET /templates`, `GET /templates/{id}`, `GET /templates/{id}/download` | session, OAuth | `resumes:read` |
+| `GET /templates`, `GET /templates/{id}`, `GET /templates/{id}/download`, `GET /resume-diff` | session, OAuth | `resumes:read` |
 | `POST /templates`, `PATCH /templates/{id}`, `POST /templates/{id}/versions` | session, OAuth | `resumes:write` |
 | `GET /oauth/connections`, `POST /oauth/connections/{id}/revoke` | browser session only | — |
 | `GET /files/{token}`, `POST /uploads/{token}` | the signed link itself | issued by MCP tools |
@@ -264,3 +264,16 @@ All routes take a browser session or an OAuth token (never legacy or managed age
 - `GET /templates/<id>/download[?version=N]` → the file (latest by default). `version` is at most 9 digits (400 otherwise).
 - Uploading a version does not change the template's `updated_at`, which tracks name, description and default changes.
 - `GET /profile/resume` also returns `template`: the default template, or null until the account's first upload.
+
+### Comparing resumes
+
+`GET /resume-diff?from=<id>&to=<id>` compares two resumes paragraph by paragraph. Each ID is a template (meaning its latest version) or any resume version the caller owns: a template version or a resume attached to a role, whichever template it was tailored from. It returns `{from, to, identical, summary, outline, changes, truncated}`:
+
+- `from` / `to`: the version's metadata with `kind` (`master` or `job`) and `template: {id, name}` (null for a role's resume). Stored file names are never returned.
+- `summary`: `{added, removed, changed, unchanged}` paragraph counts.
+- `outline`: `{from: [...], to: [...]}`, each side's headings in order.
+- `changes`: `[{op, from_section, to_section, section, from, to}]` in document order, where `op` is `added`, `removed` or `changed`; `from_section` / `to_section` are the heading the paragraph sits under on that side (`""` before the first heading, null when that side is absent); `section` is `to_section`, or `from_section` for a removal; and `from` / `to` are `{id, text, kind}` or null. A replaced run of paragraphs is paired in order as `changed`; any surplus is `added` or `removed`. Moved paragraphs show as a removal and an addition. At most 500 changes are listed; `truncated` says whether there were more (the summary still counts them all).
+- Only text is compared, after Unicode NFC normalization: a paragraph whose kind (heading, bullet, body) or formatting alone changed is not reported, so a re-saved file can return `identical: false` with no changes. Headings come from Word `Heading*`/`Title` styles; TXT files have none.
+- Identical files (same SHA-256) return `identical: true` and no changes; the file is read once.
+
+Errors: 400 without `from` or `to`; 404 `"<from|to>: template or resume not found"` for an unknown ID or another account's (same body); 409 for a template with no version yet; 422 for a PDF (no text is extracted; upload a DOCX or TXT version), or a document over 2,000 paragraphs or 100,000 characters of text. An ID is looked up as a template first, then as a resume version.
