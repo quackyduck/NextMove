@@ -1,8 +1,9 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { api, apiUrl } from "./api.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain";
+const NOW_DEFAULT = " It’s now your default resume.";
 
 function formatSize(bytes) {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -35,8 +36,7 @@ function UploadForm({ path, label, onBusyChange, onUploaded }) {
       const data = await api(path, { method: "POST", body: form });
       setFile(null);
       setInputKey((key) => key + 1);
-      await onUploaded(data.created ? `Saved ${data.resume.original_filename} as version ${data.resume.version}.`
-        : "That file matches the latest version, so nothing changed.");
+      await onUploaded(data);
     } catch (e) {
       if (!e.authenticationRequired) setProblem(e.message);
     } finally {
@@ -82,11 +82,11 @@ function TemplateForm({ initial, submitLabel, onSubmit, onCancel }) {
   return (
     <form onSubmit={submit}>
       <label className="form-label" htmlFor={`${id}-name`}>Template name</label>
-      <input id={`${id}-name`} className={`form-control${error ? " is-invalid" : ""}`} value={name} maxLength={100} required
-        placeholder="Senior product manager" aria-describedby={error ? `${id}-error` : undefined}
+      <input id={`${id}-name`} className={`form-control${error ? " is-invalid" : ""}`} value={name} maxLength={100} required dir="auto"
+        placeholder="Senior product manager" aria-describedby={error ? `${id}-error` : undefined} aria-invalid={error ? "true" : undefined}
         onChange={(event) => { setName(event.target.value); setError(""); }} disabled={busy} />
       <label className="form-label mt-3" htmlFor={`${id}-description`}>Description <span className="form-text">(optional)</span></label>
-      <textarea id={`${id}-description`} className="form-control" rows={2} value={description} maxLength={2000}
+      <textarea id={`${id}-description`} className="form-control" rows={2} value={description} maxLength={2000} dir="auto"
         placeholder="Which roles this version is for" onChange={(event) => setDescription(event.target.value)} disabled={busy} />
       {error && <p id={`${id}-error`} role="alert" className="invalid-feedback d-block mb-0">{error}</p>}
       <div className="d-flex flex-wrap gap-2 mt-3">
@@ -97,53 +97,66 @@ function TemplateForm({ initial, submitLabel, onSubmit, onCancel }) {
   );
 }
 
-function TemplateCard({ template, onBusyChange, onChanged }) {
+function TemplateCard({ template, hasDefault, notice, onBusyChange, onChanged }) {
   const id = useId();
+  const heading = useRef(null);
+  const refocus = useRef(false);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState(null);
+  const [historyError, setHistoryError] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const path = `/templates/${encodeURIComponent(template.id)}`;
   const { latest } = template;
-  const hidden = <span className="visually-hidden"> ({template.name})</span>;
+  const hidden = <span className="visually-hidden"> (<bdi>{template.name}</bdi>)</span>;
 
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
+    setHistoryError("");
     api(path).then((data) => { if (active) setHistory(data.versions); })
-      .catch((e) => { if (active && !e.authenticationRequired) setError(e.message); });
+      .catch((e) => { if (active && !e.authenticationRequired) setHistoryError(e.message); });
     return () => { active = false; };
   }, [open, path, latest?.id]);
+  // Promoting moves the card to the top; keep keyboard focus on it.
+  useEffect(() => {
+    if (refocus.current && template.is_default) { refocus.current = false; heading.current?.focus(); }
+  }, [template.is_default]);
 
   async function save(fields) {
-    await api(path, { method: "PATCH", body: fields });
+    const saved = await api(path, { method: "PATCH", body: fields });
     setEditing(false);
-    await onChanged(`Saved ${fields.name}.`);
+    await onChanged(`Saved ${saved.name}.`);
   }
   async function makeDefault() {
     setError("");
     try {
       await api(path, { method: "PATCH", body: { is_default: true } });
-      await onChanged(`${template.name} is now your default resume.`);
+      refocus.current = true;
+      await onChanged(`${template.name} is now your default resume.`, { cardId: template.id });
     } catch (e) {
       if (!e.authenticationRequired) setError(e.message);
     }
   }
-  async function uploaded(message) {
-    setNotice(message);
-    await onChanged(null, true);
+  async function uploaded(data) {
+    const message = data.created ? `Saved ${data.resume.original_filename} as version ${data.resume.version}.`
+      : "That file matches the latest version, so nothing changed.";
+    const list = await onChanged(message, { cardId: template.id, upload: true });
+    const becameDefault = !template.is_default && list?.some((item) => item.id === template.id && item.is_default);
+    if (becameDefault) await onChanged(message + NOW_DEFAULT, { cardId: template.id, reload: false });
   }
 
   return (
     <article className="form-panel template-card mb-4" aria-labelledby={`${id}-name`}>
       <header className="template-card-header">
-        <h2 id={`${id}-name`} className="template-name">{template.name}</h2>
+        <h2 id={`${id}-name`} ref={heading} tabIndex={-1} className="template-name" dir="auto">{template.name}</h2>
         {template.is_default && <span className="template-badge">Default</span>}
       </header>
-      {template.description && <p className="template-description">{template.description}</p>}
+      {template.description && <p className="template-description" dir="auto">{template.description}</p>}
       <p className="form-text">
-        {latest ? `${plural(template.version_count, "version")} · last uploaded ${formatDate(latest.created_at)}` : "No versions yet"}
+        {latest ? <>Latest: <bdi>{latest.original_filename}</bdi> · {formatSize(latest.size)} · uploaded {formatDate(latest.created_at)}
+          {" "}· {plural(template.version_count, "version")}</>
+          : `No versions yet.${hasDefault ? " Upload one before you can make this the default." : ""}`}
       </p>
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
@@ -151,20 +164,22 @@ function TemplateCard({ template, onBusyChange, onChanged }) {
         <TemplateForm initial={template} submitLabel="Save changes" onSubmit={save} onCancel={() => setEditing(false)} />
       ) : (
         <div className="d-flex flex-wrap gap-2">
-          {latest && <a className="btn btn-primary" href={downloadUrl(template)} download>Download latest{hidden}</a>}
-          <button type="button" className="btn btn-outline-secondary" onClick={() => { setEditing(true); setNotice(""); }}>Edit{hidden}</button>
-          {!template.is_default && <button type="button" className="btn btn-outline-secondary" onClick={makeDefault}>Make default{hidden}</button>}
+          {latest && <a className="btn btn-outline-secondary" href={downloadUrl(template)} download>Download latest{hidden}</a>}
+          <button type="button" className="btn btn-outline-secondary" onClick={() => setEditing(true)}>Edit{hidden}</button>
+          {!template.is_default && latest &&
+            <button type="button" className="btn btn-outline-secondary" onClick={makeDefault}>Make default{hidden}</button>}
         </div>
       )}
-      <UploadForm path={`${path}/versions`} label={`New version of ${template.name}`} onBusyChange={onBusyChange} onUploaded={uploaded} />
+      <UploadForm path={`${path}/versions`} label={<>New version of <bdi>{template.name}</bdi></>} onBusyChange={onBusyChange} onUploaded={uploaded} />
       {latest && (
         <details className="template-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
           <summary>Version history ({template.version_count})</summary>
-          {history === null ? <p className="form-text mb-0">Loading versions…</p> : (
-            <ul className="list-unstyled mb-0">
+          {historyError ? <p role="alert" className="invalid-feedback d-block mb-0">{historyError}</p>
+            : history === null ? <p className="form-text mb-0">Loading versions…</p> : (
+            <ul className="list-unstyled mt-3 mb-0">
               {history.map((item) => (
                 <li key={item.id} className="mb-2">
-                  <a href={downloadUrl(template, item.version)} download>Version {item.version}: {item.original_filename}</a>
+                  <a href={downloadUrl(template, item.version)} download>Version {item.version}: <bdi>{item.original_filename}</bdi></a>
                   <span className="form-text"> · {formatSize(item.size)} · {formatDate(item.created_at)}</span>
                 </li>
               ))}
@@ -181,11 +196,8 @@ export function MasterResume({ reauthRequired, onBusyChange, onSaved }) {
   const id = useId();
   const [templates, setTemplates] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState({ text: "", cardId: null }); // One status at a time, on its card or the page.
 
-  async function load() {
-    setTemplates((await api("/templates")).templates);
-  }
   useEffect(() => {
     if (reauthRequired) return undefined;
     let active = true;
@@ -194,42 +206,59 @@ export function MasterResume({ reauthRequired, onBusyChange, onSaved }) {
     return () => { active = false; };
   }, [reauthRequired]);
 
-  // After any change: reload, show page-level news, and let onboarding recount an upload.
-  async function changed(message, upload = false) {
-    setNotice(message || "");
-    try { await load(); } catch (e) { if (!e.authenticationRequired) setError(e.message); }
+  // After any change: show the news, reload (returning the fresh list), and let onboarding recount an upload.
+  async function changed(text, { cardId = null, upload = false, reload = true } = {}) {
+    setNotice({ text: text || "", cardId });
+    if (!reload) return templates;
+    let list = null;
+    try {
+      list = (await api("/templates")).templates;
+      setTemplates(list);
+    } catch (e) { if (!e.authenticationRequired) setError(e.message); }
     if (upload) onSaved?.();
+    return list;
   }
   async function create(fields) {
     const created = await api("/templates", { method: "POST", body: fields });
-    await changed(`Created ${created.name}. Upload its first version below.`);
+    await changed(`Created ${created.name}. Upload its first version below.`, { cardId: created.id });
+  }
+  async function firstUpload(data) {
+    const list = await changed("", { upload: true });
+    const target = list?.find((item) => item.id === data.resume.template_id);
+    setNotice({ text: `Saved ${data.resume.original_filename} as version ${data.resume.version} of ${target?.name || "your resume"}.`
+      + (target?.is_default ? NOW_DEFAULT : ""), cardId: null });
   }
 
+  const hasDefault = templates?.some((item) => item.is_default);
   return (
     <section className="master-resume">
       <header className="page-header">
         <div>
-          <h1>Your Resume Templates<span className="heading-dot">.</span></h1>
+          <h1>Your resume templates<span className="heading-dot">.</span></h1>
           <p className="text-secondary mb-0">
             Keep a resume for each kind of role you apply to, such as “Senior product manager” or “Engineering manager”.
-            Your <strong>default</strong> template is the one onboarding, the dashboard and your agents use as “your resume”.
+            The <strong>default</strong> template is the one onboarding, the dashboard and your agents use as “your resume”.
           </p>
         </div>
       </header>
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
-      {notice && <p role="status" className="alert alert-success">{notice}</p>}
+      {notice.text && !notice.cardId && <p role="status" className="alert alert-success">{notice.text}</p>}
       {templates === null && !error && <p className="text-secondary">Loading your resume templates…</p>}
-      {templates?.length === 0 && (
+      {templates && !hasDefault && (
         <section className="form-panel mb-4" aria-labelledby={`${id}-empty`}>
-          <h2 id={`${id}-empty`} className="section-heading mt-0">No resume yet</h2>
-          <p>You haven’t uploaded a resume yet. Upload one to start your default template, “Main resume”,
-            or create a named template below.</p>
-          <UploadForm path="/profile/resume" label="Resume file" onBusyChange={onBusyChange}
-            onUploaded={(message) => changed(message, true)} />
+          <h2 id={`${id}-empty`} className="section-heading mt-0">No default resume yet</h2>
+          {templates.length === 0 ? (
+            <>
+              <p>You haven’t uploaded a resume yet. Upload one here to start “Main resume”, which becomes your default,
+                or create a template for a kind of role below.</p>
+              <UploadForm path="/profile/resume" label="Resume file" onBusyChange={onBusyChange} onUploaded={firstUpload} />
+            </>
+          ) : <p className="mb-0">Upload a version to choose one: the first template that gets a file becomes your default.</p>}
         </section>
       )}
       {templates?.map((template) => (
-        <TemplateCard key={template.id} template={template} onBusyChange={onBusyChange} onChanged={changed} />
+        <TemplateCard key={template.id} template={template} hasDefault={hasDefault} onBusyChange={onBusyChange} onChanged={changed}
+          notice={notice.cardId === template.id ? notice.text : ""} />
       ))}
       {templates && (
         <section className="form-panel mb-4" aria-labelledby={`${id}-new`}>
