@@ -4,7 +4,7 @@ import { BrandIdentity, Mascot } from "./Brand.jsx";
 // What the product does today; the agent is described as coming soon, never as available.
 const FEATURES = [
   {
-    title: "Keep your template resume",
+    title: "Keep your resume templates",
     body: "Upload your resume as a PDF or DOCX. Each upload is kept as a version, and you can attach the version you sent to each role.",
   },
   {
