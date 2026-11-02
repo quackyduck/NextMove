@@ -1196,7 +1196,7 @@
           "Resume templates"
         ],
         "operationId": "createResumeTemplate",
-        "summary": "Create an empty resume template (at most 10). It becomes the default only once it has a version.",
+        "summary": "Create an empty resume template (at most 10). It becomes the default only once it has a version. OAuth tokens need an existing default and stop at 5 templates.",
         "security": [
           {
             "oauth2": [
@@ -1218,7 +1218,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1244,13 +1244,27 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "$ref": "#/components/responses/Error"
+            "description": "A taken name, an 11th template, or (OAuth tokens) a 6th: connected apps stop at 5 templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1309,7 +1323,7 @@
           "Resume templates"
         ],
         "operationId": "updateResumeTemplate",
-        "summary": "Rename, describe, or make this the default (is_default accepts only true; 409 when the template has no versions; the previous default stops being one). The response omits versions.",
+        "summary": "Rename, describe, or make this the default (is_default accepts only true; 409 when the template has no versions; the previous default stops being one). The response omits versions. Browser sessions only in effect: OAuth tokens get 403.",
         "security": [
           {
             "oauth2": [
@@ -1338,7 +1352,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                    "description": "Free text, unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
                   },
                   "description": {
                     "type": "string",
@@ -1379,7 +1393,14 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or it is an OAuth token: connected apps cannot rename, edit or promote templates (checked after the 404 for unknown IDs).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1390,7 +1411,7 @@
           "Resume templates"
         ],
         "operationId": "uploadResumeTemplateVersion",
-        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op). If the account has no default yet, this template becomes it.",
+        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op). If the account has no default yet, this template becomes it. OAuth tokens get 403 until the account has a default.",
         "security": [
           {
             "oauth2": [
@@ -1468,7 +1489,14 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The token lacks resumes:write, or (OAuth tokens) the account has no default template yet (checked after the 404 for unknown IDs).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/Error"
@@ -1541,6 +1569,73 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/resume-diff": {
+      "get": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "diffResumes",
+        "summary": "Compare two resumes paragraph by paragraph",
+        "description": "DOCX and TXT only. Each side is a template (its latest version) or any resume version the caller owns; an ID is looked up as a template first. Documents over 2,000 paragraphs or 100,000 characters of text are refused (422).",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A template ID (its latest version) or a resume version ID: a template version or a resume attached to a role"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A template ID (its latest version) or a resume version ID: a template version or a resume attached to a role"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The differences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1853,7 +1948,7 @@
           "name": {
             "type": "string",
             "maxLength": 100,
-            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, e.g. \"Engineering manager\""
+            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, whitespace runs and NFKC compatibility forms (full-width letters), e.g. \"Engineering manager\""
           },
           "description": {
             "type": "string",
@@ -1891,6 +1986,245 @@
               "$ref": "#/components/schemas/MasterResume"
             },
             "description": "Newest first; only when reading or creating one template"
+          }
+        }
+      },
+      "ResumeDiff": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "object",
+            "description": "The compared file: a template version (kind \"master\") or a role's resume (kind \"job\")",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "job"
+                ]
+              },
+              "version": {
+                "type": "integer"
+              },
+              "template_id": {
+                "type": "string"
+              },
+              "original_filename": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "template": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The template this version belongs to; null for a role's resume",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "to": {
+            "type": "object",
+            "description": "The compared file: a template version (kind \"master\") or a role's resume (kind \"job\")",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "job"
+                ]
+              },
+              "version": {
+                "type": "integer"
+              },
+              "template_id": {
+                "type": "string"
+              },
+              "original_filename": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "template": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The template this version belongs to; null for a role's resume",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "identical": {
+            "type": "boolean",
+            "description": "Same bytes (sha256); changes is then empty"
+          },
+          "summary": {
+            "type": "object",
+            "description": "Counts over every change, even when truncated",
+            "properties": {
+              "added": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              },
+              "changed": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              }
+            }
+          },
+          "outline": {
+            "type": "object",
+            "description": "Each side's headings in order",
+            "properties": {
+              "from": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "changes": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "added",
+                    "removed",
+                    "changed"
+                  ]
+                },
+                "from_section": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The heading the paragraph sits under in the from document (\"\" before the first heading); null when that side is absent"
+                },
+                "to_section": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The heading the paragraph sits under in the to document (\"\" before the first heading); null when that side is absent"
+                },
+                "section": {
+                  "type": "string",
+                  "description": "to_section, or from_section for a removal"
+                },
+                "from": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "p<index>, as read_resume returns"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "heading",
+                        "bullet",
+                        "body"
+                      ]
+                    }
+                  }
+                },
+                "to": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "p<index>, as read_resume returns"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "heading",
+                        "bullet",
+                        "body"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Text-only, after NFC normalization: kind or formatting changes are not reported. Moves show as a removal plus an addition."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More than 500 changes; only the first 500 are listed"
           }
         }
       }

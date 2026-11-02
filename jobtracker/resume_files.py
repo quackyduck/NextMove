@@ -6,6 +6,7 @@ its scopes) also disables every link issued under it. Links are bearer
 capabilities: keep their lifetimes short and never log them.
 """
 import io
+import itertools
 import xml.etree.ElementTree as ElementTree
 import zipfile
 
@@ -25,6 +26,7 @@ UPLOAD_SECONDS = 900
 WORD = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 BULLET_MARKERS = ('•', '-', '–', '*', '·', '▪')
 MAX_DOCUMENT_XML = 8 * 1024 * 1024
+PARSE_CHUNK = 64 * 1024
 
 
 @files.errorhandler(services.ServiceError)
@@ -55,29 +57,28 @@ def latest_master(user_id):
     return latest_version(user_id)
 
 
-def read_paragraphs(path, media_type):
-    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction)."""
+def read_paragraphs(path, media_type, limit=None):
+    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction).
+    With `limit`, stops after limit + 1 paragraphs so callers can refuse oversized documents cheaply."""
     if media_type == 'text/plain':
         lines = path.read_text(encoding='utf-8').splitlines()
-        return [{'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
-                for index, line in enumerate(lines) if line.strip()]
+        return list(itertools.islice(({'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
+                                      for index, line in enumerate(lines) if line.strip()), limit and limit + 1))
     if media_type != documents.MEDIA_TYPES['.docx']:
         return None
     try:
         with zipfile.ZipFile(path) as archive:
             data = documents._capped(archive, 'word/document.xml', MAX_DOCUMENT_XML)
-        if b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+        if b'<!DOCTYPE' in data or b'<!ENTITY' in data:  # Cheap first check; _parse_without_dtd is the real guard.
             raise ValueError('DTDs are not allowed')
-        root = ElementTree.fromstring(data)
-    except (zipfile.BadZipFile, KeyError, ValueError, ElementTree.ParseError):
+        root = _parse_without_dtd(data)
+    except (zipfile.BadZipFile, KeyError, LookupError, ValueError, ElementTree.ParseError):
         raise services.ServiceError('This resume could not be read as a Word document', 422) from None
     body = root.find(f'{WORD}body')
     paragraphs = []
     # Body paragraphs and table-cell paragraphs, in reading order.
     for index, paragraph in enumerate(body.iter(f'{WORD}p') if body is not None else []):
-        text = ''.join('\t' if node.tag == f'{WORD}tab' else '\n' if node.tag in (f'{WORD}br', f'{WORD}cr')
-                       else node.text or '' for node in paragraph.iter()
-                       if node.tag in (f'{WORD}t', f'{WORD}tab', f'{WORD}br', f'{WORD}cr')).strip()
+        text = _own_text(paragraph)
         if not text:
             continue
         style_node = paragraph.find(f'{WORD}pPr/{WORD}pStyle')
@@ -85,7 +86,43 @@ def read_paragraphs(path, media_type):
         numbered = paragraph.find(f'{WORD}pPr/{WORD}numPr') is not None
         paragraphs.append({'id': f'p{index}', 'text': text, 'kind': 'bullet' if numbered else _kind(style, text),
                            'style': style})
+        if limit and len(paragraphs) > limit:
+            break
     return paragraphs
+
+
+class _NoDTD(ElementTree.TreeBuilder):
+    def doctype(self, *args):
+        raise ValueError('DTDs are not allowed')
+
+
+def _parse_without_dtd(data):
+    """Parse XML, refusing any DOCTYPE whatever the document's encoding.
+
+    Fed in chunks: expat keeps expanding entities in the current chunk after doctype() raises, so the refusal
+    must stop it before the rest of the document arrives (a DOCTYPE precedes the root element).
+    """
+    parser = ElementTree.XMLParser(target=_NoDTD())
+    for start in range(0, len(data), PARSE_CHUNK):
+        parser.feed(data[start:start + PARSE_CHUNK])
+    return parser.close()
+
+
+def _own_text(paragraph):
+    """A paragraph's text, skipping nested paragraphs (they are read on their own), so nesting stays linear."""
+    parts, stack = [], list(reversed(paragraph))
+    while stack:
+        node = stack.pop()
+        if node.tag == f'{WORD}p':
+            continue
+        if node.tag == f'{WORD}t':
+            parts.append(node.text or '')
+        elif node.tag == f'{WORD}tab':
+            parts.append('\t')
+        elif node.tag in (f'{WORD}br', f'{WORD}cr'):
+            parts.append('\n')
+        stack.extend(reversed(node))
+    return ''.join(parts).strip()
 
 
 def _kind(style, text):
@@ -127,8 +164,8 @@ def save_upload(user_id, target, upload, template_id=None):
     return {'target': target, 'resume': result, 'created': True}
 
 
-def upload_bytes(user_id, target, filename, data):
-    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename))
+def upload_bytes(user_id, target, filename, data, template_id=None):
+    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename), template_id)
 
 
 def metadata(record):
@@ -149,8 +186,11 @@ def download_link(base, grant_id, resume_id):
     return {'url': f'{base}/api/v1/files/{token}', 'expires_in': DOWNLOAD_SECONDS}
 
 
-def upload_link(base, grant_id, target):
-    token = _serializer('upload').dumps({'g': grant_id, 't': target})
+def upload_link(base, grant_id, target, template_id=None):
+    """A link for `target`; with `template_id` (target 'master'), a version of that template. Redeeming checks the
+    template again against the grant's owner, so a link can only ever land in that account's own template."""
+    claims = {'g': grant_id, 't': target, **({'m': template_id} if template_id else {})}
+    token = _serializer('upload').dumps(claims)
     url = f'{base}/api/v1/uploads/{token}'
     return {'url': url, 'expires_in': UPLOAD_SECONDS, 'method': 'POST', 'field': 'file',
             'example': f'curl -sS -F "file=@resume.docx" "{url}"'}
@@ -183,6 +223,9 @@ def upload(token):
     request.max_content_length = REQUEST_LIMIT
     user_id, claims = _redeem('upload', token, UPLOAD_SECONDS, 'resumes:write')
     g.user_id = user_id
-    result = save_upload(user_id, claims['t'], request.files.get('file'))
+    if claims.get('m'):
+        from .resume_templates import get_template
+        get_template(user_id, claims['m'])  # 404 before any bytes are written; checked again under the lock.
+    result = save_upload(user_id, claims['t'], request.files.get('file'), claims.get('m'))
     return jsonify(result), 201 if result['created'] else 200
 

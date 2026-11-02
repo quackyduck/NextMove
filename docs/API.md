@@ -241,7 +241,7 @@ Agents connect with OAuth 2.1 and use either the MCP server at `/mcp` or this AP
 | `POST /jobs`, `PATCH /jobs/{id}`, `POST /jobs/extract`, `POST /contacts` | session, legacy, OAuth | `jobs:write` |
 | `GET /jobs/{id}/resumes`, `GET /resumes/{id}/download`, `GET /profile/resume`, `GET /profile/resume/download` | session (and legacy for job resumes), OAuth | `resumes:read` |
 | `POST /jobs/{id}/resumes`, `POST /profile/resume` | session (plus legacy and `roles:ingest` for job resumes), OAuth | `resumes:write` |
-| `GET /templates`, `GET /templates/{id}`, `GET /templates/{id}/download` | session, OAuth | `resumes:read` |
+| `GET /templates`, `GET /templates/{id}`, `GET /templates/{id}/download`, `GET /resume-diff` | session, OAuth | `resumes:read` |
 | `POST /templates`, `PATCH /templates/{id}`, `POST /templates/{id}/versions` | session, OAuth | `resumes:write` |
 | `GET /oauth/connections`, `POST /oauth/connections/{id}/revoke` | browser session only | — |
 | `GET /files/{token}`, `POST /uploads/{token}` | the signed link itself | issued by MCP tools |
@@ -250,11 +250,17 @@ Schema 12 adds `oauth_clients`, `oauth_grants`, `oauth_codes` and `oauth_tokens`
 
 ## Resume templates (schema 13)
 
-A resume template is a named master resume for one kind of role ("Senior product manager", "Engineering manager"), with its own version history numbered 1, 2, ... Names are free text (100 characters, NFC-normalized, no control or formatting characters such as NUL or bidi overrides), unique per account ignoring case; descriptions are optional (2,000 characters; newlines and tabs allowed). An account keeps up to 10 templates and 20 versions of each. Nothing is ever deleted.
+A resume template is a named master resume for one kind of role ("Senior product manager", "Engineering manager"), with its own version history numbered 1, 2, ... Names are free text (100 characters, NFC-normalized, no control or formatting characters such as NUL or bidi overrides), unique per account ignoring case, runs of whitespace and NFKC compatibility forms such as full-width letters; descriptions are optional (2,000 characters; newlines and tabs allowed). An account keeps up to 10 templates and 20 versions of each. Nothing is ever deleted.
 
-Exactly one template is the **default**: it is what "the master resume" means for `/profile/resume`, the harness `/me/master-resumes` routes and MCP `list_resumes` / `read_resume` without an ID. The default is never empty: new templates start without one, and the first template to receive a version becomes the default. An upload that names no template (for example `/profile/resume` or onboarding) goes to the default. Before there is one, it goes to the account's only template if it has exactly one; otherwise to the template named "Main resume" (created if needed, which needs a free slot: with 10 templates and no default it is refused with 409). The default changes only by promoting another template that has at least one version. Signed `master` upload links resolve the default when they are used, not when they are issued. Schema 13 adds `resume_templates` and `master_resumes.template_id`, and moves each account's existing versions into a default "Main resume" with their numbers unchanged; accounts with no master resume get no template.
+Exactly one template is the **default**: it is what "the master resume" means for `/profile/resume`, the harness `/me/master-resumes` routes and MCP `list_resumes` / `read_resume` without an ID. The default is never empty: new templates start without one, and the first template to receive a version becomes the default. An upload that names no template (for example `/profile/resume` or onboarding) goes to the default. Before there is one, it goes to the account's only template if it has exactly one; otherwise to the template named "Main resume" (created if needed, which needs a free slot: with 10 templates and no default it is refused with 409). The default changes only by promoting another template that has at least one version. Signed `master` upload links (MCP `create_resume_upload_link`) are pinned to the default at issue time when there is one; issued before any default, they resolve it when used. Schema 13 adds `resume_templates` and `master_resumes.template_id`, and moves each account's existing versions into a default "Main resume" with their numbers unchanged; accounts with no master resume get no template.
 
 All routes take a browser session or an OAuth token (never legacy or managed agent tokens); another account's template IDs return the same 404 as unknown ones.
+
+**Connected apps never choose the default.** OAuth tokens follow the same policy here as over MCP. The 404 for unknown and other accounts' IDs always comes first.
+
+- `POST /templates` needs an existing default (403 before the user's first upload) and is refused with 409 once the account has 5 templates; the other 5 are the user's.
+- `PATCH /templates/<id>` is refused with 403: renaming, editing the description and promoting stay with the user.
+- `POST /templates/<id>/versions` is refused with 403 until the account has a default. `POST /profile/resume` stays open to OAuth tokens and follows the no-default rule above.
 
 - `GET /templates` → `{templates: [{id, name, description, is_default, created_at, updated_at, version_count, latest}]}`, default first, then by name.
 - `POST /templates` `{name, description?}` → 201, the new (empty, non-default) template with `versions: []`. 409 for a taken name or an 11th template.
@@ -264,3 +270,16 @@ All routes take a browser session or an OAuth token (never legacy or managed age
 - `GET /templates/<id>/download[?version=N]` → the file (latest by default). `version` is at most 9 digits (400 otherwise).
 - Uploading a version does not change the template's `updated_at`, which tracks name, description and default changes.
 - `GET /profile/resume` also returns `template`: the default template, or null until the account's first upload.
+
+### Comparing resumes
+
+`GET /resume-diff?from=<id>&to=<id>` compares two resumes paragraph by paragraph. Each ID is a template (meaning its latest version) or any resume version the caller owns: a template version or a resume attached to a role, whichever template it was tailored from. It returns `{from, to, identical, summary, outline, changes, truncated}`:
+
+- `from` / `to`: the version's metadata with `kind` (`master` or `job`) and `template: {id, name}` (null for a role's resume). Stored file names are never returned.
+- `summary`: `{added, removed, changed, unchanged}` paragraph counts.
+- `outline`: `{from: [...], to: [...]}`, each side's headings in order.
+- `changes`: `[{op, from_section, to_section, section, from, to}]` in document order, where `op` is `added`, `removed` or `changed`; `from_section` / `to_section` are the heading the paragraph sits under on that side (`""` before the first heading, null when that side is absent); `section` is `to_section`, or `from_section` for a removal; and `from` / `to` are `{id, text, kind}` or null. A replaced run of paragraphs is paired in order as `changed`; any surplus is `added` or `removed`. Moved paragraphs show as a removal and an addition. At most 500 changes are listed; `truncated` says whether there were more (the summary still counts them all).
+- Only text is compared, after Unicode NFC normalization: a paragraph whose kind (heading, bullet, body) or formatting alone changed is not reported, so a re-saved file can return `identical: false` with no changes. Headings come from Word `Heading*`/`Title` styles; TXT files have none.
+- Identical files (same SHA-256) return `identical: true` and no changes; the file is read once.
+
+Errors: 400 without `from` or `to`; 404 `"<from|to>: template or resume not found"` for an unknown ID or another account's (same body); 409 for a template with no version yet; 422 for a PDF (no text is extracted; upload a DOCX or TXT version), or a document over 2,000 paragraphs or 100,000 characters of text. An ID is looked up as a template first, then as a resume version.
