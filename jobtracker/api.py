@@ -210,6 +210,7 @@ def validate_document(filename, data):
 @require_scope('resumes:write', fallback=require_resume_upload_access)
 def resumes_create(job_id):
     services.get_job(g.user_id, job_id)
+    source = services.source_version(g.user_id, request.form.get('source_resume_id') or None)  # Before any bytes.
     upload = request.files.get('file')
     if upload is None or not upload.filename:
         raise services.ServiceError('A resume file is required', 400)
@@ -231,6 +232,7 @@ def resumes_create(job_id):
             'media_type': media_type,
             'size': len(data),
             'sha256': hashlib.sha256(data).hexdigest(),
+            'source_master_resume_id': source,
         })
     except Exception:
         target.unlink(missing_ok=True)

@@ -404,7 +404,7 @@ def drafts_approve(draft_id):
         services.create_resume(user_id, row.job_id, {
             'original_filename': f'{name}{suffix}', 'stored_filename': stored,
             'media_type': documents.MEDIA_TYPES[suffix], 'size': len(data),
-            'sha256': hashlib.sha256(data).hexdigest()})
+            'sha256': hashlib.sha256(data).hexdigest(), 'source_master_resume_id': row.master_resume_id})
     services._activity(user_id, row.job_id, 'draft_approved',
                        'Tailored resume approved; consider moving this role to Resume updated', {'draft_id': row.id})
     session.commit()

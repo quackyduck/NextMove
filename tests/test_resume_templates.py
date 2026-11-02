@@ -144,7 +144,7 @@ def test_schema_12_master_resumes_become_default_templates(app, client):
         rewind_resume_templates(connection)
     upgraded = create_app({**app.config, 'TESTING': True})
     with upgraded.extensions['jobtracker_db']['engine'].connect() as connection:
-        assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION == 13
+        assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION
         assert connection.execute(text('SELECT user_id, name, is_default FROM resume_templates ORDER BY user_id')
                                   ).all() == [(1, 'Main resume', 1), (other_id, 'Main resume', 1)]
         assert connection.execute(text('SELECT m.id, m.version, t.user_id FROM master_resumes m JOIN resume_templates t '

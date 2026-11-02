@@ -102,8 +102,9 @@ def _kind(style, text):
 
 
 # Saving -------------------------------------------------------------------
-def save_upload(user_id, target, upload, template_id=None):
-    """Validate and store `upload` as a new master version (target 'master') or a job attachment."""
+def save_upload(user_id, target, upload, template_id=None, source_id=None):
+    """Validate and store `upload` as a new master version (target 'master') or a job attachment, optionally
+    recording the caller's template version (`source_id`) it was tailored from."""
     if target == 'master':
         folder = master_folder(user_id)
         stored = documents.receive(upload, folder, RESUME_LIMIT, folder / '.incoming')
@@ -117,6 +118,7 @@ def save_upload(user_id, target, upload, template_id=None):
             stored.discard()
         return {'target': 'master', 'resume': result, 'created': created}
     services.get_job(user_id, target)  # 404 before any bytes are written.
+    services.source_version(user_id, source_id)
     folder = storage.user_directory(current_app.config['UPLOAD_FOLDER'], user_id)
     stored = documents.receive(upload, folder, RESUME_LIMIT, folder / '.incoming')
     try:
@@ -124,23 +126,27 @@ def save_upload(user_id, target, upload, template_id=None):
         result = services.create_resume(user_id, target, {
             'original_filename': stored.original_filename or 'resume' + stored.suffix,
             'stored_filename': stored.stored_filename, 'media_type': stored.media_type,
-            'size': stored.size, 'sha256': stored.sha256})
+            'size': stored.size, 'sha256': stored.sha256, 'source_master_resume_id': source_id})
     except BaseException:
         stored.discard()
         raise
     return {'target': target, 'resume': result, 'created': True}
 
 
-def upload_bytes(user_id, target, filename, data, template_id=None):
-    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename), template_id)
+def upload_bytes(user_id, target, filename, data, template_id=None, source_id=None):
+    return save_upload(user_id, target, FileStorage(io.BytesIO(data), filename=filename), template_id, source_id)
 
 
 def metadata(record):
     if isinstance(record, MasterResume):
         return {**public(record), 'kind': 'master'}
-    data = services.serialize(record)
-    data.pop('stored_filename', None)
-    return {**data, 'kind': 'job'}
+    return job_metadata(record.user_id, [record])[0]
+
+
+def job_metadata(user_id, records):
+    """Job resumes for agents: no stored filenames; `source` is the template version each was tailored from."""
+    return [{**{k: v for k, v in data.items() if k != 'stored_filename'}, 'kind': 'job'}
+            for data in services.describe_resumes(user_id, records)]
 
 
 # Signed links -------------------------------------------------------------
@@ -153,10 +159,11 @@ def download_link(base, grant_id, resume_id):
     return {'url': f'{base}/api/v1/files/{token}', 'expires_in': DOWNLOAD_SECONDS}
 
 
-def upload_link(base, grant_id, target, template_id=None):
-    """A link for `target`; with `template_id` (target 'master'), a version of that template. Redeeming checks the
-    template again against the grant's owner, so a link can only ever land in that account's own template."""
-    claims = {'g': grant_id, 't': target, **({'m': template_id} if template_id else {})}
+def upload_link(base, grant_id, target, template_id=None, source_id=None):
+    """A link for `target`; with `template_id` (target 'master'), a version of that template; with `source_id` (a
+    role), the template version it was tailored from. Redeeming checks both again against the grant's owner."""
+    claims = {'g': grant_id, 't': target, **({'m': template_id} if template_id else {}),
+              **({'s': source_id} if source_id else {})}
     token = _serializer('upload').dumps(claims)
     url = f'{base}/api/v1/uploads/{token}'
     return {'url': url, 'expires_in': UPLOAD_SECONDS, 'method': 'POST', 'field': 'file',
@@ -193,6 +200,6 @@ def upload(token):
     if claims.get('m'):
         from .resume_templates import get_template
         get_template(user_id, claims['m'])  # 404 before any bytes are written; checked again under the lock.
-    result = save_upload(user_id, claims['t'], request.files.get('file'), claims.get('m'))
+    result = save_upload(user_id, claims['t'], request.files.get('file'), claims.get('m'), claims.get('s'))
     return jsonify(result), 201 if result['created'] else 200
 

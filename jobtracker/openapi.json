@@ -850,6 +850,10 @@
                     "type": "string",
                     "format": "binary",
                     "description": "PDF, DOCX or UTF-8 TXT"
+                  },
+                  "source_resume_id": {
+                    "type": "string",
+                    "description": "Optional: the ID of one of your resume template versions (MasterResume) this resume was tailored from. Recorded once; it cannot be changed later. Unknown IDs and other accounts' IDs are both 404 \"Source resume version not found\", before the file is stored."
                   }
                 }
               }
@@ -1905,6 +1909,40 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "resume_id",
+                  "template_id",
+                  "template_name",
+                  "version"
+                ],
+                "properties": {
+                  "resume_id": {
+                    "type": "string",
+                    "description": "The template version (MasterResume) ID"
+                  },
+                  "template_id": {
+                    "type": "string"
+                  },
+                  "template_name": {
+                    "type": "string",
+                    "description": "The template's current name (renames show here)"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resume template version this resume was tailored from; null when none was recorded (uploads before schema 14, or none given)"
           }
         }
       },

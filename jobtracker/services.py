@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm.exc import StaleDataError
 
 from .db import get_session
-from .models import Activity, Contact, IngestionRequest, Job, Resume, OUTCOMES, PRIORITIES, STAGES, now
+from .models import Activity, Contact, IngestionRequest, Job, MasterResume, Resume, ResumeTemplate, OUTCOMES, PRIORITIES, STAGES, now
 
 
 class ServiceError(Exception):
@@ -227,21 +227,50 @@ def create_contact(user_id, job_id, data):
     return serialize(contact)
 
 
+def source_version(user_id, source_id):
+    """The caller's template version a job resume was tailored from; unknown and other accounts' IDs alike: 404."""
+    if source_id is None:
+        return None
+    record = get_session().scalar(select(MasterResume).where(MasterResume.id == source_id, MasterResume.user_id == user_id)) \
+        if isinstance(source_id, str) else None
+    if record is None:
+        raise ServiceError("Source resume version not found", 404)
+    return record.id
+
+
+def describe_resumes(user_id, records):
+    """Job resume JSON; `source` names the template version it was tailored from (the template's current name)."""
+    ids = {record.source_master_resume_id for record in records} - {None}
+    rows = get_session().execute(
+        select(MasterResume.id, MasterResume.template_id, MasterResume.version, ResumeTemplate.name)
+        .join(ResumeTemplate, (ResumeTemplate.id == MasterResume.template_id) & (ResumeTemplate.user_id == user_id))
+        .where(MasterResume.user_id == user_id, MasterResume.id.in_(ids))).all() if ids else []
+    sources = {row.id: {"resume_id": row.id, "template_id": row.template_id, "template_name": row.name,
+                        "version": row.version} for row in rows}
+    results = []
+    for record in records:
+        data = serialize(record)
+        data["source"] = sources.get(data.pop("source_master_resume_id"))
+        results.append(data)
+    return results
+
+
 def list_resumes(user_id, job_id):
     _record(Job, user_id, job_id)
-    return [serialize(item) for item in get_session().scalars(select(Resume).where(Resume.job_id == job_id, Resume.user_id == user_id).order_by(Resume.created_at, Resume.id))]
+    return describe_resumes(user_id, get_session().scalars(select(Resume).where(Resume.job_id == job_id, Resume.user_id == user_id).order_by(Resume.created_at, Resume.id)).all())
 
 
 def get_resume(user_id, resume_id):
-    return serialize(_record(Resume, user_id, resume_id))
+    return describe_resumes(user_id, [_record(Resume, user_id, resume_id)])[0]
 
 
 @transaction
 def create_resume(user_id, job_id, data):
+    """A new job resume; optional `source_master_resume_id` is the caller's template version it was tailored from."""
     _record(Job, user_id, job_id)
     required = {"original_filename", "stored_filename", "media_type", "size", "sha256"}
-    _payload(data, required)
-    if set(data) != required:
+    _payload(data, required | {"source_master_resume_id"})
+    if set(data) - {"source_master_resume_id"} != required:
         raise ServiceError("Incomplete resume metadata")
     values = {field: _text(data[field], field, 500) for field in required - {"size"}}
     if not values["original_filename"] or not values["media_type"]:
@@ -252,8 +281,11 @@ def create_resume(user_id, job_id, data):
         raise ServiceError("Invalid resume SHA-256")
     if type(data["size"]) is not int or data["size"] < 0:
         raise ServiceError("Resume size must be a nonnegative integer")
-    resume = Resume(user_id=user_id, job_id=job_id, size=data["size"], **values)
+    source = source_version(user_id, data.get("source_master_resume_id"))
+    resume = Resume(user_id=user_id, job_id=job_id, size=data["size"], source_master_resume_id=source, **values)
     get_session().add(resume)
     get_session().flush()
-    _activity(user_id, job_id, "resume_added", "Resume version added", {"resume_id": resume.id, "original_filename": resume.original_filename})
-    return serialize(resume)
+    result = describe_resumes(user_id, [resume])[0]
+    _activity(user_id, job_id, "resume_added", "Resume version added",
+              {"resume_id": resume.id, "original_filename": resume.original_filename, "source": result["source"]})
+    return result

@@ -65,7 +65,7 @@ Do not claim a role was applied to or a recruiter contacted merely because a res
 | GET | /jobs/{id}/contacts | Read `{contacts: [...]}` |
 | POST | /jobs/{id}/contacts | Add a name/email contact (201) |
 | GET | /jobs/{id}/resumes | Read `{resumes: [...]}` |
-| POST | /jobs/{id}/resumes | Upload multipart `file` (201) |
+| POST | /jobs/{id}/resumes | Upload multipart `file`, optionally `source_resume_id` (201) |
 | GET | /resumes/{id}/download | Authorized original file download |
 
 Errors use `{ "error": "message" }` and an appropriate HTTP status. Unknown IDs return 404. Bad input returns 400; authorization failures 401/403; conflicts 409; oversized uploads 413.
@@ -270,6 +270,12 @@ All routes take a browser session or an OAuth token (never legacy or managed age
 - `GET /templates/<id>/download[?version=N]` → the file (latest by default). `version` is at most 9 digits (400 otherwise).
 - Uploading a version does not change the template's `updated_at`, which tracks name, description and default changes.
 - `GET /profile/resume` also returns `template`: the default template, or null until the account's first upload.
+
+### Which template a role's resume came from (schema 14)
+
+A resume attached to a role can record the template version it was tailored from. `POST /jobs/<id>/resumes` takes an optional multipart field `source_resume_id`: the ID of one of the caller's template versions (from `GET /templates/<id>` or `/profile/resume`). An unknown ID, another account's, or a role resume's ID all get the same 404 `{"error": "Source resume version not found"}`, before the file is stored. Approving a harness draft records the version the draft was made from. The source is set once and cannot be changed.
+
+Role resumes (`GET /jobs/<id>/resumes` and the upload response) carry `source`: `{resume_id, template_id, template_name, version}`, or null. `template_name` is the template's current name, so a rename shows up here. The `resume_added` activity's `details.source` is a snapshot taken at upload time. Schema 14 adds `resumes.source_master_resume_id`. A composite foreign key to `master_resumes (id, user_id)`, through the new unique index `uq_master_resumes_id_user`, keeps it inside the same account. Existing resumes record no source.
 
 ### Comparing resumes
 

@@ -80,14 +80,32 @@ def downgrade_to_v8(app):
 
 
 def without_owner(result):
-    """Rows as tuples with any user_id column removed, for before/after comparisons."""
+    """Rows as tuples without user_id (or later-added) columns, for before/after comparisons with schema 8."""
     keys = list(result.keys())
-    keep = [index for index, key in enumerate(keys) if key != 'user_id']
+    keep = [index for index, key in enumerate(keys) if key not in ('user_id', 'source_master_resume_id')]
     return [tuple(row[index] for index in keep) for row in result]
 
 
+def rewind_resume_sources(connection):
+    """Turn a schema-14 sqlite3 connection back into schema 13: resumes lose source_master_resume_id (rows kept)."""
+    columns = 'id, user_id, job_id, original_filename, stored_filename, media_type, size, sha256, created_at'
+    connection.executescript(
+        'PRAGMA foreign_keys=OFF; ALTER TABLE resumes RENAME TO resumes_v14; '
+        'CREATE TABLE resumes (id VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, job_id VARCHAR(36) NOT NULL, '
+        'original_filename VARCHAR(500) NOT NULL, stored_filename VARCHAR(100) NOT NULL, media_type VARCHAR(200) NOT NULL, '
+        'size INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, created_at DATETIME NOT NULL, PRIMARY KEY (id), '
+        'CHECK (size >= 0), CONSTRAINT fk_resumes_job_owner FOREIGN KEY(job_id, user_id) REFERENCES jobs (id, user_id), '
+        'FOREIGN KEY(user_id) REFERENCES users (id), UNIQUE (stored_filename)); '
+        f'INSERT INTO resumes ({columns}) SELECT {columns} FROM resumes_v14; DROP TABLE resumes_v14; '
+        'CREATE INDEX ix_resumes_user_id ON resumes (user_id); '
+        'CREATE INDEX ix_resumes_job_owner_created ON resumes (job_id, user_id, created_at, id); '
+        'DROP INDEX uq_master_resumes_id_user; UPDATE schema_version SET version=13; PRAGMA foreign_keys=ON;')
+
+
 def rewind_resume_templates(connection):
-    """Turn a schema-13 sqlite3 connection's resume tables back into schema 12 (rows kept)."""
+    """Turn a schema-13 (or 14) sqlite3 connection's resume tables back into schema 12 (rows kept)."""
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] == 14:
+        rewind_resume_sources(connection)
     columns = 'id, user_id, version, original_filename, stored_filename, media_type, size, sha256, created_at'
     connection.executescript(
         # legacy_alter_table keeps tailored_drafts' REFERENCES master_resumes pointing at the rebuilt table.

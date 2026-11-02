@@ -836,6 +836,11 @@ function App() {
                         href={apiUrl(`/resumes/${r.id}/download`)}
                       >
                         ↓ {r.original_filename || r.filename || "Resume"}
+                        {r.source && (
+                          <small>
+                            Tailored from {r.source.template_name} v{r.source.version}
+                          </small>
+                        )}
                         <small>
                           {r.created_at
                             ? new Date(r.created_at).toLocaleDateString()
