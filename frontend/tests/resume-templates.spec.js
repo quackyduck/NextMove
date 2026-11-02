@@ -23,6 +23,9 @@ async function openTemplates(page, label) {
   await page.getByRole("button", { name: "Your resume templates" }).click();
   await expect(page.getByRole("heading", { name: "Your resume templates." })).toBeVisible();
 }
+// Role names the last "Template name" field offers (its datalist).
+const suggested = (page) => page.getByLabel("Template name", { exact: true }).last()
+  .evaluate((input) => [...input.list.options].map((option) => option.value));
 const card = (page, name) => page.getByRole("article", { name, exact: true });
 async function create(page, name, description = "") {
   await page.getByLabel("Template name", { exact: true }).last().fill(name);
@@ -51,6 +54,12 @@ test("create, upload, version history, rename and default for resume templates",
   await expect(pm.getByRole("status")).toContainText("Created Senior product manager.");
   await expect(pm).toContainText("No versions yet. Upload one before you can make this the default.");
   await expect(pm.getByRole("button", { name: /Make default/ })).toHaveCount(0);
+
+  // The name field suggests common roles, leaving out names already taken (ignoring case); free text still works below.
+  const offered = await suggested(page);
+  expect(offered).toContain("Engineering manager");
+  expect(offered).toContain("Staff engineer");
+  expect(offered).not.toContain("Senior product manager");
 
   // Duplicate names (ignoring case) are refused inline, and the field is marked invalid.
   await create(page, "main RESUME");
@@ -87,6 +96,7 @@ test("create, upload, version history, rename and default for resume templates",
   await pm.getByLabel("Template name", { exact: true }).fill("Senior PM");
   await pm.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved Senior PM.");
+  expect(await suggested(page)).toContain("Senior product manager");
 
   // Make default: it moves first, keeps keyboard focus, and becomes "your resume" everywhere.
   await page.getByRole("button", { name: "Make default (Senior PM)" }).click();
@@ -132,12 +142,16 @@ test("no default until a template gets its first file; history errors; the templ
 
   const { csrf_token: token } = await (await page.request.get(`${api}/auth/session`)).json();
   for (let i = 3; i <= 10; i += 1) {
-    const response = await page.request.post(`${api}/templates`, { headers: { "X-CSRF-Token": token }, data: { name: `Role ${i}` } });
+    const response = await page.request.post(`${api}/templates`, { headers: { "X-CSRF-Token": token }, data: { name: { 3: "data SCIENTIST", 4: "Data  engineer" }[i] || `Role ${i}` } });
     expect(response.status()).toBe(201);
   }
   await page.reload();
   await page.getByRole("button", { name: "Your resume templates" }).click();
   await expect(page.getByRole("article")).toHaveCount(10);
+  const offered = await suggested(page);
+  expect(offered).not.toContain("Data scientist");
+  expect(offered).not.toContain("Data engineer");
+  expect(offered).toContain("Software engineer");
   await create(page, "Role 11");
   await expect(page.getByRole("alert")).toContainText("You can keep up to 10 resume templates");
 });

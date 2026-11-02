@@ -4,6 +4,14 @@ import { api, apiUrl } from "./api.js";
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain";
 const NOW_DEFAULT = " It’s now your default resume.";
+// Suggested names for a template; any other name works too.
+const ROLE_SUGGESTIONS = [
+  "Senior product manager", "Group product manager", "Director of product", "Product designer", "Design manager",
+  "Software engineer", "Senior software engineer", "Staff engineer", "Engineering manager", "Director of engineering",
+  "Data scientist", "Data engineer", "Technical program manager", "Program manager",
+];
+// Duplicate-name key used by the backend (NFKC, case, whitespace runs; see #30): hide a suggestion the user already has.
+const nameKey = (name) => name.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 function formatSize(bytes) {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -60,12 +68,14 @@ function UploadForm({ path, label, onBusyChange, onUploaded }) {
 }
 
 // Name and description, for a new template or an existing one.
-function TemplateForm({ initial, submitLabel, onSubmit, onCancel }) {
+function TemplateForm({ initial, taken = [], submitLabel, onSubmit, onCancel }) {
   const id = useId();
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const takenKeys = new Set(taken.map(nameKey));
+  const suggestions = ROLE_SUGGESTIONS.filter((role) => !takenKeys.has(nameKey(role)));
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -83,8 +93,10 @@ function TemplateForm({ initial, submitLabel, onSubmit, onCancel }) {
     <form onSubmit={submit}>
       <label className="form-label" htmlFor={`${id}-name`}>Template name</label>
       <input id={`${id}-name`} className={`form-control${error ? " is-invalid" : ""}`} value={name} maxLength={100} required dir="auto"
+        list={`${id}-roles`}
         placeholder="Senior product manager" aria-describedby={error ? `${id}-error` : undefined} aria-invalid={error ? "true" : undefined}
         onChange={(event) => { setName(event.target.value); setError(""); }} disabled={busy} />
+      <datalist id={`${id}-roles`}>{suggestions.map((role) => <option key={role} value={role} />)}</datalist>
       <label className="form-label mt-3" htmlFor={`${id}-description`}>Description <span className="form-text">(optional)</span></label>
       <textarea id={`${id}-description`} className="form-control" rows={2} value={description} maxLength={2000} dir="auto"
         placeholder="Which roles this version is for" onChange={(event) => setDescription(event.target.value)} disabled={busy} />
@@ -97,7 +109,7 @@ function TemplateForm({ initial, submitLabel, onSubmit, onCancel }) {
   );
 }
 
-function TemplateCard({ template, hasDefault, notice, onBusyChange, onChanged }) {
+function TemplateCard({ template, hasDefault, names, notice, onBusyChange, onChanged }) {
   const id = useId();
   const heading = useRef(null);
   const refocus = useRef(false);
@@ -161,7 +173,7 @@ function TemplateCard({ template, hasDefault, notice, onBusyChange, onChanged })
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
       {editing ? (
-        <TemplateForm initial={template} submitLabel="Save changes" onSubmit={save} onCancel={() => setEditing(false)} />
+        <TemplateForm initial={template} taken={names} submitLabel="Save changes" onSubmit={save} onCancel={() => setEditing(false)} />
       ) : (
         <div className="d-flex flex-wrap gap-2">
           {latest && <a className="btn btn-outline-secondary" href={downloadUrl(template)} download>Download latest{hidden}</a>}
@@ -230,6 +242,7 @@ export function MasterResume({ reauthRequired, onBusyChange, onSaved }) {
   }
 
   const hasDefault = templates?.some((item) => item.is_default);
+  const names = templates?.map((item) => item.name) || [];
   return (
     <section className="master-resume">
       <header className="page-header">
@@ -257,14 +270,14 @@ export function MasterResume({ reauthRequired, onBusyChange, onSaved }) {
         </section>
       )}
       {templates?.map((template) => (
-        <TemplateCard key={template.id} template={template} hasDefault={hasDefault} onBusyChange={onBusyChange} onChanged={changed}
+        <TemplateCard key={template.id} template={template} hasDefault={hasDefault} names={names} onBusyChange={onBusyChange} onChanged={changed}
           notice={notice.cardId === template.id ? notice.text : ""} />
       ))}
       {templates && (
         <section className="form-panel mb-4" aria-labelledby={`${id}-new`}>
           <h2 id={`${id}-new`} className="section-heading mt-0">New template</h2>
           <p className="form-text">For a different kind of role. You can keep up to 10 templates; nothing is deleted.</p>
-          <TemplateForm submitLabel="Create template" onSubmit={create} />
+          <TemplateForm taken={names} submitLabel="Create template" onSubmit={create} />
         </section>
       )}
     </section>
