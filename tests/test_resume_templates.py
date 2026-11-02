@@ -54,15 +54,21 @@ def test_names_are_validated_unique_ignoring_case_and_capped(client, app):
     session = sign_in(client)
     create(client, session, name='Platform engineer', description='Line one\n\tLine two')
     create(client, session, name='Ingénieur')
+    create(client, session, name='می\u200cخواهم 👩\u200d💻')  # ZWNJ and ZWJ are allowed.
     for body, status in (({'name': 'platform ENGINEER'}, 409), ({'name': ' INGÉNIEUR '}, 409), ({'name': '  '}, 400),
                          ({'name': 'Inge\u0301nieur'}, 409), ({'name': 'A\x00'}, 400), ({'name': 'A\u202eB'}, 400),
+                         ({'name': '\u0958' * 100}, 400), ({'name': 'A\u2028B'}, 400), ({'name': '\ufeffA'}, 400),
+                         ({'name': 'A\u2066B'}, 400),
                          ({'name': 'Ok', 'description': 'a\x07'}, 400), ({}, 400), ({'name': 'x' * 101}, 400),
                          ({'name': 'Ok', 'colour': 'blue'}, 400), ({'name': 'Ok', 'is_default': True}, 400),
                          ({'name': 'Ok', 'description': 7}, 400)):
         assert client.post('/api/v1/templates', headers=session, json=body).status_code == status, body
-    for index in range(8):
+    for index in range(7):
         create(client, session, name=f'Role {index}')
     assert client.post('/api/v1/templates', headers=session, json={'name': 'One more'}).status_code == 409
+    # Ten empty templates, no default, none named "Main resume": a plain upload has nowhere to go.
+    assert upload(client, session, MASTER, PLATFORM).status_code == 409
+    assert client.get(MASTER).json['template'] is None
     add_user(app, 'other@example.com')  # Another account can reuse a name.
     create(other := app.test_client(), sign_in(other, 'other@example.com', 'other-password-123'), name='Platform engineer')
 

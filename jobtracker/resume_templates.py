@@ -93,9 +93,12 @@ def latest_version(user_id, template_id=None):
 
 # Writing ------------------------------------------------------------------
 def _clean(data, field, limit, allowed=''):
-    """NFC text without control or format characters (bidi overrides, NUL...) other than `allowed`."""
-    value = unicodedata.normalize('NFC', services._text(data[field], field, limit))
-    if any(unicodedata.category(char) in ('Cc', 'Cf') and char not in allowed for char in value):
+    """NFC text (length checked after normalizing) without control, format or line/paragraph separator characters
+    (NUL, BOM, bidi overrides...) other than ZWNJ/ZWJ, which Persian, Indic and emoji text need, and `allowed`."""
+    value = data[field]
+    value = services._text(unicodedata.normalize('NFC', value) if isinstance(value, str) else value, field, limit)
+    if any(unicodedata.category(char) in ('Cc', 'Cf', 'Zl', 'Zp') and char not in '\u200c\u200d' + allowed
+           for char in value):
         raise services.ServiceError(f'{field} cannot contain control or formatting characters')
     return value
 
