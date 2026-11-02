@@ -285,3 +285,9 @@ def test_https_pins_ip_but_verifies_original_hostname(network):
     hostname, port, method, path, headers = network.requests[0]
     assert (hostname, port, method, path) == ('careers.example', 443, 'GET', '/role?q=1')
     assert 'Authorization' not in headers and 'Cookie' not in headers
+
+
+def test_structured_data_with_an_unpaired_surrogate_is_skipped():
+    html = structured(title='Engineer \ud800') + '<h1>Developer</h1>'  # json.dumps writes it as "\\ud800".
+    result = extraction.parse_posting(html, 'https://example.com')
+    assert result['fields']['title'] == 'Developer'

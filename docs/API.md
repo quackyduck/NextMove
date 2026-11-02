@@ -53,6 +53,8 @@ Do not claim a role was applied to or a recruiter contacted merely because a res
 
 ## Routes
 
+JSON bodies must be valid Unicode: a string or key holding an unpaired UTF-16 surrogate escape (such as `"\ud800"`) is treated as malformed JSON and refused with the route's usual 400. Escaped surrogate pairs (`"\ud83d\ude00"`, an emoji) are fine. MCP answers such a message with JSON-RPC `-32700 Parse error`.
+
 | Method | Path | Use |
 | --- | --- | --- |
 | GET | /jobs | List jobs in `{jobs: [...]}` |

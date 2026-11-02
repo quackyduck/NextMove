@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from . import resume_files, services
+from . import resume_files, services, strict_json
 from .models import OUTCOMES, STAGES
 from .oauth import base_url, require_oauth
 
@@ -363,7 +363,7 @@ def endpoint():
     if version and version not in PROTOCOL_VERSIONS:
         return _error(None, -32600, f'Unsupported MCP-Protocol-Version {version}', 400)
     try:
-        message = json.loads(request.get_data(as_text=True))
+        message = strict_json.loads(request.get_data(as_text=True))
     except ValueError:
         return _error(None, -32700, 'Parse error', 400)
     if not isinstance(message, dict) or message.get('jsonrpc') != '2.0':

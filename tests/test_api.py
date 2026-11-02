@@ -125,3 +125,22 @@ def test_outreach_badge_api_persistence_and_validation(client):
     assert result.json['stage'] == 'applied'
     assert result.json['outreach_completed'] is False
     assert client.patch(f'/api/v1/jobs/{job["id"]}', json={'outreach_completed': 'false'}, headers=headers).status_code == 400
+
+
+def test_unpaired_surrogates_are_malformed_json_and_pairs_are_kept(client):
+    headers = {'Authorization': 'Bearer test-agent-token'}
+    for body in ('{"title": "Engineer", "company": "\\ud800"}', '{"title": "Engineer", "\\udfff": 1}',
+                 b'{"title": "Engineer", "company": "\xed\xa0\x80"}'):  # Escaped, as a key, and as raw bytes.
+        response = client.post('/api/v1/jobs', data=body, content_type='application/json', headers=headers)
+        assert response.status_code == 400 and response.json == {'error': 'A JSON object is required'}
+    assert client.get('/api/v1/jobs', headers=headers).json['jobs'] == []
+    job = client.post('/api/v1/jobs', data='{"title": "Engineer", "company": "Acme \\ud83d\\ude00"}',
+                      content_type='application/json', headers=headers).json
+    assert job['company'] == 'Acme \U0001F600'
+    changed = client.patch(f'/api/v1/jobs/{job["id"]}', json={'notes': ['\udc00'], 'version': job['version']},
+                           headers=headers)
+    assert changed.status_code == 400
+    changed = client.patch(f'/api/v1/jobs/{job["id"]}', json={'notes': 'Ship it \U0001F680', 'version': job['version']},
+                           headers=headers)
+    assert changed.status_code == 200
+    assert client.get(f'/api/v1/jobs/{job["id"]}', headers=headers).json['notes'] == 'Ship it \U0001F680'

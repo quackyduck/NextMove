@@ -9,6 +9,8 @@ from flask import Flask, jsonify, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash
 
+from .strict_json import JSONProvider
+
 
 def secret_setting(name):
     """NAME, or the contents of the file named by NAME_FILE (container secrets)."""
@@ -19,6 +21,7 @@ def secret_setting(name):
 def create_app(test_config=None):
     load_dotenv()
     app = Flask(__name__, static_folder=None, instance_relative_config=True)
+    app.json = JSONProvider(app)
     development = os.getenv('APP_ENV') == 'development'
     app.config.from_mapping(
         APP_ENV=os.getenv('APP_ENV', 'production'),

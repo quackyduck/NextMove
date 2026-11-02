@@ -18,7 +18,6 @@ from datetime import timedelta, timezone
 from functools import wraps
 import hashlib
 import hmac
-import json
 import re
 import secrets
 import threading
@@ -28,7 +27,7 @@ from urllib.parse import quote
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 from sqlalchemy import insert, select, update
 
-from . import documents, services, storage, taskqueue
+from . import documents, services, storage, strict_json, taskqueue
 from .db import get_session
 from . import extraction_tasks as tasks
 from .extraction import extract_posting, validate_url
@@ -305,7 +304,7 @@ def _draft(row):
 
 def _draft_metadata(raw):
     try:
-        draft = json.loads(raw or '')
+        draft = strict_json.loads(raw or '')
     except ValueError:
         raise services.ServiceError('draft must be a JSON object') from None
     if not isinstance(draft, dict):

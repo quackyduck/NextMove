@@ -5,7 +5,6 @@ original hostname for Host and TLS verification, including after redirects.
 """
 import http.client
 import ipaddress
-import json
 import re
 import socket
 import ssl
@@ -14,6 +13,7 @@ from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 from .services import ServiceError
+from .strict_json import loads as strict_loads
 
 MAX_BYTES = 2 * 1024 * 1024
 FETCH_SECONDS = 20
@@ -226,7 +226,7 @@ def parse_posting(html, url):
     jobs = []
     for script in parser.scripts:
         try:
-            jobs.extend(postings(json.loads(script)))
+            jobs.extend(postings(strict_loads(script)))
         except (ValueError, RecursionError):
             continue
     if len(jobs) > 1:
