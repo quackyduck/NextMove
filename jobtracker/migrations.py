@@ -1,11 +1,12 @@
 """Numbered, transactional SQLite schema upgrades; run with writers stopped."""
 import json
 from types import SimpleNamespace
+from uuid import uuid4
 
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -260,6 +261,45 @@ def upgrade_v11_to_v12(connection):
     connection.execute(text('UPDATE schema_version SET version=12'))
 
 
+def upgrade_v12_to_v13(connection):
+    """Resume templates: each account's master versions move, numbers and IDs unchanged, into a default
+    "Main resume" (accounts without one get no template). master_resumes is rebuilt for its new constraints."""
+    connection.execute(text(
+        'CREATE TABLE resume_templates (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'name VARCHAR(100) NOT NULL, description TEXT NOT NULL, is_default BOOLEAN NOT NULL, '
+        'created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, '
+        'CONSTRAINT uq_resume_templates_id_user UNIQUE (id, user_id))'))
+    connection.execute(text('CREATE UNIQUE INDEX uq_resume_templates_user_name ON resume_templates (user_id, lower(name))'))
+    connection.execute(text('CREATE UNIQUE INDEX uq_resume_templates_default ON resume_templates (user_id) WHERE is_default = 1'))
+    for user_id, first_upload in connection.execute(text(
+            'SELECT user_id, MIN(created_at) FROM master_resumes GROUP BY user_id ORDER BY user_id')).all():
+        connection.execute(text(
+            'INSERT INTO resume_templates (id, user_id, name, description, is_default, created_at, updated_at) '
+            "VALUES (:id, :user_id, :name, '', 1, :created_at, :created_at)"),
+            {'id': str(uuid4()), 'user_id': user_id, 'name': 'Main resume', 'created_at': first_upload})
+
+    def rebuild():
+        connection.execute(text(
+            'CREATE TABLE master_resumes_new (id VARCHAR(36) NOT NULL PRIMARY KEY, '
+            'user_id INTEGER NOT NULL REFERENCES users (id), template_id VARCHAR(36) NOT NULL, version INTEGER NOT NULL, '
+            'original_filename VARCHAR(500) NOT NULL, stored_filename VARCHAR(100) NOT NULL UNIQUE, '
+            'media_type VARCHAR(200) NOT NULL, size INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, '
+            'created_at DATETIME NOT NULL, CHECK (size >= 0), CHECK (version > 0), '
+            'CONSTRAINT uq_master_resumes_template_version UNIQUE (template_id, version), '
+            'CONSTRAINT fk_master_resumes_template_owner FOREIGN KEY (template_id, user_id) '
+            'REFERENCES resume_templates (id, user_id))'))
+        connection.execute(text(
+            'INSERT INTO master_resumes_new (id, user_id, template_id, version, original_filename, stored_filename, '
+            'media_type, size, sha256, created_at) '
+            'SELECT m.id, m.user_id, t.id, m.version, m.original_filename, m.stored_filename, m.media_type, m.size, '
+            'm.sha256, m.created_at FROM master_resumes m JOIN resume_templates t ON t.user_id = m.user_id'))
+        connection.exec_driver_sql('DROP TABLE master_resumes')
+        connection.exec_driver_sql('ALTER TABLE master_resumes_new RENAME TO master_resumes')
+        connection.execute(text('CREATE INDEX ix_master_resumes_user_id ON master_resumes (user_id)'))
+    with_deferred_foreign_keys(connection, rebuild)
+    connection.execute(text('UPDATE schema_version SET version=13'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -294,5 +334,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [11]:
         upgrade_v11_to_v12(connection)
         versions = [12]
+    if versions == [12]:
+        upgrade_v12_to_v13(connection)
+        versions = [13]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

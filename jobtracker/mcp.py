@@ -252,8 +252,10 @@ def add_contact(arguments):
 def list_resumes(arguments):
     from sqlalchemy import select
     from .db import get_session
-    from .models import MasterResume
-    masters = get_session().scalars(select(MasterResume).where(MasterResume.user_id == g.user_id)
+    from .models import MasterResume, ResumeTemplate
+    # "The master resume" is the default template; other templates number their own versions.
+    masters = get_session().scalars(select(MasterResume).join(ResumeTemplate).where(
+        MasterResume.user_id == g.user_id, ResumeTemplate.is_default.is_(True))
                                     .order_by(MasterResume.version.desc())).all()
     result = {'master': [resume_files.metadata(record) for record in masters]}
     job_id = _text_arg(arguments, 'job_id')
