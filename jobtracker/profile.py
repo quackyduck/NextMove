@@ -17,7 +17,7 @@ RESUME_LIMIT = 5 * 1024 * 1024
 REQUEST_LIMIT = RESUME_LIMIT + 64 * 1024
 MAX_VERSIONS = 20
 STORED_NAME = re.compile(r'[0-9a-f]{32}\.(?:pdf|docx|txt)')
-PUBLIC_FIELDS = ('id', 'version', 'original_filename', 'media_type', 'size', 'sha256', 'created_at')
+PUBLIC_FIELDS = ('id', 'template_id', 'version', 'original_filename', 'media_type', 'size', 'sha256', 'created_at')
 
 
 @profile.errorhandler(services.ServiceError)
@@ -62,10 +62,11 @@ def onboarding_update(step_id):
 @profile.get('/profile/resume')
 @require_scope('resumes:read', fallback=require_browser_auth)
 def resume_get():
-    versions = get_session().scalars(select(MasterResume).where(
-        MasterResume.user_id == current_user_id()).order_by(MasterResume.version.desc())).all()
+    from .resume_templates import default_template, serialize
+    template, versions = default_template(current_user_id())
     return jsonify(resume=public(versions[0]) if versions else None,
-                   versions=[public(item) for item in versions])
+                   versions=[public(item) for item in versions],
+                   template=serialize(template, versions) if template else None)
 
 
 @profile.post('/profile/resume')
@@ -87,19 +88,21 @@ def resume_upload():
     return jsonify(resume=result, created=created, **onboarding.state(user_id)), 201 if created else 200
 
 
-def save_version(user_id, stored):
-    """Number the version under the SQLite write lock; returns (metadata, created)."""
+def save_version(user_id, stored, template_id=None):
+    """Number the version within its template (None: the default) under the write lock; returns (metadata, created)."""
+    from .resume_templates import target_template
     table = MasterResume.__table__
     with current_app.extensions['jobtracker_db']['engine'].begin() as connection:
         if connection.dialect.name == 'sqlite':
             connection.exec_driver_sql('BEGIN IMMEDIATE')
-        rows = connection.execute(select(table).where(table.c.user_id == user_id)
+        template_id = target_template(connection, user_id, template_id)
+        rows = connection.execute(select(table).where(table.c.user_id == user_id, table.c.template_id == template_id)
                                   .order_by(table.c.version.desc())).mappings().all()
         if rows and rows[0]['sha256'] == stored.sha256:
             return public(rows[0]), False  # Re-uploading the same bytes is a no-op.
         if len(rows) >= MAX_VERSIONS:
-            raise services.ServiceError(f'You can keep up to {MAX_VERSIONS} resume versions', 409)
-        values = dict(id=new_id(), user_id=user_id, version=rows[0]['version'] + 1 if rows else 1,
+            raise services.ServiceError(f'You can keep up to {MAX_VERSIONS} versions of each resume template', 409)
+        values = dict(id=new_id(), user_id=user_id, template_id=template_id, version=rows[0]['version'] + 1 if rows else 1,
                       original_filename=stored.original_filename or 'resume' + stored.suffix,
                       stored_filename=stored.stored_filename, media_type=stored.media_type,
                       size=stored.size, sha256=stored.sha256, created_at=now())
@@ -110,11 +113,16 @@ def save_version(user_id, stored):
 @profile.get('/profile/resume/download')
 @require_scope('resumes:read', fallback=require_browser_auth)
 def resume_download():
-    user_id = current_user_id()
-    query = select(MasterResume).where(MasterResume.user_id == user_id)
-    version = request.args.get('version')
+    from .resume_templates import default_template
+    template, _ = default_template(current_user_id())  # None matches no version: 404.
+    return send_version(current_user_id(), template and template['id'], request.args.get('version'))
+
+
+def send_version(user_id, template_id, version=None):
+    """Send one version (latest when `version` is None) of a template the caller already owns."""
+    query = select(MasterResume).where(MasterResume.user_id == user_id, MasterResume.template_id == template_id)
     if version is not None:
-        if not (version.isascii() and version.isdigit()):
+        if not (version.isascii() and version.isdigit() and len(version) <= 9):
             raise services.ServiceError('version must be a positive integer')
         query = query.where(MasterResume.version == int(version))
     resume = get_session().scalars(query.order_by(MasterResume.version.desc()).limit(1)).first()

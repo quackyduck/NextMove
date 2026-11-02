@@ -125,7 +125,7 @@ def test_onboarding_and_profile_are_per_user_and_browser_only(client, app):
     client.post('/api/v1/auth/logout', headers=headers)
     other = app.test_client()
     other_headers = signup(other, app, 'second@example.com')
-    assert other.get('/api/v1/profile/resume').json == {'resume': None, 'versions': []}
+    assert other.get('/api/v1/profile/resume').json == {'resume': None, 'versions': [], 'template': None}
     assert other.get('/api/v1/profile/resume/download').status_code == 404
     assert [step['status'] for step in other.get('/api/v1/onboarding').json['steps']] == ['done', 'pending', 'pending']
     assert other.get('/api/v1/onboarding').json['next_step'] == 'upload_resume'
@@ -212,7 +212,7 @@ def test_schema_10_migration_matches_fresh_schema(app, tmp_path):
     downgrade = sqlite3.connect(legacy)
     downgrade.executescript('DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; '
                             'DROP TABLE oauth_clients; DROP TABLE tailored_drafts; DROP TABLE harness_grants; DROP TABLE activation_tokens; '
-                            'DROP TABLE onboarding_steps; DROP TABLE master_resumes; UPDATE schema_version SET version=9;')
+                            'DROP TABLE onboarding_steps; DROP TABLE master_resumes; DROP TABLE resume_templates; UPDATE schema_version SET version=9;')
     downgrade.close()
     create_app({'TESTING': True, 'APP_ENV': 'development', 'SECRET_KEY': 'test-secret',
                 'APP_PASSWORD_HASH': generate_password_hash('test-password'),
