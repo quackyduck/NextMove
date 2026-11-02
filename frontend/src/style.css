@@ -1905,3 +1905,41 @@ nav {
   .home-features ul { grid-template-columns: 1fr; }
   .home-soon { padding: var(--space-6); }
 }
+
+/* ---------- Resume templates ---------- */
+.template-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.template-name {
+  margin: 0;
+  outline-offset: 4px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+.template-badge {
+  padding: 2px var(--space-2);
+  border: var(--border-width) solid var(--color-success);
+  border-radius: 6px;
+  background: var(--color-success-wash);
+  color: var(--color-success);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  cursor: default;
+}
+.template-description {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.template-upload, .template-history {
+  margin-top: var(--space-5);
+  border-top: var(--border-width) solid var(--color-line);
+  padding-top: var(--space-4);
+}
+.template-history summary {
+  font-weight: var(--weight-medium);
+}
