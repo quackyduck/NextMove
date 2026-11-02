@@ -10,7 +10,10 @@ SURROGATE = re.compile('[\ud800-\udfff]')
 
 def loads(text, **kwargs):
     """json.loads that treats an unpaired UTF-16 surrogate in any key or value as malformed JSON (ValueError)."""
-    value = json.loads(text, **kwargs)
+    try:
+        value = json.loads(text, **kwargs)
+    except RecursionError:
+        raise ValueError('JSON nested too deeply') from None
     pending = [value]
     while pending:
         item = pending.pop()

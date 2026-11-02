@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash
 
@@ -125,6 +125,14 @@ def create_app(test_config=None):
         if (dist / asset_path).is_file():
             return send_from_directory(dist, asset_path)
         return send_from_directory(dist, 'index.html')
+
+    @app.before_request
+    def utf8_query_string():
+        # Werkzeug decodes request.args strictly, so a raw non-UTF-8 byte would be a 500 wherever it is read.
+        try:
+            request.query_string.decode('utf-8')
+        except UnicodeDecodeError:
+            abort(400, 'The query string must be valid UTF-8')
 
     @app.errorhandler(HTTPException)
     def http_error(exc):

@@ -406,7 +406,7 @@ def endpoint():
     if version and version not in PROTOCOL_VERSIONS:
         return _error(None, -32600, f'Unsupported MCP-Protocol-Version {version}', 400)
     try:
-        message = strict_json.loads(request.get_data(as_text=True))
+        message = strict_json.loads(request.get_data())  # Bytes: invalid UTF-8 is a parse error, not U+FFFD.
     except ValueError:
         return _error(None, -32700, 'Parse error', 400)
     if not isinstance(message, dict) or message.get('jsonrpc') != '2.0':

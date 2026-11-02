@@ -551,5 +551,11 @@ def test_unpaired_surrogates_are_parse_errors(client):
         'params': {'name': 'add_job', 'arguments': {'title': 'Engineer', 'company': '\ud800'}}})
     assert response.status_code == 400 and response.json['error'] == {'code': -32700, 'message': 'Parse error'}
     assert ok(client, tokens, 'list_jobs')['total'] == 0
+    response = client.post('/mcp', headers={**bearer(tokens), 'Content-Type': 'application/json'},
+                           data='[' * 100000 + ']' * 100000)
+    assert response.status_code == 400 and response.json['error']['code'] == -32700
+    response = client.post('/mcp', headers={**bearer(tokens), 'Content-Type': 'application/json'},
+                           data=b'{"jsonrpc": "2.0", "id": 1, "method": "ping\xff"}')
+    assert response.status_code == 400 and response.json['error']['code'] == -32700
     job = ok(client, tokens, 'add_job', title='Engineer', company='Acme \U0001F600')['job']
     assert ok(client, tokens, 'get_job', job_id=job['id'])['job']['company'] == 'Acme \U0001F600'
