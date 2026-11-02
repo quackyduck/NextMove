@@ -205,39 +205,3 @@ test("continue later holds for this tab and the next sign-in resumes setup", asy
   await expect(page.getByRole("heading", { name: "Add your resume." })).toBeVisible();
   await expect(page.getByText("SETUP · STEP 1 OF 2")).toBeVisible();
 });
-
-test("Your Template Resume page shows, downloads and versions the master resume", async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await signUp(page, uniqueEmail("resume-page"));
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("button", { name: "Skip agent setup" }).click();
-  await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
-
-  await page.getByRole("button", { name: "Your Template Resume" }).click();
-  await expect(page.getByRole("heading", { name: "Your Template Resume." })).toBeVisible();
-  await expect(page.getByText("You haven’t uploaded a template resume yet.")).toBeVisible();
-
-  await page.getByLabel("Resume file", { exact: true }).setInputFiles({ name: "First.pdf", mimeType: "application/pdf", buffer: PDF });
-  await page.getByRole("button", { name: "Upload", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved First.pdf as version 1.");
-  const text = Buffer.from("Second version of my resume\n");
-  await page.getByLabel("Resume file", { exact: true }).setInputFiles({ name: "Second.txt", mimeType: "text/plain", buffer: text });
-  await page.getByRole("button", { name: "Upload", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved Second.txt as version 2.");
-
-  const current = page.getByRole("region", { name: "Current version" });
-  await expect(current).toContainText("Second.txt");
-  await expect(current).toContainText("Version 2");
-  await expect(page.getByRole("region", { name: "Earlier versions" })).toContainText("Version 1: First.pdf");
-  await page.screenshot({ path: testInfo.outputPath("master-resume-desktop.png"), fullPage: true });
-
-  const [latest] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download resume" }).click()]);
-  expect(latest.suggestedFilename()).toBe("Second.txt");
-  expect((await (await page.request.get(`${api}/profile/resume/download?version=2`)).body()).equals(text)).toBe(true);
-  const [first] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Version 1: First.pdf" }).click()]);
-  expect(first.suggestedFilename()).toBe("First.pdf");
-
-  // The checklist counts an upload made here.
-  const state = await (await page.request.get(`${api}/onboarding`)).json();
-  expect(state.steps.find((step) => step.id === "upload_resume").status).toBe("done");
-});

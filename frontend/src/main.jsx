@@ -408,7 +408,7 @@ function App() {
           </button>
           <button className={`nav-button ${page === "resume" ? "active" : ""}`}
             onClick={() => { navigate("resume"); setError(""); setNotice(""); }}>
-            <span>Your Template Resume</span>
+            <span>Your Resume Templates</span>
           </button>
           <button className={`nav-button ${page === "agent-access" ? "active" : ""}`}
             onClick={() => { navigate("agent-access"); setError(""); setNotice(""); }}>
