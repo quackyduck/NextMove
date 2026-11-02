@@ -267,11 +267,13 @@ All routes take a browser session or an OAuth token (never legacy or managed age
 
 ### Comparing resumes
 
-`GET /resume-diff?from=<id>&to=<id>` compares two resumes paragraph by paragraph. Each ID is a template (meaning its latest version) or any resume version the caller owns: a template version or a resume attached to a role, whichever template it was tailored from. It returns `{from, to, identical, summary, changes, truncated}`:
+`GET /resume-diff?from=<id>&to=<id>` compares two resumes paragraph by paragraph. Each ID is a template (meaning its latest version) or any resume version the caller owns: a template version or a resume attached to a role, whichever template it was tailored from. It returns `{from, to, identical, summary, outline, changes, truncated}`:
 
 - `from` / `to`: the version's metadata with `kind` (`master` or `job`) and `template: {id, name}` (null for a role's resume). Stored file names are never returned.
 - `summary`: `{added, removed, changed, unchanged}` paragraph counts.
-- `changes`: `[{op, section, from, to}]` in document order, where `op` is `added`, `removed` or `changed`, `section` is the heading the paragraph sits under (`""` before the first heading), and `from` / `to` are `{id, text, kind}` or null. A replaced run of paragraphs is paired in order as `changed`; any surplus is `added` or `removed`. At most 500 changes are listed; `truncated` says whether there were more (the summary still counts them all).
-- Identical files (same SHA-256) return `identical: true` and no changes without diffing.
+- `outline`: `{from: [...], to: [...]}`, each side's headings in order.
+- `changes`: `[{op, from_section, to_section, section, from, to}]` in document order, where `op` is `added`, `removed` or `changed`; `from_section` / `to_section` are the heading the paragraph sits under on that side (`""` before the first heading, null when that side is absent); `section` is `to_section`, or `from_section` for a removal; and `from` / `to` are `{id, text, kind}` or null. A replaced run of paragraphs is paired in order as `changed`; any surplus is `added` or `removed`. Moved paragraphs show as a removal and an addition. At most 500 changes are listed; `truncated` says whether there were more (the summary still counts them all).
+- Only text is compared, after Unicode NFC normalization: a paragraph whose kind (heading, bullet, body) or formatting alone changed is not reported, so a re-saved file can return `identical: false` with no changes. Headings come from Word `Heading*`/`Title` styles; TXT files have none.
+- Identical files (same SHA-256) return `identical: true` and no changes; the file is read once.
 
-Errors: 400 without `from` or `to`; 404 for an unknown ID or another account's (same body); 409 for a template with no version yet; 422 for a PDF (no text is extracted; upload a DOCX or TXT version) or a document over 2,000 paragraphs.
+Errors: 400 without `from` or `to`; 404 `"<from|to>: template or resume not found"` for an unknown ID or another account's (same body); 409 for a template with no version yet; 422 for a PDF (no text is extracted; upload a DOCX or TXT version), or a document over 2,000 paragraphs or 100,000 characters of text. An ID is looked up as a template first, then as a resume version.

@@ -193,6 +193,8 @@ def test_diff_between_templates_names_the_section_of_each_change(client):
     assert [(c['op'], c['section'], c['from']['text'], c['to']['text'], c['to']['kind']) for c in body['changes']] == [
         ('changed', 'Summary', 'Platform engineer who scales infrastructure', 'Engineering manager who grows teams', 'body'),
         ('changed', 'Experience', 'Cut deploy time by 40%', 'Hired and coached eight engineers', 'bullet')]
+    assert [(c['from_section'], c['to_section']) for c in body['changes']] == [('Summary',) * 2, ('Experience',) * 2]
+    assert body['outline'] == {'from': ['Summary', 'Experience', 'Skills'], 'to': ['Summary', 'Experience', 'Skills']}
     assert 'stored_filename' not in str(body)
 
 
@@ -225,7 +227,7 @@ def test_diff_refuses_pdfs_empty_templates_unknown_ids_and_oversized_input(clien
     assert pdf.status_code == 422 and 'PDF' in pdf.json['error']
     empty = create(client, session, name='Empty')['id']
     assert diff(client, a=empty, b=main).status_code == 409
-    assert diff(client, a='nope', b=main).json == {'error': 'from: no template or resume with this ID'}
+    assert diff(client, a='nope', b=main).json == {'error': 'from: template or resume not found'}
     assert diff(client, b=main).status_code == 400
     first, second = (upload(client, session, f'/api/v1/templates/{empty}/versions', data).json['resume']['id']
                      for data in (IC, EM))
@@ -237,6 +239,10 @@ def test_diff_refuses_pdfs_empty_templates_unknown_ids_and_oversized_input(clien
     for pair in ((first, second), (text, text)):  # DOCX and TXT stop reading past the cap.
         refused = diff(client, a=pair[0], b=pair[1])
         assert refused.status_code == 422 and 'more than 6 paragraphs' in refused.json['error']
+    monkeypatch.setattr(resume_templates, 'MAX_PARAGRAPHS', 2000)
+    monkeypatch.setattr(resume_templates, 'MAX_TEXT', 20)  # Bounds the text a response can carry.
+    refused = diff(client, a=first, b=first)
+    assert refused.status_code == 422 and 'more than 20 characters' in refused.json['error']
 
 
 def test_diff_paragraphs_pairs_replacements_and_reports_surplus():
@@ -247,6 +253,12 @@ def test_diff_paragraphs_pairs_replacements_and_reports_surplus():
     assert [(c['op'], c['section'], c['from'] and c['from']['text']) for c in changes] == [
         ('changed', 'A', 'x'), ('added', 'A', None)]
     assert resume_templates.diff_paragraphs([], new)[1]['added'] == 3
+    # Each side keeps its own section; NFC-equal text and kind-only changes are not differences.
+    moved = [{'id': 'p0', 'text': 'B', 'kind': 'heading'}, {'id': 'p1', 'text': 'w', 'kind': 'body'}]
+    [change] = resume_templates.diff_paragraphs(old, moved)[0][1:]
+    assert (change['op'], change['from_section'], change['to_section'], change['section']) == ('changed', 'A', 'B', 'B')
+    composed = [{'id': 'p0', 'text': 'Caf\u00e9', 'kind': 'heading'}]
+    assert resume_templates.diff_paragraphs(composed, [{'id': 'p0', 'text': 'Cafe\u0301', 'kind': 'body'}])[0] == []
 
 
 # MCP ------------------------------------------------------------------------
@@ -272,11 +284,4 @@ def test_mcp_reads_templates_and_differences(client, app):
     result = ok(client, tokens, 'diff_resumes', from_id=listed[0]['id'], to_id=manager['id'])
     assert result['summary']['changed'] == 2 and result['to']['template']['name'] == 'Engineering manager'
     assert ok(client, tokens, 'list_resumes')['template'] == {'id': listed[0]['id'], 'name': 'Main resume'}
-    # Another account's template behaves like one that never existed.
-    add_user(app, 'other@example.com')
-    theirs, _ = connect(client, email='other@example.com', password='other-password-123')
-    stranger = '00000000-0000-0000-0000-000000000000'
-    for name, key in (('get_template', 'template_id'), ('read_resume', 'template_id'), ('diff_resumes', 'from_id')):
-        arguments = lambda value: {key: value, **({'to_id': value} if key == 'from_id' else {})}
-        mine, unknown = (call(client, theirs, name, **arguments(value)) for value in (manager['id'], stranger))
-        assert mine['isError'] and mine == unknown, name
+    assert 'cannot be empty' in call(client, tokens, 'read_resume', template_id='')['content'][0]['text']

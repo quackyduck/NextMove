@@ -389,7 +389,15 @@ def test_mcp_tools_cannot_reach_other_tenants(world):
                 ('list_resumes', {'job_id': ids['job']}), ('read_resume', {'resume_id': ids['master']}),
                 ('read_resume', {'resume_id': ids['resume']}), ('get_resume_download_link', {'resume_id': ids['resume']}),
                 ('create_resume_upload_link', {'target': ids['job']}),
-                ('upload_resume', {'target': ids['job'], 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='})]
+                ('upload_resume', {'target': ids['job'], 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='}),
+                ('get_template', {'template_id': ids['template']}), ('read_resume', {'template_id': ids['template']}),
+                ('diff_resumes', {'from_id': ids['template'], 'to_id': ids['resume']})]
+    # B's own resume diffed against A's, either way round, fails like an unknown ID.
+    mine = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+        'name': 'upload_resume', 'arguments': {'target': 'master', 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='}}})
+    own = mine.json['result']['structuredContent']['resume']['id']
+    attempts += [('diff_resumes', {'from_id': own, 'to_id': ids['master']}),
+                 ('diff_resumes', {'from_id': ids['template'], 'to_id': own})]
     for name, arguments in attempts:
         response = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                                                               'params': {'name': name, 'arguments': arguments}})

@@ -1553,7 +1553,7 @@
         ],
         "operationId": "diffResumes",
         "summary": "Compare two resumes paragraph by paragraph",
-        "description": "DOCX and TXT only. Each side is a template (its latest version) or any resume version the caller owns. Documents over 2,000 paragraphs are refused.",
+        "description": "DOCX and TXT only. Each side is a template (its latest version) or any resume version the caller owns; an ID is looked up as a template first. Documents over 2,000 paragraphs or 100,000 characters of text are refused (422).",
         "security": [
           {
             "oauth2": [
@@ -2094,6 +2094,24 @@
               }
             }
           },
+          "outline": {
+            "type": "object",
+            "description": "Each side's headings in order",
+            "properties": {
+              "from": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "changes": {
             "type": "array",
             "maxItems": 500,
@@ -2108,9 +2126,23 @@
                     "changed"
                   ]
                 },
+                "from_section": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The heading the paragraph sits under in the from document (\"\" before the first heading); null when that side is absent"
+                },
+                "to_section": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The heading the paragraph sits under in the to document (\"\" before the first heading); null when that side is absent"
+                },
                 "section": {
                   "type": "string",
-                  "description": "The heading the paragraph sits under (\"\" before the first heading); for a removal, in the from document"
+                  "description": "to_section, or from_section for a removal"
                 },
                 "from": {
                   "type": [
@@ -2159,7 +2191,8 @@
                   }
                 }
               }
-            }
+            },
+            "description": "Text-only, after NFC normalization: kind or formatting changes are not reported. Moves show as a removal plus an addition."
           },
           "truncated": {
             "type": "boolean",
