@@ -983,7 +983,7 @@
                           "type": "null"
                         }
                       ],
-                      "description": "The default template; null before the first upload"
+                      "description": "The default template; null until the account uploads its first version (the default is never empty)"
                     }
                   }
                 }
@@ -1009,7 +1009,7 @@
           "Resumes"
         ],
         "operationId": "uploadMasterResume",
-        "summary": "Add a version to the default resume template (5 MB max; identical bytes are a no-op; the first upload creates \"Main resume\")",
+        "summary": "Add a version to the default resume template (5 MB max; identical bytes are a no-op). With no default yet, the version goes to \"Main resume\" (created if needed), which becomes the default.",
         "security": [
           {
             "oauth2": [
@@ -1196,7 +1196,7 @@
           "Resume templates"
         ],
         "operationId": "createResumeTemplate",
-        "summary": "Create a resume template (at most 10; the first one becomes the default)",
+        "summary": "Create an empty resume template (at most 10). It becomes the default only once it has a version.",
         "security": [
           {
             "oauth2": [
@@ -1223,10 +1223,6 @@
                   "description": {
                     "type": "string",
                     "maxLength": 2000
-                  },
-                  "is_default": {
-                    "type": "boolean",
-                    "default": false
                   }
                 }
               }
@@ -1313,7 +1309,7 @@
           "Resume templates"
         ],
         "operationId": "updateResumeTemplate",
-        "summary": "Rename, describe, or make this the default (is_default accepts only true; the previous default stops being one)",
+        "summary": "Rename, describe, or make this the default (is_default accepts only true; 409 when the template has no versions; the previous default stops being one). The response omits versions.",
         "security": [
           {
             "oauth2": [
@@ -1394,7 +1390,7 @@
           "Resume templates"
         ],
         "operationId": "uploadResumeTemplateVersion",
-        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op)",
+        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op). If the account has no default yet, this template becomes it.",
         "security": [
           {
             "oauth2": [
@@ -1857,15 +1853,16 @@
           "name": {
             "type": "string",
             "maxLength": 100,
-            "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+            "description": "Free text (NFC-normalized; no control or formatting characters), unique per account ignoring case, e.g. \"Engineering manager\""
           },
           "description": {
             "type": "string",
-            "maxLength": 2000
+            "maxLength": 2000,
+            "description": "Control characters other than newline and tab are refused"
           },
           "is_default": {
             "type": "boolean",
-            "description": "Exactly one template per account is the default"
+            "description": "At most one per account; the default always has at least one version"
           },
           "created_at": {
             "type": "string",

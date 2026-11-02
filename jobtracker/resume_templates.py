@@ -1,10 +1,11 @@
 """Resume templates: named master resumes, one per kind of role, each with versions numbered 1, 2, ...
 
-The default template is "the master resume" wherever none is named: the first template, or "Main resume" on the
-first upload, until another is promoted. Nothing is deleted. Writes take the SQLite write lock before reading.
+The default is "the master resume" wherever no template is named. It is never empty: the first template to get a
+version becomes it, and only templates with versions can be promoted. Writes take the write lock before reading.
 """
 from contextlib import contextmanager
 from datetime import timezone
+import unicodedata
 
 from flask import Blueprint, current_app, g, jsonify, request
 from sqlalchemy import func, insert, select, update
@@ -91,18 +92,28 @@ def latest_version(user_id, template_id=None):
 
 
 # Writing ------------------------------------------------------------------
-def _fields(data):
-    """Validated name/description/is_default from a create or update body."""
-    services._payload(data, {'name', 'description', 'is_default'})
+def _clean(data, field, limit, allowed=''):
+    """NFC text without control or format characters (bidi overrides, NUL...) other than `allowed`."""
+    value = unicodedata.normalize('NFC', services._text(data[field], field, limit))
+    if any(unicodedata.category(char) in ('Cc', 'Cf') and char not in allowed for char in value):
+        raise services.ServiceError(f'{field} cannot contain control or formatting characters')
+    return value
+
+
+def _fields(data, allowed):
+    """Validated name/description (and is_default when allowed) from a create or update body."""
+    services._payload(data, allowed)
     fields = {}
     if 'name' in data:
-        fields['name'] = services._text(data['name'], 'name', NAME_LIMIT)
+        fields['name'] = _clean(data, 'name', NAME_LIMIT)
         if not fields['name']:
             raise services.ServiceError('name cannot be empty')
     if 'description' in data:
-        fields['description'] = services._text(data['description'], 'description', DESCRIPTION_LIMIT)
-    if 'is_default' in data and type(data['is_default']) is not bool:
-        raise services.ServiceError('is_default must be true or false')
+        fields['description'] = _clean(data, 'description', DESCRIPTION_LIMIT, allowed='\n\t')
+    if 'is_default' in data:
+        if data['is_default'] is not True:
+            raise services.ServiceError('is_default can only be set to true; make another template the default instead')
+        fields['is_default'] = True
     return fields
 
 
@@ -114,17 +125,14 @@ def _check_name(connection, user_id, name, except_id=None):
 
 
 def create_template(user_id, data):
-    fields = _fields(data)
+    """A new, empty template; it becomes the default only once it has a version."""
+    fields = _fields(data, {'name', 'description'})
     if 'name' not in fields:
         raise services.ServiceError('name is required')
     with write_lock() as connection:
-        existing = _check_name(connection, user_id, fields['name'])
-        if len(existing) >= MAX_TEMPLATES:
+        if len(_check_name(connection, user_id, fields['name'])) >= MAX_TEMPLATES:
             raise services.ServiceError(f'You can keep up to {MAX_TEMPLATES} resume templates', 409)
-        is_default = data.get('is_default', False) or not existing  # An account's first template is its default.
-        if is_default:
-            connection.execute(update(TEMPLATES).where(TEMPLATES.c.user_id == user_id).values(is_default=False))
-        values = {'description': '', **fields, 'id': new_id(), 'user_id': user_id, 'is_default': is_default,
+        values = {'description': '', **fields, 'id': new_id(), 'user_id': user_id, 'is_default': False,
                   'created_at': now(), 'updated_at': now()}
         connection.execute(insert(TEMPLATES).values(**values))
     return serialize(values, [], full=True)
@@ -132,31 +140,35 @@ def create_template(user_id, data):
 
 def update_template(user_id, template_id, data):
     """Rename, describe, or make default. A default stops being one only when another template takes over."""
-    fields = _fields(data)
-    if data.get('is_default') is False:
-        raise services.ServiceError('is_default can only be set to true; make another template the default instead')
+    fields = _fields(data, {'name', 'description', 'is_default'})
     with write_lock() as connection:
         template_id = owned(connection, user_id, template_id)['id']
         if 'name' in fields:
             _check_name(connection, user_id, fields['name'], except_id=template_id)
-        if data.get('is_default'):
+        if 'is_default' in fields:
+            if not versions(connection, user_id, template_id):
+                raise services.ServiceError('Upload a version to this template before making it the default', 409)
             connection.execute(update(TEMPLATES).where(TEMPLATES.c.user_id == user_id).values(is_default=False))
-            fields['is_default'] = True
         connection.execute(update(TEMPLATES).where(TEMPLATES.c.id == template_id).values(**fields, updated_at=now()))
         return serialize(owned(connection, user_id, template_id), versions(connection, user_id, template_id))
 
 
 def target_template(connection, user_id, template_id=None):
     """The template ID an upload lands in, inside the caller's locked transaction; None means the default.
-    No default means no templates at all (the first is always the default): create "Main resume"."""
+    With no default yet (no versions at all), the target becomes it; for None, "Main resume" (created if needed)."""
+    default = connection.scalar(select(TEMPLATES.c.id).where(TEMPLATES.c.user_id == user_id, TEMPLATES.c.is_default))
     if template_id is not None:
-        return owned(connection, user_id, template_id)['id']
-    found = connection.scalar(select(TEMPLATES.c.id).where(TEMPLATES.c.user_id == user_id, TEMPLATES.c.is_default))
-    if found is None:
-        found = new_id()
-        connection.execute(insert(TEMPLATES).values(id=found, user_id=user_id, name=DEFAULT_NAME, description='',
-                                                    is_default=True, created_at=now(), updated_at=now()))
-    return found
+        template_id = owned(connection, user_id, template_id)['id']
+    elif default is not None:
+        return default
+    elif not (template_id := connection.scalar(select(TEMPLATES.c.id).where(
+            TEMPLATES.c.user_id == user_id, func.lower(TEMPLATES.c.name) == DEFAULT_NAME.lower()))):
+        template_id = new_id()
+        connection.execute(insert(TEMPLATES).values(id=template_id, user_id=user_id, name=DEFAULT_NAME, description='',
+                                                    is_default=False, created_at=now(), updated_at=now()))
+    if default is None:
+        connection.execute(update(TEMPLATES).where(TEMPLATES.c.id == template_id).values(is_default=True))
+    return template_id
 
 
 # Routes -------------------------------------------------------------------

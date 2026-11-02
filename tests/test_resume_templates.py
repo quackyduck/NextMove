@@ -2,6 +2,8 @@
 import io
 import sqlite3
 
+from urllib.parse import urlsplit
+
 from sqlalchemy import text
 
 from jobtracker import create_app, migrations
@@ -41,15 +43,22 @@ def test_master_uploads_and_template_versions_are_numbered_per_template(client):
     assert client.get(f"/api/v1/templates/{manager['id']}/download?version=1").data == MANAGER
     assert client.get(f"/api/v1/templates/{manager['id']}/download").data == PLATFORM
     assert client.get(f"/api/v1/templates/{manager['id']}/download?version=9").status_code == 404
+    assert client.get(f"{MASTER}/download?version={'9' * 30}").status_code == 400  # Not an SQLite overflow (500).
+    for index in range(19):  # The 20-version cap is per template.
+        upload(client, session, MASTER, f'v{index}\n'.encode())
+    assert upload(client, session, MASTER, b'One more\n').status_code == 409
+    assert upload(client, session, path, b'One more\n').status_code == 201
 
 
 def test_names_are_validated_unique_ignoring_case_and_capped(client, app):
     session = sign_in(client)
-    assert create(client, session, name='Platform engineer')['is_default'] is True  # First one is the default.
+    create(client, session, name='Platform engineer', description='Line one\n\tLine two')
     create(client, session, name='Ingénieur')
     for body, status in (({'name': 'platform ENGINEER'}, 409), ({'name': ' INGÉNIEUR '}, 409), ({'name': '  '}, 400),
-                         ({}, 400), ({'name': 'x' * 101}, 400), ({'name': 'Ok', 'colour': 'blue'}, 400),
-                         ({'name': 'Ok', 'is_default': 'yes'}, 400), ({'name': 'Ok', 'description': 7}, 400)):
+                         ({'name': 'Inge\u0301nieur'}, 409), ({'name': 'A\x00'}, 400), ({'name': 'A\u202eB'}, 400),
+                         ({'name': 'Ok', 'description': 'a\x07'}, 400), ({}, 400), ({'name': 'x' * 101}, 400),
+                         ({'name': 'Ok', 'colour': 'blue'}, 400), ({'name': 'Ok', 'is_default': True}, 400),
+                         ({'name': 'Ok', 'description': 7}, 400)):
         assert client.post('/api/v1/templates', headers=session, json=body).status_code == status, body
     for index in range(8):
         create(client, session, name=f'Role {index}')
@@ -60,12 +69,17 @@ def test_names_are_validated_unique_ignoring_case_and_capped(client, app):
 
 def test_promoting_a_template_moves_master_uploads(client):
     session = sign_in(client)
-    main = upload(client, session, MASTER, PLATFORM).json['resume']['template_id']
     manager = create(client, session, name='Engineering manager')['id']
-    assert client.patch(f'/api/v1/templates/{manager}', headers=session, json={'is_default': True}).json['is_default']
+    main = upload(client, session, MASTER, PLATFORM).json['resume']['template_id']  # Templates start out empty...
+    assert (main != manager) and client.get(MASTER).json['template']['name'] == 'Main resume'
+    promote = lambda: client.patch(f'/api/v1/templates/{manager}', headers=session, json={'is_default': True})
+    assert promote().status_code == 409  # ...and an empty one cannot become the default.
+    upload(client, session, f'/api/v1/templates/{manager}/versions', PLATFORM)
+    assert promote().json['is_default']
     assert [t['id'] for t in client.get('/api/v1/templates').json['templates'] if t['is_default']] == [manager]
     upload(client, session, MASTER, MANAGER)
     assert client.get(MASTER).json['template']['id'] == manager and client.get(f'{MASTER}/download').data == MANAGER
+    assert [v['version'] for v in client.get(MASTER).json['versions']] == [2, 1]
     assert client.patch(f'/api/v1/templates/{manager}', headers=session, json={'is_default': False}).status_code == 400
     renamed = client.patch(f'/api/v1/templates/{main}', headers=session, json={'name': 'Platform', 'description': 'IC'})
     assert (renamed.json['name'], renamed.json['is_default'], renamed.json['version_count']) == ('Platform', False, 1)
@@ -79,9 +93,13 @@ def test_oauth_scopes_and_mcp_master_list_follow_the_default_template(client):
     assert client.post('/api/v1/templates', headers=reader, json={'name': 'X'}).status_code == 403
     tokens, _ = connect(client)
     headers = {'Authorization': 'Bearer ' + tokens['access_token']}
-    first = upload(client, headers, MASTER, PLATFORM).json['resume']
-    upload(client, headers, f"/api/v1/templates/{create(client, headers, name='EM')['id']}/versions", MANAGER)
+    manager = create(client, headers, name='EM')['id']
+    first = upload(client, headers, f'/api/v1/templates/{manager}/versions', MANAGER).json['resume']
+    assert client.get(MASTER).json['template']['id'] == manager  # The first template to get a version is the default.
+    upload(client, headers, f"/api/v1/templates/{create(client, headers, name='IC')['id']}/versions", PLATFORM)
     assert [r['id'] for r in ok(client, tokens, 'list_resumes')['master']] == [first['id']]
+    link = urlsplit(ok(client, tokens, 'create_resume_upload_link', target='master')['url']).path
+    assert client.post(link, data={'file': (io.BytesIO(b'Later\n'), 'r.txt')}).json['resume']['template_id'] == manager
 
 
 def shape(database, table):
@@ -103,7 +121,10 @@ def test_schema_12_master_resumes_become_default_templates(app, client):
     add_user(app, 'empty@example.com')  # No master resume, so no template.
     path = app.config['DATABASE_URL'].removeprefix('sqlite:///')
     app.extensions['jobtracker_db']['engine'].dispose()
-    with sqlite3.connect(path) as connection:
+    job = client.post('/api/v1/jobs', headers=session, json={'title': 'SRE'}).json['id']
+    with sqlite3.connect(path) as connection:  # A tailored draft depends on a version through the rebuild.
+        connection.execute("INSERT INTO tailored_drafts VALUES ('d1', 1, ?, ?, 'rq', 1, '{}', 'd.docx', NULL, "
+                           "'2026-01-01 00:00:00', NULL)", (job, first['id']))
         rewind_resume_templates(connection)
     upgraded = create_app({**app.config, 'TESTING': True})
     with upgraded.extensions['jobtracker_db']['engine'].connect() as connection:
@@ -113,6 +134,9 @@ def test_schema_12_master_resumes_become_default_templates(app, client):
         assert connection.execute(text('SELECT m.id, m.version, t.user_id FROM master_resumes m JOIN resume_templates t '
                                        'ON t.id = m.template_id ORDER BY m.user_id, m.version')).all() == [
             (first['id'], 1, 1), (second['id'], 2, 1), (mine['id'], 1, other_id)]
+        assert connection.execute(text('SELECT m.version FROM tailored_drafts d JOIN master_resumes m '
+                                       'ON m.id = d.master_resume_id')).all() == [(1,)]
+        assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
     create_app({**app.config, 'TESTING': True, 'DATABASE_URL': f'sqlite:///{path}.fresh'})
     for table in ('resume_templates', 'master_resumes'):  # The migrated tables match a fresh database's.
         assert shape(path, table) == shape(f'{path}.fresh', table)

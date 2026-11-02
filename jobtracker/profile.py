@@ -122,7 +122,7 @@ def send_version(user_id, template_id, version=None):
     """Send one version (latest when `version` is None) of a template the caller already owns."""
     query = select(MasterResume).where(MasterResume.user_id == user_id, MasterResume.template_id == template_id)
     if version is not None:
-        if not (version.isascii() and version.isdigit()):
+        if not (version.isascii() and version.isdigit() and len(version) <= 9):
             raise services.ServiceError('version must be a positive integer')
         query = query.where(MasterResume.version == int(version))
     resume = get_session().scalars(query.order_by(MasterResume.version.desc()).limit(1)).first()
