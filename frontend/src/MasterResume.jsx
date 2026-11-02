@@ -10,6 +10,8 @@ const ROLE_SUGGESTIONS = [
   "Software engineer", "Senior software engineer", "Staff engineer", "Engineering manager", "Director of engineering",
   "Data scientist", "Data engineer", "Technical program manager", "Program manager",
 ];
+// Duplicate-name key used by the backend (NFKC, case, whitespace runs; see #30): hide a suggestion the user already has.
+const nameKey = (name) => name.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 function formatSize(bytes) {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -72,8 +74,8 @@ function TemplateForm({ initial, taken = [], submitLabel, onSubmit, onCancel }) 
   const [description, setDescription] = useState(initial?.description || "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const takenKeys = new Set(taken.map((item) => item.toLowerCase()));
-  const suggestions = ROLE_SUGGESTIONS.filter((role) => !takenKeys.has(role.toLowerCase()));
+  const takenKeys = new Set(taken.map(nameKey));
+  const suggestions = ROLE_SUGGESTIONS.filter((role) => !takenKeys.has(nameKey(role)));
   async function submit(event) {
     event.preventDefault();
     setBusy(true);

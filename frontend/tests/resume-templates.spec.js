@@ -142,13 +142,16 @@ test("no default until a template gets its first file; history errors; the templ
 
   const { csrf_token: token } = await (await page.request.get(`${api}/auth/session`)).json();
   for (let i = 3; i <= 10; i += 1) {
-    const response = await page.request.post(`${api}/templates`, { headers: { "X-CSRF-Token": token }, data: { name: i === 3 ? "data SCIENTIST" : `Role ${i}` } });
+    const response = await page.request.post(`${api}/templates`, { headers: { "X-CSRF-Token": token }, data: { name: { 3: "data SCIENTIST", 4: "Data  engineer" }[i] || `Role ${i}` } });
     expect(response.status()).toBe(201);
   }
   await page.reload();
   await page.getByRole("button", { name: "Your resume templates" }).click();
   await expect(page.getByRole("article")).toHaveCount(10);
-  expect(await suggested(page)).not.toContain("Data scientist");
+  const offered = await suggested(page);
+  expect(offered).not.toContain("Data scientist");
+  expect(offered).not.toContain("Data engineer");
+  expect(offered).toContain("Software engineer");
   await create(page, "Role 11");
   await expect(page.getByRole("alert")).toContainText("You can keep up to 10 resume templates");
 });
