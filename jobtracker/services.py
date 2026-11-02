@@ -201,9 +201,16 @@ def update_job(user_id, job_id, data):
     return serialize(job)
 
 
-def list_activities(user_id, job_id):
+def list_activities(user_id, job_id, sources=False):
+    """A role's history. With `sources` (callers that may read resumes), resume_added entries also get `source`."""
     _record(Job, user_id, job_id)
-    return [serialize(item) for item in get_session().scalars(select(Activity).where(Activity.job_id == job_id, Activity.user_id == user_id).order_by(Activity.created_at, Activity.id))]
+    items = [serialize(item) for item in get_session().scalars(select(Activity).where(Activity.job_id == job_id, Activity.user_id == user_id).order_by(Activity.created_at, Activity.id))]
+    if sources:
+        described = _sources(user_id, {item["details"].get("source_resume_id") for item in items} - {None})
+        for item in items:
+            if item["details"].get("source_resume_id"):
+                item["details"] = {**item["details"], "source": described.get(item["details"]["source_resume_id"])}
+    return items
 
 
 def list_contacts(user_id, job_id):
@@ -238,15 +245,19 @@ def source_version(user_id, source_id):
     return record.id
 
 
-def describe_resumes(user_id, records):
-    """Job resume JSON; `source` names the template version it was tailored from (the template's current name)."""
-    ids = {record.source_master_resume_id for record in records} - {None}
+def _sources(user_id, ids):
+    """{version ID: {resume_id, template_id, template_name, version}} for the caller's template versions."""
     rows = get_session().execute(
         select(MasterResume.id, MasterResume.template_id, MasterResume.version, ResumeTemplate.name)
         .join(ResumeTemplate, (ResumeTemplate.id == MasterResume.template_id) & (ResumeTemplate.user_id == user_id))
         .where(MasterResume.user_id == user_id, MasterResume.id.in_(ids))).all() if ids else []
-    sources = {row.id: {"resume_id": row.id, "template_id": row.template_id, "template_name": row.name,
-                        "version": row.version} for row in rows}
+    return {row.id: {"resume_id": row.id, "template_id": row.template_id, "template_name": row.name,
+                     "version": row.version} for row in rows}
+
+
+def describe_resumes(user_id, records):
+    """Job resume JSON; `source` names the template version it was tailored from (the template's current name)."""
+    sources = _sources(user_id, {record.source_master_resume_id for record in records} - {None})
     results = []
     for record in records:
         data = serialize(record)
@@ -285,7 +296,12 @@ def create_resume(user_id, job_id, data):
     resume = Resume(user_id=user_id, job_id=job_id, size=data["size"], source_master_resume_id=source, **values)
     get_session().add(resume)
     get_session().flush()
-    result = describe_resumes(user_id, [resume])[0]
-    _activity(user_id, job_id, "resume_added", "Resume version added",
-              {"resume_id": resume.id, "original_filename": resume.original_filename, "source": result["source"]})
-    return result
+    # Only the ID: template names and versions are resolved on read, for callers that may read resumes.
+    _activity(user_id, job_id, "resume_added", "Resume version added", {
+        "resume_id": resume.id, "original_filename": resume.original_filename, **({"source_resume_id": source} if source else {})})
+    return describe_resumes(user_id, [resume])[0]
+
+
+def without_source_details(resume):
+    """An upload response for a caller that cannot read resumes: `source` keeps only its resume_id."""
+    return {**resume, "source": resume["source"] and {"resume_id": resume["source"]["resume_id"]}}

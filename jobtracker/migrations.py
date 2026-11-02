@@ -179,6 +179,8 @@ def upgrade_v8_to_v9(connection, admin_email=None, bootstrap_hash=None):
         id=1, email=bootstrap_email(admin_email), password_hash=credential.password_hash,
         session_version=credential.session_version, owns_legacy_tokens=True, created_at=models.now()))
 
+    # The other tenant tables are still rebuilt from the current model: the next column added to any of them needs
+    # frozen schema-9 DDL here too, as resumes has.
     def rebuild():
         for name in TENANT_TABLES:
             if name == 'Resume':

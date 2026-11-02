@@ -1915,10 +1915,7 @@
               {
                 "type": "object",
                 "required": [
-                  "resume_id",
-                  "template_id",
-                  "template_name",
-                  "version"
+                  "resume_id"
                 ],
                 "properties": {
                   "resume_id": {
@@ -1942,7 +1939,7 @@
                 "type": "null"
               }
             ],
-            "description": "The resume template version this resume was tailored from; null when none was recorded (uploads before schema 14, or none given)"
+            "description": "The resume template version this resume was tailored from; null when none was recorded (uploads before schema 14, or none given). Callers without resume read access (managed roles:ingest tokens, OAuth without resumes:read) get only {resume_id} in upload responses."
           }
         }
       },

@@ -130,7 +130,9 @@ def save_upload(user_id, target, upload, template_id=None, source_id=None):
     except BaseException:
         stored.discard()
         raise
-    return {'target': target, 'resume': result, 'created': True}
+    from .auth import can_read_resumes
+    return {'target': target, 'resume': result if can_read_resumes() else services.without_source_details(result),
+            'created': True}
 
 
 def upload_bytes(user_id, target, filename, data, template_id=None, source_id=None):
@@ -179,6 +181,7 @@ def _redeem(purpose, token, seconds, scope):
     granted = grant_scopes(claims.get('g'))
     if granted is None or scope not in granted[1]:
         raise services.ServiceError('This link is invalid or has expired; ask your agent for a new one', 404)
+    g.link_scopes = granted[1]
     return granted[0], claims
 
 

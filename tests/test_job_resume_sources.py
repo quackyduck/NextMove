@@ -72,6 +72,27 @@ def test_mcp_uploads_and_links_record_the_source(client):
     assert unknown['isError'] and 'Source resume version not found' in unknown['content'][0]['text']
 
 
+def test_callers_without_resume_access_see_only_the_source_id(client):
+    tokens, _ = connect(client)
+    headers = {'Authorization': 'Bearer ' + tokens['access_token']}
+    version = upload(client, headers, MASTER, b'Main\n').json['resume']
+    job = ok(client, tokens, 'add_job', title='Engineer')['job']['id']
+    ok(client, tokens, 'upload_resume', target=job, source_resume_id=version['id'], filename='t.txt', content_base64='VAo=')
+    full = {'resume_id': version['id'], 'template_id': version['template_id'], 'template_name': 'Main resume', 'version': 1}
+    reader, _ = connect(client, chosen=['jobs:read'])
+    writer, _ = connect(client, chosen=['jobs:read', 'resumes:write'])
+    for grant, expected in ((tokens, full), (reader, None), (writer, None)):
+        rest = client.get(f'/api/v1/jobs/{job}/activities', headers={'Authorization': 'Bearer ' + grant['access_token']})
+        for activities in (rest.json['activities'], ok(client, grant, 'get_job_history', job_id=job)['activities']):
+            [added] = [a['details'] for a in activities if 'resume_id' in a['details']]
+            assert (added['source_resume_id'], added.get('source')) == (version['id'], expected)
+    blind = ok(client, writer, 'upload_resume', target=job, source_resume_id=version['id'], filename='w.txt',
+               content_base64='Vwo=')['resume']
+    link = ok(client, writer, 'create_resume_upload_link', target=job, source_resume_id=version['id'])['url']
+    linked = client.post(urlsplit(link).path, data={'file': (io.BytesIO(b'L\n'), 'l.txt')}).json['resume']
+    assert blind['source'] == linked['source'] == {'resume_id': version['id']}
+
+
 def test_schema_13_job_resumes_upgrade_with_no_source(client, app):
     session = sign_in(client)
     version = upload(client, session, MASTER, b'Main\n').json['resume']

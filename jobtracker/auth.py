@@ -151,6 +151,16 @@ def require_resume_upload_access(view):
     return wrapped
 
 
+def can_read_resumes():
+    """Whether this request's credential may read resumes: not managed agent tokens, nor OAuth connections or
+    upload links without resumes:read. Sessions, the legacy token (job resumes) and harness grants may."""
+    if g.get('auth_type') == 'oauth':
+        return 'resumes:read' in g.oauth.scopes
+    if 'link_scopes' in g:
+        return 'resumes:read' in g.link_scopes
+    return g.get('auth_type') in ('session', 'bearer', 'harness')
+
+
 def require_scope(scope, fallback=require_auth):
     """An OAuth access token carrying `scope`, or whatever `fallback` already accepts.
 

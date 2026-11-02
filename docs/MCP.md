@@ -89,7 +89,7 @@ Agents can create templates and add versions to them, but never choose the defau
 - An agent with `resumes:write` can still fill a template's 20 version slots, and an account's slots are not recoverable because nothing is deleted. Fixing that needs archiving templates and versions, a product decision not taken yet.
 - `read_resume` reads `word/document.xml` with the standard library and refuses any DTD. PDFs are not parsed.
 - `diff_resumes` uses the same reader and refuses documents over 2,000 paragraphs or 100,000 characters, so the quadratic paragraph match and the response size stay bounded; another account's template or resume IDs fail exactly like unknown ones.
-- `source_resume_id` must be one of the caller's own template versions; another account's ID fails exactly like an unknown one, and the database's composite foreign key refuses it too.
+- `source_resume_id` must be one of the caller's own template versions; another account's ID fails exactly like an unknown one, and the database's composite foreign key refuses it too. A connection without `resumes:read` never sees a template's name or version through a source: its upload responses carry only `source: {resume_id}`, and `get_job_history` gives only `source_resume_id`.
 - The tenant isolation suite covers OAuth tokens on every route and every MCP tool.
 
 ## Next steps

@@ -161,7 +161,8 @@ def _job_resumes(job_id):
 @tool('get_job_history', 'jobs:read', 'The activity timeline of a role: creation, stage and field changes, '
       'contacts and resumes added.', {'job_id': JOB_ID}, ['job_id'], read_only=True, title='Get role history')
 def get_job_history(arguments):
-    return {'activities': services.list_activities(g.user_id, _text_arg(arguments, 'job_id', required=True))}
+    return {'activities': services.list_activities(g.user_id, _text_arg(arguments, 'job_id', required=True),
+                                                   sources='resumes:read' in g.oauth.scopes)}
 
 
 @tool('add_job', 'jobs:write', 'Save a new role at Needs review. Give a posting URL and/or the details. With a URL '
