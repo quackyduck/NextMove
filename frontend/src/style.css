@@ -1087,6 +1087,24 @@ nav {
   box-shadow: var(--shadow-2);
   transform: translate(-2px, -2px);
 }
+.job-card[draggable="true"] {
+  cursor: grab;
+}
+.job-card.dragging {
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+.board-column {
+  transition: background-color var(--duration-fast) var(--ease-out),
+    outline-color var(--duration-fast) var(--ease-out);
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+}
+.board-column.drop-target {
+  background: var(--color-surface);
+  outline-color: var(--color-signal);
+}
 .job-card strong {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);

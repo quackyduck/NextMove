@@ -66,6 +66,8 @@ class SetupBoundary extends React.Component {
 function App() {
   const [passwordSettingsOpen, setPasswordSettingsOpen] = useState(false);
   const detailRequest = useRef(0);
+  // The card being dragged on the board; a ref so dragover sees it immediately.
+  const dragRef = useRef(null);
   function navigate(next) {
     detailRequest.current += 1;
     setLoading(false);
@@ -92,6 +94,9 @@ function App() {
     [loading, setLoading] = useState(false),
     [draft, setDraft] = useState(blank),
     [selected, setSelected] = useState(null),
+    // Board drag and drop: the card being dragged and the column under it.
+    [dragging, setDragging] = useState(null),
+    [dropStage, setDropStage] = useState(null),
     [extras, setExtras] = useState({
       contacts: [],
       resumes: [],
@@ -299,6 +304,38 @@ function App() {
       await refresh();
       await reloadExtras();
       setNotice("Changes saved.");
+    });
+  }
+  // Board drag and drop: move the card at once, then save the stage. On a
+  // failure put the card back; a 409 means the role changed elsewhere, so reload.
+  async function moveJob(id, stage) {
+    const job = jobs.find((j) => j.id === id);
+    if (!job || job.stage === stage || busy) return;
+    const restore = (current) =>
+      current.map((j) => (j.id === id ? job : j));
+    setJobs((current) =>
+      current.map((j) => (j.id === id ? { ...j, stage } : j)),
+    );
+    await run(async () => {
+      try {
+        const updated = await api(`/jobs/${id}`, {
+          method: "PATCH",
+          body: { stage, version: job.version },
+        });
+        setJobs((current) => current.map((j) => (j.id === id ? updated : j)));
+        setNotice(
+          `Moved “${job.title || "Untitled opportunity"}” to ${label(stage)}.`,
+        );
+      } catch (e) {
+        setJobs(restore);
+        if (e.status === 409) {
+          await refresh({ showLoading: false });
+          throw new Error(
+            "This role changed elsewhere. The board is reloaded; try the move again.",
+          );
+        }
+        throw e;
+      }
     });
   }
   const filtered = jobs.filter(
@@ -615,7 +652,34 @@ function App() {
               ) : (
                 <div className="board" aria-label="Job board">
                   {stages.map(([key, name]) => (
-                    <section className="board-column" key={key}>
+                    <section
+                      className={`board-column ${
+                        dropStage === key && dragging?.stage !== key
+                          ? "drop-target"
+                          : ""
+                      }`}
+                      key={key}
+                      onDragOver={(e) => {
+                        if (!dragRef.current) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dropStage !== key) setDropStage(key);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget))
+                          setDropStage((current) =>
+                            current === key ? null : current,
+                          );
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const id = dragRef.current?.id;
+                        dragRef.current = null;
+                        setDragging(null);
+                        setDropStage(null);
+                        if (id != null) moveJob(id, key);
+                      }}
+                    >
                       <h2>
                         {name}
                         <span>
@@ -627,7 +691,24 @@ function App() {
                         .map((j) => (
                           <button
                             key={j.id}
-                            className="job-card"
+                            className={`job-card ${
+                              dragging?.id === j.id ? "dragging" : ""
+                            }`}
+                            draggable={!busy}
+                            title="Drag to another column to change its stage"
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", String(j.id));
+                              // Re-rendering the card inside dragstart cancels the drag in Chromium.
+                              const card = { id: j.id, stage: j.stage };
+                              dragRef.current = card;
+                              requestAnimationFrame(() => setDragging(card));
+                            }}
+                            onDragEnd={() => {
+                              dragRef.current = null;
+                              setDragging(null);
+                              setDropStage(null);
+                            }}
                             onClick={() => details(j)}
                           >
                             <OutreachBadge job={j} />
