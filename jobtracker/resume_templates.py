@@ -155,14 +155,22 @@ def update_template(user_id, template_id, data):
 
 def target_template(connection, user_id, template_id=None):
     """The template ID an upload lands in, inside the caller's locked transaction; None means the default.
-    With no default yet (no versions at all), the target becomes it; for None, "Main resume" (created if needed)."""
+
+    With no default yet (no versions at all), the target becomes it. For None that is the account's only
+    template when it has exactly one, else "Main resume" (reused by name, or created).
+    """
     default = connection.scalar(select(TEMPLATES.c.id).where(TEMPLATES.c.user_id == user_id, TEMPLATES.c.is_default))
     if template_id is not None:
         template_id = owned(connection, user_id, template_id)['id']
     elif default is not None:
         return default
-    elif not (template_id := connection.scalar(select(TEMPLATES.c.id).where(
-            TEMPLATES.c.user_id == user_id, func.lower(TEMPLATES.c.name) == DEFAULT_NAME.lower()))):
+    else:
+        rows = connection.execute(select(TEMPLATES.c.id, TEMPLATES.c.name).where(TEMPLATES.c.user_id == user_id)).all()
+        named = [row.id for row in rows if len(rows) == 1 or row.name.casefold() == DEFAULT_NAME.casefold()]
+        template_id = named[0] if named else None
+        if template_id is None and len(rows) >= MAX_TEMPLATES:
+            raise services.ServiceError('Upload into one of your resume templates', 409)
+    if template_id is None:
         template_id = new_id()
         connection.execute(insert(TEMPLATES).values(id=template_id, user_id=user_id, name=DEFAULT_NAME, description='',
                                                     is_default=False, created_at=now(), updated_at=now()))

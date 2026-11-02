@@ -1009,7 +1009,7 @@
           "Resumes"
         ],
         "operationId": "uploadMasterResume",
-        "summary": "Add a version to the default resume template (5 MB max; identical bytes are a no-op). With no default yet, the version goes to \"Main resume\" (created if needed), which becomes the default.",
+        "summary": "Add a version to the default resume template (5 MB max; identical bytes are a no-op). With no default yet, the version goes to the only template if there is exactly one, else to \"Main resume\" (created if needed); that template becomes the default.",
         "security": [
           {
             "oauth2": [

@@ -69,9 +69,10 @@ def test_names_are_validated_unique_ignoring_case_and_capped(client, app):
 
 def test_promoting_a_template_moves_master_uploads(client):
     session = sign_in(client)
-    manager = create(client, session, name='Engineering manager')['id']
-    main = upload(client, session, MASTER, PLATFORM).json['resume']['template_id']  # Templates start out empty...
-    assert (main != manager) and client.get(MASTER).json['template']['name'] == 'Main resume'
+    manager, ic = (create(client, session, name=name)['id'] for name in ('Engineering manager', 'IC'))
+    # Several templates and no default: a master upload goes to (a new) "Main resume", which becomes the default.
+    main = upload(client, session, MASTER, PLATFORM).json['resume']['template_id']
+    assert main not in (manager, ic) and client.get(MASTER).json['template']['name'] == 'Main resume'
     promote = lambda: client.patch(f'/api/v1/templates/{manager}', headers=session, json={'is_default': True})
     assert promote().status_code == 409  # ...and an empty one cannot become the default.
     upload(client, session, f'/api/v1/templates/{manager}/versions', PLATFORM)
@@ -85,6 +86,14 @@ def test_promoting_a_template_moves_master_uploads(client):
     assert (renamed.json['name'], renamed.json['is_default'], renamed.json['version_count']) == ('Platform', False, 1)
     assert client.patch(f'/api/v1/templates/{main}', headers=session, json={'name': 'PLATFORM'}).status_code == 200
     assert client.patch(f'/api/v1/templates/{main}', headers=session, json={'name': 'engineering MANAGER'}).status_code == 409
+
+
+def test_a_master_upload_with_no_default_fills_the_only_template(client):
+    session = sign_in(client)
+    only = create(client, session, name='Senior product manager')['id']
+    assert client.get(MASTER).json['template'] is None  # Templates but no default yet.
+    assert upload(client, session, MASTER, PLATFORM).json['resume']['template_id'] == only
+    assert [(t['id'], t['is_default']) for t in client.get('/api/v1/templates').json['templates']] == [(only, True)]
 
 
 def test_oauth_scopes_and_mcp_master_list_follow_the_default_template(client):
