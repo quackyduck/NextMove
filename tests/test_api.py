@@ -148,10 +148,13 @@ def test_unpaired_surrogates_are_malformed_json_and_pairs_are_kept(client):
 
 
 def test_deeply_nested_json_is_malformed_not_a_crash(client):
-    deep = '[' * 100000 + ']' * 100000
-    response = client.post('/api/v1/jobs', data=deep, content_type='application/json',
-                           headers={'Authorization': 'Bearer test-agent-token'})
-    assert response.status_code == 400 and response.json == {'error': 'A JSON object is required'}
+    headers = {'Authorization': 'Bearer test-agent-token'}
+    for depth, status in ((63, 400), (64, 400), (100000, 400)):  # 63 reaches the service, which rejects the list.
+        body = '{"title": "Engineer", "notes": ' + '[' * depth + ']' * depth + '}'
+        response = client.post('/api/v1/jobs', data=body, content_type='application/json', headers=headers)
+        assert response.status_code == status
+        assert (response.json == {'error': 'A JSON object is required'}) is (depth >= 64)
+    deep = '{"email": ' + '[' * 100000 + ']' * 100000 + '}'
     malformed = client.post('/api/v1/auth/login', data='{', content_type='application/json')
     nested = client.post('/api/v1/auth/login', data=deep, content_type='application/json')
     assert nested.status_code == malformed.status_code != 500 and nested.json == malformed.json
