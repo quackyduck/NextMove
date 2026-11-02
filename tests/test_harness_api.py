@@ -8,6 +8,7 @@ import sqlite3
 import time
 
 import pytest
+from legacy import rewind_resume_templates
 from sqlalchemy import text
 from werkzeug.security import generate_password_hash
 
@@ -213,7 +214,7 @@ def test_merge_gives_a_messaging_accounts_grant_to_an_existing_account(client, a
 def test_merge_refuses_accounts_with_data_or_web_sign_in(client, app):
     source, grant = account(client)
     upload_resume(client, grant)
-    for args, message in (((source, 1), 'already has data in master_resumes'),
+    for args, message in (((source, 1), 'already has data in resume_templates'),
                           ((1, source), 'has web sign-in'), ((source, source), 'two different'),
                           ((source, 99), 'No account with ID 99')):
         result = merge(app, *args)
@@ -280,6 +281,7 @@ def test_schema_11_upgrade_keeps_users_and_the_id_sequence(app, tmp_path):
     path = app.config['DATABASE_URL'].removeprefix('sqlite:///')
     engine.dispose()
     with sqlite3.connect(path) as connection:
+        rewind_resume_templates(connection)
         connection.executescript(
             'PRAGMA foreign_keys=OFF; DROP TABLE oauth_tokens; DROP TABLE oauth_codes; DROP TABLE oauth_grants; '
             'DROP TABLE oauth_clients; DROP TABLE tailored_drafts; DROP TABLE harness_grants; '

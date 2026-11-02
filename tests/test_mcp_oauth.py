@@ -4,6 +4,7 @@ import hashlib
 import io
 import re
 import secrets
+import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -12,6 +13,7 @@ from werkzeug.security import generate_password_hash
 
 from jobtracker import create_app, migrations
 from accounts import add_user, sign_in
+from legacy import rewind_resume_templates
 from test_documents import PDF, docx
 
 REDIRECT = 'https://agent.example.com/callback'
@@ -470,13 +472,17 @@ def test_upload_target_must_be_an_owned_role(client):
 # Schema --------------------------------------------------------------------
 def test_schema_11_databases_upgrade_to_12(app, tmp_path):
     engine = app.extensions['jobtracker_db']['engine']
+    path = app.config['DATABASE_URL'].removeprefix('sqlite:///')
+    engine.dispose()
+    with sqlite3.connect(path) as raw:
+        rewind_resume_templates(raw)
     with engine.begin() as connection:
         for table in ('oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients'):
             connection.exec_driver_sql(f'DROP TABLE {table}')
         connection.exec_driver_sql('UPDATE schema_version SET version=11')
     upgraded = create_app({**app.config, 'TESTING': True})
     with upgraded.extensions['jobtracker_db']['engine'].connect() as connection:
-        assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION == 12
+        assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION
         tables = {row[0] for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'oauth_clients', 'oauth_grants', 'oauth_codes', 'oauth_tokens'} <= tables
     tokens, _ = connect(upgraded.test_client())

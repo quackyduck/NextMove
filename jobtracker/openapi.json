@@ -24,6 +24,10 @@
     },
     {
       "name": "Resumes"
+    },
+    {
+      "name": "Resume templates",
+      "description": "Named master resumes, one per kind of role, each with its own numbered versions. Exactly one is the default: what the /profile/resume routes and agents that name no template use."
     }
   ],
   "paths": {
@@ -938,7 +942,7 @@
           "Resumes"
         ],
         "operationId": "getMasterResume",
-        "summary": "Latest master resume and all versions",
+        "summary": "Latest version and all versions of the default resume template",
         "security": [
           {
             "oauth2": [
@@ -969,6 +973,17 @@
                       "items": {
                         "$ref": "#/components/schemas/MasterResume"
                       }
+                    },
+                    "template": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/ResumeTemplate"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The default template; null before the first upload"
                     }
                   }
                 }
@@ -994,7 +1009,7 @@
           "Resumes"
         ],
         "operationId": "uploadMasterResume",
-        "summary": "Add a master resume version (5 MB max; identical bytes are a no-op)",
+        "summary": "Add a version to the default resume template (5 MB max; identical bytes are a no-op; the first upload creates \"Main resume\")",
         "security": [
           {
             "oauth2": [
@@ -1086,7 +1101,7 @@
           "Resumes"
         ],
         "operationId": "downloadMasterResume",
-        "summary": "Download a master resume version",
+        "summary": "Download a version of the default resume template",
         "security": [
           {
             "oauth2": [
@@ -1095,6 +1110,409 @@
           }
         ],
         "parameters": [
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Defaults to the latest"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/templates": {
+      "get": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "listResumeTemplates",
+        "summary": "List resume templates (default first, then by name)",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:read"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ResumeTemplate"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "createResumeTemplate",
+        "summary": "Create a resume template (at most 10; the first one becomes the default)",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "is_default": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/templates/{template_id}": {
+      "get": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "getResumeTemplate",
+        "summary": "A resume template with every version",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "updateResumeTemplate",
+        "summary": "Rename, describe, or make this the default (is_default accepts only true; the previous default stops being one)",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "is_default": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/templates/{template_id}/versions": {
+      "post": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "uploadResumeTemplateVersion",
+        "summary": "Add a version to a resume template (5 MB max, 20 versions per template; identical bytes are a no-op)",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "PDF, DOCX or UTF-8 TXT"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "resume": {
+                      "$ref": "#/components/schemas/MasterResume"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Same as the latest version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "resume": {
+                      "$ref": "#/components/schemas/MasterResume"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/templates/{template_id}/download": {
+      "get": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "downloadResumeTemplateVersion",
+        "summary": "Download a version of a resume template",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "version",
             "in": "query",
@@ -1147,7 +1565,7 @@
               "jobs:read": "See saved roles, notes, contacts and history",
               "jobs:write": "Add roles, move stages, add notes and contacts",
               "resumes:read": "Read and download resumes",
-              "resumes:write": "Upload new resume versions"
+              "resumes:write": "Upload new resume versions; create, rename or set the default resume template"
             }
           }
         }
@@ -1405,6 +1823,10 @@
           "id": {
             "type": "string"
           },
+          "template_id": {
+            "type": "string",
+            "description": "The resume template this version belongs to; versions are numbered per template"
+          },
           "version": {
             "type": "integer"
           },
@@ -1423,6 +1845,55 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "ResumeTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Free text, unique per account ignoring case, e.g. \"Engineering manager\""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "Exactly one template per account is the default"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version_count": {
+            "type": "integer"
+          },
+          "latest": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MasterResume"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MasterResume"
+            },
+            "description": "Newest first; only when reading or creating one template"
           }
         }
       }

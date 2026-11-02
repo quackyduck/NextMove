@@ -92,6 +92,8 @@ def create_app(test_config=None):
     app.register_blueprint(auth, url_prefix='/api/v1')
     from .profile import profile
     app.register_blueprint(profile, url_prefix='/api/v1')
+    from .resume_templates import templates
+    app.register_blueprint(templates, url_prefix='/api/v1')
     from .harness import harness
     app.register_blueprint(harness, url_prefix='/api/v1')
     # Third-party agents: OAuth 2.1 (root, for well-known discovery), MCP and signed file links.

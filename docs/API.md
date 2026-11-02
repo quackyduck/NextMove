@@ -202,8 +202,9 @@ Schema 10 adds the `onboarding_steps` and `master_resumes` tables.
   rejected with 400; oversize requests 413; more than 20 versions 409. Files are
   streamed to `<uploads>/<user_id>/master/` under generated names; the client
   filename is only kept for display and download. Nothing is parsed.
-- `GET /profile/resume` → `{resume: latest | null, versions: [...]}` with
-  `id, version, original_filename, media_type, size, sha256, created_at`.
+- `GET /profile/resume` → `{resume: latest | null, versions: [...], template}` with
+  `id, template_id, version, original_filename, media_type, size, sha256, created_at`,
+  for the default resume template (see "Resume templates" below).
 - `GET /profile/resume/download[?version=N]` → the file as an attachment (404 when none).
 
 ## Resume Agent harness and messaging-first accounts (schema 11)
@@ -240,7 +241,25 @@ Agents connect with OAuth 2.1 and use either the MCP server at `/mcp` or this AP
 | `POST /jobs`, `PATCH /jobs/{id}`, `POST /jobs/extract`, `POST /contacts` | session, legacy, OAuth | `jobs:write` |
 | `GET /jobs/{id}/resumes`, `GET /resumes/{id}/download`, `GET /profile/resume`, `GET /profile/resume/download` | session (and legacy for job resumes), OAuth | `resumes:read` |
 | `POST /jobs/{id}/resumes`, `POST /profile/resume` | session (plus legacy and `roles:ingest` for job resumes), OAuth | `resumes:write` |
+| `GET /templates`, `GET /templates/{id}`, `GET /templates/{id}/download` | session, OAuth | `resumes:read` |
+| `POST /templates`, `PATCH /templates/{id}`, `POST /templates/{id}/versions` | session, OAuth | `resumes:write` |
 | `GET /oauth/connections`, `POST /oauth/connections/{id}/revoke` | browser session only | — |
 | `GET /files/{token}`, `POST /uploads/{token}` | the signed link itself | issued by MCP tools |
 
 Schema 12 adds `oauth_clients`, `oauth_grants`, `oauth_codes` and `oauth_tokens`. Set `PUBLIC_BASE_URL` in production: it is the OAuth issuer and the base URL of MCP links.
+
+## Resume templates (schema 13)
+
+A resume template is a named master resume for one kind of role ("Senior product manager", "Engineering manager"), with its own version history numbered 1, 2, ... Names are free text (100 characters), unique per account ignoring case; descriptions are optional (2,000 characters). An account keeps up to 10 templates and 20 versions of each. Nothing is ever deleted.
+
+Exactly one template is the **default**: it is what "the master resume" means for `/profile/resume`, the harness `/me/master-resumes` routes and MCP `list_resumes` / `read_resume` without an ID. An account's first template becomes the default, and the first upload to `/profile/resume` with no template creates one named "Main resume". The default changes only by promoting another template. Schema 13 adds `resume_templates` and `master_resumes.template_id`, and moves each account's existing versions into a default "Main resume" with their numbers unchanged; accounts with no master resume get no template.
+
+All routes take a browser session or an OAuth token (never legacy or managed agent tokens); another account's template IDs return the same 404 as unknown ones.
+
+- `GET /templates` → `{templates: [{id, name, description, is_default, created_at, updated_at, version_count, latest}]}`, default first, then by name.
+- `POST /templates` `{name, description?, is_default?}` → 201, the template with `versions: []`. 409 for a taken name or an 11th template.
+- `GET /templates/<id>` → the template with `versions` (newest first; each version carries `template_id`).
+- `PATCH /templates/<id>` `{name?, description?, is_default?: true}` → the template. `is_default: false` is refused (400): promote another template instead.
+- `POST /templates/<id>/versions` multipart `file` → the same checks and responses as `POST /profile/resume`, without the onboarding fields.
+- `GET /templates/<id>/download[?version=N]` → the file (latest by default).
+- `GET /profile/resume` also returns `template`: the default template, or null before the first upload.

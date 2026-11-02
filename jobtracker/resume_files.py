@@ -51,8 +51,8 @@ def locate(user_id, resume_id):
 
 
 def latest_master(user_id):
-    return get_session().scalars(select(MasterResume).where(MasterResume.user_id == user_id)
-                                 .order_by(MasterResume.version.desc()).limit(1)).first()
+    from .resume_templates import latest_version
+    return latest_version(user_id)
 
 
 def read_paragraphs(path, media_type):
@@ -98,14 +98,14 @@ def _kind(style, text):
 
 
 # Saving -------------------------------------------------------------------
-def save_upload(user_id, target, upload):
+def save_upload(user_id, target, upload, template_id=None):
     """Validate and store `upload` as a new master version (target 'master') or a job attachment."""
     if target == 'master':
         folder = master_folder(user_id)
         stored = documents.receive(upload, folder, RESUME_LIMIT, folder / '.incoming')
         try:
             stored.commit()
-            result, created = save_version(user_id, stored)
+            result, created = save_version(user_id, stored, template_id)
         except BaseException:
             stored.discard()
             raise
