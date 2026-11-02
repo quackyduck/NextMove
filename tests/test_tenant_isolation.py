@@ -280,6 +280,8 @@ def test_creations_belong_to_the_caller(world):
     taskqueue.drain(world['app'])
     assert client.get(f"/api/v1/extractions/{preview['id']}", headers=headers).json['status'] == 'succeeded'
     assert all(token['name'] == 'A agent' for token in world['a'].get('/api/v1/agent-tokens').json['tokens'])
+    session, browser = world['credentials']['session']  # Connected apps create templates once B has a default.
+    session.post('/api/v1/profile/resume', headers=browser, data={'file': (io.BytesIO(b'B master'), 'b.txt')})
     for mode in ('session', 'oauth'):
         client, headers = world['credentials'][mode]
         mine = client.post('/api/v1/templates', headers=headers, json={'name': f'B {mode}'})

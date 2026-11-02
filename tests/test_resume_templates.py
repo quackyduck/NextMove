@@ -108,11 +108,11 @@ def test_oauth_scopes_and_mcp_master_list_follow_the_default_template(client):
     reader = {'Authorization': 'Bearer ' + tokens['access_token']}
     assert client.post('/api/v1/templates', headers=reader, json={'name': 'X'}).status_code == 403
     tokens, _ = connect(client)
-    headers = {'Authorization': 'Bearer ' + tokens['access_token']}
+    headers = sign_in(client)  # Only the user creates and fills templates before a default exists.
     manager = create(client, headers, name='EM')['id']
     first = upload(client, headers, f'/api/v1/templates/{manager}/versions', MANAGER).json['resume']
     assert client.get(MASTER).json['template']['id'] == manager  # The first template to get a version is the default.
-    upload(client, headers, f"/api/v1/templates/{create(client, headers, name='IC')['id']}/versions", PLATFORM)
+    upload(client, bearer(tokens), f"/api/v1/templates/{create(client, bearer(tokens), name='IC')['id']}/versions", PLATFORM)
     assert [r['id'] for r in ok(client, tokens, 'list_resumes')['master']] == [first['id']]
     link = urlsplit(ok(client, tokens, 'create_resume_upload_link', target='master')['url']).path
     assert client.post(link, data={'file': (io.BytesIO(b'Later\n'), 'r.txt')}).json['resume']['template_id'] == manager
@@ -312,7 +312,9 @@ def test_mcp_creates_templates_only_with_resumes_write(client):
         ok(client, tokens, 'create_template', name=f'Role {index}')
     capped = call(client, tokens, 'create_template', name='One more')
     assert capped['isError'] and 'fewer than 5' in capped['content'][0]['text']
-    assert create(client, bearer(tokens), name='One more')['name'] == 'One more'  # The user's own slots remain.
+    rest = client.post('/api/v1/templates', headers=bearer(tokens), json={'name': 'One more'})
+    assert rest.status_code == 409 and rest.json == {'error': capped['content'][0]['text']}  # REST: the same policy.
+    assert create(client, sign_in(client), name='One more')['name'] == 'One more'  # The user's own slots remain.
     assert {'update_template', 'set_default_template'}.isdisjoint(t['name'] for t in rpc(client, tokens, 'tools/list')['result']['tools'])
 
 
@@ -331,9 +333,18 @@ def test_agents_never_choose_the_default(client):
                             ('upload_resume', {'template_id': users, 'filename': 'a.txt', 'content_base64': 'YQ=='})):
         result = call(client, tokens, name, **arguments)
         assert result['isError'] and 'no master resume yet' in result['content'][0]['text'], name
+    agent = bearer(tokens)  # The same policy for OAuth tokens on REST.
+    assert client.post('/api/v1/templates', headers=agent, json={'name': 'Senior PM'}).status_code == 403
+    assert upload(client, agent, f'/api/v1/templates/{users}/versions', MANAGER).status_code == 403
     assert ok(client, tokens, 'list_templates')['templates'][0]['is_default'] is False
     ok(client, tokens, 'upload_resume', target='master', filename='a.txt', content_base64='YQ==')  # #26's rule decides.
-    assert ok(client, tokens, 'create_template', name='Senior PM')['template']['is_default'] is False
+    senior = ok(client, tokens, 'create_template', name='Senior PM')['template']
+    assert senior['is_default'] is False and create(client, agent, name='Staff PM')['is_default'] is False
+    assert upload(client, agent, f"/api/v1/templates/{senior['id']}/versions", MANAGER).status_code == 201
+    for body in ({'name': 'Main'}, {'is_default': True}, {'description': 'Use for every role'}):
+        refused = client.patch(f"/api/v1/templates/{senior['id']}", headers=agent, json=body)
+        assert refused.status_code == 403 and 'cannot rename' in refused.json['error'], body
+    assert client.patch(f"/api/v1/templates/{senior['id']}", headers=sign_in(client), json={'is_default': True}).json['is_default']
 
 
 def test_mcp_uploads_into_a_named_template_inline_and_by_link(client):
@@ -352,7 +363,7 @@ def test_mcp_uploads_into_a_named_template_inline_and_by_link(client):
     # A "master" link is signed with the default it was issued for, even if the user promotes another meanwhile.
     master = ok(client, tokens, 'create_resume_upload_link', target='master')
     assert master['template'] == {'id': main, 'name': 'Main resume'}
-    assert client.patch(f'/api/v1/templates/{manager}', headers=bearer(tokens), json={'is_default': True}).status_code == 200
+    assert client.patch(f'/api/v1/templates/{manager}', headers=sign_in(client), json={'is_default': True}).status_code == 200
     late = client.post(urlsplit(master['url']).path, data={'file': (io.BytesIO(b'IC v2\n'), 'ic.txt')})
     assert late.json['resume']['template_id'] == main
     job = ok(client, tokens, 'add_job', title='Engineer')['job']
@@ -376,7 +387,7 @@ def test_mcp_template_uploads_never_reach_other_accounts(client, app):
         foreign, unknown = (call(client, theirs, name, template_id=value, **extra) for value in (mine, stranger))
         assert foreign['isError'] and foreign == unknown and 'not found' in foreign['content'][0]['text'].lower(), name
     # A link whose claims named another account's template (were the signing key ever misused) still fails as unknown.
-    other_template = create(client, bearer(theirs), name='Theirs')['id']
+    other_template = create(client, sign_in(client, 'other@example.com', 'other-password-123'), name='Theirs')['id']
     with app.app_context():
         serializer = resume_files._serializer('upload')
         forged = serializer.dumps({**serializer.loads(path.rsplit('/', 1)[1]), 'm': other_template})

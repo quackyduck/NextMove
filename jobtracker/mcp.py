@@ -342,16 +342,13 @@ TARGET = {'type': 'string', 'description': '"master" for a new version of the de
                                            'template_id.'}
 UPLOAD_TEMPLATE = {'type': 'string', 'description': 'Template ID from list_templates or create_template: adds a new '
                                                     'version to that template. Omit target when giving this.'}
-MCP_TEMPLATE_CAP = 5  # Of the account's 10; the rest are left for the user to create in My Next Moov.
-NO_DEFAULT = ('The user has no master resume yet. Ask them to upload their main resume in My Next Moov, or upload it '
-              'with target "master"; resume templates can be created and filled once it exists.')
 
 
 @tool('create_template', 'resumes:write', 'Create an empty resume template for a kind of role the user applies to '
       '(e.g. "Senior product manager"), with an optional description of when to use it. Templates are permanent: '
       'they cannot be deleted, and renaming or making one the default is left to the user in My Next Moov. Each '
       'counts against the account\'s limit, and connected apps can create one only while there are fewer than '
-      f'{MCP_TEMPLATE_CAP}. So create one only when no existing template fits and the user agreed to the name. '
+      f'{resume_templates.AGENT_TEMPLATES}. So create one only when no existing template fits and the user agreed to the name. '
       'Names are unique ignoring case, spacing and width. Needs a master resume first. Then add its first version '
       'with upload_resume or create_resume_upload_link and template_id.', {
           'name': {'type': 'string', 'maxLength': resume_templates.NAME_LIMIT,
@@ -361,8 +358,7 @@ NO_DEFAULT = ('The user has no master resume yet. Ask them to upload their main 
       }, ['name'], title='Create resume template')
 def create_template(arguments):
     data = {key: arguments[key] for key in ('name', 'description') if key in arguments}
-    _require_default()
-    return {'template': resume_templates.create_template(g.user_id, data, cap=MCP_TEMPLATE_CAP)}
+    return {'template': resume_templates.create_template(g.user_id, data, agent=True)}
 
 
 @tool('create_resume_upload_link', 'resumes:write', 'A URL to upload a resume file (PDF, DOCX or UTF-8 TXT, up to '
@@ -397,13 +393,6 @@ def upload_resume(arguments):
     return resume_files.upload_bytes(g.user_id, target, filename, data, template and template['id'])
 
 
-def _require_default():
-    """Agents never pick the default: until the user has one, they can't create templates or fill a named one.
-    Once a default exists it never goes away (it only moves), so checking outside the write lock is safe."""
-    if resume_templates.default_template(g.user_id)[0] is None:
-        raise ToolError(NO_DEFAULT)
-
-
 def _target(arguments):
     """(target, template or None): a role, the default template ("master"), or a template the caller owns."""
     if 'template_id' in arguments:
@@ -413,7 +402,7 @@ def _target(arguments):
         if not template_id:
             raise ToolError('template_id cannot be empty; use target "master" for the master resume')
         template = resume_templates.get_template(g.user_id, template_id)  # Unknown and other accounts' IDs: not found.
-        _require_default()
+        resume_templates.agent_check(g.user_id, 'upload')
         return 'master', template
     if not isinstance(arguments.get('target'), str) or not arguments['target'].strip():
         raise ToolError('Give target ("master" or a role ID) or template_id')

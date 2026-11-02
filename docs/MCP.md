@@ -26,7 +26,7 @@ Agents that can only send a static header still use the existing managed tokens 
 | `jobs:read` | List, read and search roles, history and contacts |
 | `jobs:write` | Add roles, move stages, set outcomes, edit fields, add notes and contacts |
 | `resumes:read` | List, read and download master and role resumes |
-| `resumes:write` | Create resume templates; upload new versions of a template (the default one, "master", or any named one) or role resumes |
+| `resumes:write` | Create resume templates (once a default exists, up to 5); upload new versions of a template (the default one, "master", or any named one) or role resumes. Never rename, edit or promote templates, on MCP or REST |
 
 No scope allows deleting anything, changing the password, managing tokens or connections, or onboarding. Those routes accept browser sessions only, and OAuth tokens get 401 there.
 
@@ -59,6 +59,7 @@ Agents can create templates and add versions to them, but never choose the defau
 
 - `target: "master"` adds a version to the default template. Before the account has any version, it goes to the account's only template or "Main resume", which becomes the default (the same rule as `POST /profile/resume`).
 - Until a default exists, `create_template` and any `template_id` upload or link are refused with a message asking the agent to have the user upload their main resume (or to upload it with `target: "master"`), so an agent's template can never become the master resume.
+- The same rules apply to OAuth tokens on the REST `/templates` routes ([API](API.md#resume-templates-schema-13)), which also refuse `PATCH` (403).
 - `create_template` is refused once the account has 5 templates; the remaining 5 of the 10 are left for the user. Templates are permanent (nothing is deleted), so each one an agent creates uses a slot for good.
 - A `create_resume_upload_link` for `master` is signed with the default template's ID at issue time, so it keeps uploading there if the user promotes another template within its 15 minutes. Its response names the template (`template: {id, name}`).
 
