@@ -1549,6 +1549,73 @@
           }
         }
       }
+    },
+    "/resume-diff": {
+      "get": {
+        "tags": [
+          "Resume templates"
+        ],
+        "operationId": "diffResumes",
+        "summary": "Compare two resumes paragraph by paragraph",
+        "description": "DOCX and TXT only. Each side is a template (its latest version) or any resume version the caller owns. Documents over 2,000 paragraphs are refused.",
+        "security": [
+          {
+            "oauth2": [
+              "resumes:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A template ID (its latest version) or a resume version ID: a template version or a resume attached to a role"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A template ID (its latest version) or a resume version ID: a template version or a resume attached to a role"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The differences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1894,6 +1961,212 @@
               "$ref": "#/components/schemas/MasterResume"
             },
             "description": "Newest first; only when reading or creating one template"
+          }
+        }
+      },
+      "ResumeDiff": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "object",
+            "description": "The compared file: a template version (kind \"master\") or a role's resume (kind \"job\")",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "job"
+                ]
+              },
+              "version": {
+                "type": "integer"
+              },
+              "template_id": {
+                "type": "string"
+              },
+              "original_filename": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "template": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The template this version belongs to; null for a role's resume",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "to": {
+            "type": "object",
+            "description": "The compared file: a template version (kind \"master\") or a role's resume (kind \"job\")",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "master",
+                  "job"
+                ]
+              },
+              "version": {
+                "type": "integer"
+              },
+              "template_id": {
+                "type": "string"
+              },
+              "original_filename": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "template": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The template this version belongs to; null for a role's resume",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "identical": {
+            "type": "boolean",
+            "description": "Same bytes (sha256); changes is then empty"
+          },
+          "summary": {
+            "type": "object",
+            "description": "Counts over every change, even when truncated",
+            "properties": {
+              "added": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              },
+              "changed": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              }
+            }
+          },
+          "changes": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "added",
+                    "removed",
+                    "changed"
+                  ]
+                },
+                "section": {
+                  "type": "string",
+                  "description": "The heading the paragraph sits under (\"\" before the first heading); for a removal, in the from document"
+                },
+                "from": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "p<index>, as read_resume returns"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "heading",
+                        "bullet",
+                        "body"
+                      ]
+                    }
+                  }
+                },
+                "to": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "p<index>, as read_resume returns"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "heading",
+                        "bullet",
+                        "body"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More than 500 changes; only the first 500 are listed"
           }
         }
       }

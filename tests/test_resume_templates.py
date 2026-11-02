@@ -1,20 +1,21 @@
-"""Resume templates (schema 13): named master resumes with per-template versions."""
+"""Resume templates (schema 13): named master resumes with per-template versions, diffs, and MCP access."""
 import io
 import sqlite3
 
 from sqlalchemy import text
 
-from jobtracker import create_app, migrations
+from jobtracker import create_app, migrations, resume_templates
 from accounts import add_user, sign_in
 from legacy import rewind_resume_templates
-from test_documents import docx
-from test_mcp_oauth import app, client, connect, ok  # noqa: F401  (fixtures)
+from test_documents import PDF, docx
+from test_mcp_oauth import WORD_NS, app, call, client, connect, ok, rpc  # noqa: F401  (fixtures)
 
 PLATFORM, MANAGER, MASTER = docx(), b'Engineering manager who grows teams\n', '/api/v1/profile/resume'
 
 
 def upload(client, headers, path, data):
-    return client.post(path, headers=headers, data={'file': (io.BytesIO(data), 'r.docx' if data == PLATFORM else 'r.txt')})
+    name = 'r.docx' if data.startswith(b'PK') else 'r.pdf' if data.startswith(b'%PDF') else 'r.txt'
+    return client.post(path, headers=headers, data={'file': (io.BytesIO(data), name)})
 
 
 def create(client, headers, **fields):
@@ -120,3 +121,123 @@ def test_schema_12_master_resumes_become_default_templates(app, client):
     headers = sign_in(browser)
     assert [v['id'] for v in browser.get(MASTER).json['versions']] == [second['id'], first['id']]
     assert upload(browser, headers, MASTER, b'New\n').json['resume']['version'] == 3
+
+
+# Diffs ----------------------------------------------------------------------
+def resume(*paragraphs):
+    """A DOCX of ('h', text) headings, ('b', text) bullets and plain body strings."""
+    props = {'h': '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>', 'b': '<w:pPr><w:numPr><w:ilvl w:val="0"/></w:numPr></w:pPr>'}
+    body = ''.join(f'<w:p>{props.get(item[0], "") if isinstance(item, tuple) else ""}<w:r><w:t>'
+                   f'{item[1] if isinstance(item, tuple) else item}</w:t></w:r></w:p>' for item in paragraphs)
+    return docx(document=f'<w:document xmlns:w="{WORD_NS}"><w:body>{body}</w:body></w:document>'.encode())
+
+
+IC = resume(('h', 'Summary'), 'Platform engineer who scales infrastructure', ('h', 'Experience'),
+            ('b', 'Led a platform team of six'), ('b', 'Cut deploy time by 40%'), ('h', 'Skills'), 'Go, Kubernetes')
+EM = resume(('h', 'Summary'), 'Engineering manager who grows teams', ('h', 'Experience'),
+            ('b', 'Led a platform team of six'), ('b', 'Hired and coached eight engineers'), ('h', 'Skills'), 'Go, Kubernetes')
+
+
+def diff(client, headers=None, **ids):
+    return client.get('/api/v1/resume-diff', headers=headers, query_string={'from': ids.get('a'), 'to': ids.get('b')})
+
+
+def test_diff_between_templates_names_the_section_of_each_change(client):
+    session = sign_in(client)
+    main = upload(client, session, MASTER, IC).json['resume']['template_id']
+    manager = create(client, session, name='Engineering manager')
+    upload(client, session, f"/api/v1/templates/{manager['id']}/versions", EM)
+    body = diff(client, a=main, b=manager['id']).json
+    assert (body['identical'], body['truncated'], body['from']['template']) == (False, False, {'id': main, 'name': 'Main resume'})
+    assert (body['to']['template']['name'], body['to']['version'], body['to']['kind']) == ('Engineering manager', 1, 'master')
+    assert body['summary'] == {'added': 0, 'removed': 0, 'changed': 2, 'unchanged': 5}
+    assert [(c['op'], c['section'], c['from']['text'], c['to']['text'], c['to']['kind']) for c in body['changes']] == [
+        ('changed', 'Summary', 'Platform engineer who scales infrastructure', 'Engineering manager who grows teams', 'body'),
+        ('changed', 'Experience', 'Cut deploy time by 40%', 'Hired and coached eight engineers', 'bullet')]
+    assert 'stored_filename' not in str(body)
+
+
+def test_diff_between_versions_identical_files_and_a_role_resume(client):
+    session = sign_in(client)
+    first = upload(client, session, MASTER, IC).json['resume']
+    longer = resume(('h', 'Summary'), 'Platform engineer who scales infrastructure', ('h', 'Experience'),
+                    ('b', 'Led a platform team of six'), ('h', 'Skills'), 'Go, Kubernetes', 'Terraform')
+    second = upload(client, session, MASTER, longer).json['resume']
+    body = diff(client, a=first['id'], b=second['id']).json
+    assert body['summary'] == {'added': 1, 'removed': 1, 'changed': 0, 'unchanged': 6}
+    assert [(c['op'], c['section']) for c in body['changes']] == [('removed', 'Experience'), ('added', 'Skills')]
+    same = diff(client, a=first['id'], b=first['id']).json
+    assert (same['identical'], same['changes'], same['summary']['unchanged']) == (True, [], 7)
+    # A role's resume can be compared with any template, whichever template it was tailored from.
+    other = create(client, session, name='Other')['id']
+    upload(client, session, f'/api/v1/templates/{other}/versions', EM)
+    job = client.post('/api/v1/jobs', headers=session, json={'title': 'SRE'}).json
+    tailored = client.post(f"/api/v1/jobs/{job['id']}/resumes", headers=session,
+                           data={'file': (io.BytesIO(EM), 'tailored.docx')}).json
+    against = diff(client, a=first['template_id'], b=tailored['id']).json
+    assert (against['from']['version'], against['to']['kind'], against['to']['template']) == (2, 'job', None)
+    assert 'stored_filename' not in str(against) and diff(client, a=other, b=tailored['id']).json['identical'] is True
+
+
+def test_diff_refuses_pdfs_empty_templates_unknown_ids_and_oversized_input(client, monkeypatch):
+    session = sign_in(client)
+    main = upload(client, session, MASTER, PDF).json['resume']['template_id']
+    pdf = diff(client, a=main, b=main)
+    assert pdf.status_code == 422 and 'PDF' in pdf.json['error']
+    empty = create(client, session, name='Empty')['id']
+    assert diff(client, a=empty, b=main).status_code == 409
+    assert diff(client, a='nope', b=main).json == {'error': 'from: no template or resume with this ID'}
+    assert diff(client, b=main).status_code == 400
+    first, second = (upload(client, session, f'/api/v1/templates/{empty}/versions', data).json['resume']['id']
+                     for data in (IC, EM))
+    monkeypatch.setattr(resume_templates, 'MAX_CHANGES', 1)
+    capped = diff(client, a=first, b=second).json
+    assert (len(capped['changes']), capped['summary']['changed'], capped['truncated']) == (1, 2, True)
+    monkeypatch.setattr(resume_templates, 'MAX_PARAGRAPHS', 6)
+    text = upload(client, session, f'/api/v1/templates/{empty}/versions', b'line\n' * 9).json['resume']['id']
+    for pair in ((first, second), (text, text)):  # DOCX and TXT stop reading past the cap.
+        refused = diff(client, a=pair[0], b=pair[1])
+        assert refused.status_code == 422 and 'more than 6 paragraphs' in refused.json['error']
+
+
+def test_diff_paragraphs_pairs_replacements_and_reports_surplus():
+    old = [{'id': 'p0', 'text': 'A', 'kind': 'heading'}, {'id': 'p1', 'text': 'x', 'kind': 'body'}]
+    new = old[:1] + [{'id': 'p1', 'text': 'y', 'kind': 'body'}, {'id': 'p2', 'text': 'z', 'kind': 'body'}]
+    changes, summary = resume_templates.diff_paragraphs(old, new)
+    assert summary == {'added': 1, 'removed': 0, 'changed': 1, 'unchanged': 1}
+    assert [(c['op'], c['section'], c['from'] and c['from']['text']) for c in changes] == [
+        ('changed', 'A', 'x'), ('added', 'A', None)]
+    assert resume_templates.diff_paragraphs([], new)[1]['added'] == 3
+
+
+# MCP ------------------------------------------------------------------------
+def test_mcp_reads_templates_and_differences(client, app):
+    tokens, _ = connect(client, chosen=['jobs:read'])
+    assert not {'list_templates', 'get_template', 'diff_resumes'} & {
+        t['name'] for t in rpc(client, tokens, 'tools/list')['result']['tools']}
+    tokens, _ = connect(client)
+    headers = {'Authorization': 'Bearer ' + tokens['access_token']}
+    assert ok(client, tokens, 'list_templates') == {'templates': []}
+    assert ok(client, tokens, 'list_resumes') == {'template': None, 'master': []}
+    upload(client, headers, MASTER, IC)
+    manager = create(client, headers, name='Engineering manager', description='People leadership')
+    upload(client, headers, f"/api/v1/templates/{manager['id']}/versions", EM)
+    listed = ok(client, tokens, 'list_templates')['templates']
+    assert [(t['name'], t['is_default'], t['version_count']) for t in listed] == [
+        ('Main resume', True, 1), ('Engineering manager', False, 1)]
+    detail = ok(client, tokens, 'get_template', template_id=manager['id'])['template']
+    assert (detail['description'], [v['version'] for v in detail['versions']]) == ('People leadership', [1])
+    assert ok(client, tokens, 'read_resume', template_id=manager['id'])['paragraphs'][1]['text'].startswith('Engineering')
+    assert ok(client, tokens, 'read_resume')['paragraphs'][1]['text'].startswith('Platform')
+    assert call(client, tokens, 'read_resume', template_id=manager['id'], resume_id='x')['isError']
+    result = ok(client, tokens, 'diff_resumes', from_id=listed[0]['id'], to_id=manager['id'])
+    assert result['summary']['changed'] == 2 and result['to']['template']['name'] == 'Engineering manager'
+    assert ok(client, tokens, 'list_resumes')['template'] == {'id': listed[0]['id'], 'name': 'Main resume'}
+    # Another account's template behaves like one that never existed.
+    add_user(app, 'other@example.com')
+    theirs, _ = connect(client, email='other@example.com', password='other-password-123')
+    stranger = '00000000-0000-0000-0000-000000000000'
+    for name, key in (('get_template', 'template_id'), ('read_resume', 'template_id'), ('diff_resumes', 'from_id')):
+        arguments = lambda value: {key: value, **({'to_id': value} if key == 'from_id' else {})}
+        mine, unknown = (call(client, theirs, name, **arguments(value)) for value in (manager['id'], stranger))
+        assert mine['isError'] and mine == unknown, name
