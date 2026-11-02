@@ -219,16 +219,38 @@ class OnboardingStep(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
 
 
+class ResumeTemplate(Base):
+    """A named master resume for one kind of role; its files are MasterResume versions. One per account is the default."""
+    __tablename__ = "resume_templates"
+    __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_resume_templates_id_user"),
+        # ASCII case-insensitive; resume_templates also compares casefolded names.
+        Index("uq_resume_templates_user_name", "user_id", text("lower(name)"), unique=True),
+        Index("uq_resume_templates_default", "user_id", unique=True, sqlite_where=text("is_default = 1")),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+
+
 class MasterResume(Base):
-    """A user's own resume versions, independent of any job."""
+    """One version of a resume template, independent of any job. Versions are numbered per template."""
     __tablename__ = "master_resumes"
     __table_args__ = (
         CheckConstraint("size >= 0"),
         CheckConstraint("version > 0"),
-        UniqueConstraint("user_id", "version"),
+        UniqueConstraint("template_id", "version", name="uq_master_resumes_template_version"),
+        # A version can never belong to another account's template.
+        ForeignKeyConstraint(["template_id", "user_id"], ["resume_templates.id", "resume_templates.user_id"],
+                             name="fk_master_resumes_template_owner"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    template_id: Mapped[str] = mapped_column(String(36), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     original_filename: Mapped[str] = mapped_column(String(500))
     stored_filename: Mapped[str] = mapped_column(String(100), unique=True)

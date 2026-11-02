@@ -42,7 +42,7 @@ KEY = 'tenant-a-retry-key-' + 'k' * 16
 class Endpoint:
     method: str
     rule: str             # Flask rule, for the coverage check
-    path: str             # with {job}, {resume}, {extraction}, {token}, {receipt}, {master}, {draft}, {connection}
+    path: str             # with {job}, {resume}, {extraction}, {token}, {receipt}, {master}, {draft}, {connection}, {template}
     modes: tuple          # credentials this route accepts: session, agent, harness, oauth, legacy
     body: dict = field(default_factory=dict)
     upload: bool = False
@@ -72,6 +72,16 @@ ENDPOINTS = [
     Endpoint('POST', '/api/v1/me/drafts/<draft_id>/approve', '/api/v1/me/drafts/{draft}/approve', ('harness',)),
     Endpoint('POST', '/api/v1/oauth/connections/<grant_id>/revoke', '/api/v1/oauth/connections/{connection}/revoke',
              ('session',)),
+    # Resume templates (schema 13): browser session or OAuth, never the legacy or managed tokens.
+    Endpoint('GET', '/api/v1/templates/<template_id>', '/api/v1/templates/{template}', ('session', 'oauth')),
+    Endpoint('PATCH', '/api/v1/templates/<template_id>', '/api/v1/templates/{template}', ('session', 'oauth'),
+             {'name': 'Hijacked', 'is_default': True}),
+    Endpoint('POST', '/api/v1/templates/<template_id>/versions', '/api/v1/templates/{template}/versions',
+             ('session', 'oauth'), upload=True),
+    Endpoint('GET', '/api/v1/templates/<template_id>/download', '/api/v1/templates/{template}/download', ('session', 'oauth')),
+    # Diffs take a template ID (its latest version) or a resume version ID on either side.
+    Endpoint('GET', '/api/v1/resume-diff', '/api/v1/resume-diff?from={template}&to={template}', ('session', 'oauth')),
+    Endpoint('GET', '/api/v1/resume-diff', '/api/v1/resume-diff?from={resume}&to={master}', ('session', 'oauth')),
 ]
 
 # Routes without an ID; each has a dedicated test below proving B sees only B's data.
@@ -108,6 +118,8 @@ COLLECTIONS = {
     ('GET', '/api/v1/oauth/connections'): 'test_lists_and_search_exclude_other_tenants',
     ('GET', '/api/v1/openapi.json'): 'public',
     ('GET', '/api/v1/files/<token>'): 'test_mcp_oauth.py',
+    ('GET', '/api/v1/templates'): 'test_lists_and_search_exclude_other_tenants',
+    ('POST', '/api/v1/templates'): 'test_creations_belong_to_the_caller',
     ('POST', '/api/v1/uploads/<token>'): 'test_mcp_oauth.py',
 }
 
@@ -172,7 +184,7 @@ def world(tmp_path, monkeypatch):
         'draft': json.dumps({'request_id': 'rq_a', 'revision': 1, 'job_id': job['id'],
                              'master_resume_version_id': master['id']}),
         'docx': (io.BytesIO(docx()), 'draft.docx')}).json
-    ids = {'job': job['id'], 'resume': resume['id'], 'extraction': preview['id'],
+    ids = {'template': a.get('/api/v1/templates').json['templates'][0]['id'], 'job': job['id'], 'resume': resume['id'], 'extraction': preview['id'],
            'token': a_token['agent_token']['id'], 'receipt': receipt['id'], 'master': master['id'],
            'draft': draft['id'], 'connection': a_connection}
     return dict(app=app, a=a, a_headers=a_headers, a_agent=a_agent, a_grant=a_grant, ids=ids, b=b,
@@ -200,6 +212,7 @@ def a_state(world):
         'master': a.get(f"/api/v1/me/master-resumes/{ids['master']}/file", headers=world['a_grant']).data,
         'draft': a.get(f"/api/v1/me/drafts/{ids['draft']}", headers=world['a_grant']).json,
         'connections': a.get('/api/v1/oauth/connections').json,
+        'template': a.get(f"/api/v1/templates/{ids['template']}").json,
     }
 
 
@@ -250,8 +263,12 @@ def test_lists_and_search_exclude_other_tenants(world):
     client, headers = world['credentials']['session']
     assert [token['name'] for token in client.get('/api/v1/agent-tokens', headers=headers).json['tokens']] == ['B agent']
     assert [item['client_name'] for item in client.get('/api/v1/oauth/connections').json['connections']] == ['Agent of 1']
+    for mode in ('session', 'oauth'):
+        client, headers = world['credentials'][mode]
+        assert client.get('/api/v1/templates', headers=headers).json == {'templates': []}
     # And A still sees its own.
     assert len(world['a'].get('/api/v1/jobs').json['jobs']) == 2
+    assert [item['id'] for item in world['a'].get('/api/v1/templates').json['templates']] == [world['ids']['template']]
 
 
 def test_creations_belong_to_the_caller(world):
@@ -263,6 +280,11 @@ def test_creations_belong_to_the_caller(world):
     taskqueue.drain(world['app'])
     assert client.get(f"/api/v1/extractions/{preview['id']}", headers=headers).json['status'] == 'succeeded'
     assert all(token['name'] == 'A agent' for token in world['a'].get('/api/v1/agent-tokens').json['tokens'])
+    for mode in ('session', 'oauth'):
+        client, headers = world['credentials'][mode]
+        mine = client.post('/api/v1/templates', headers=headers, json={'name': f'B {mode}'})
+        assert mine.status_code == 201 and world['a'].get(f"/api/v1/templates/{mine.json['id']}").status_code == 404
+    assert [item['name'] for item in world['a'].get('/api/v1/templates').json['templates']] == ['Main resume']
 
 
 def test_idempotency_keys_are_per_tenant(world):
@@ -367,7 +389,15 @@ def test_mcp_tools_cannot_reach_other_tenants(world):
                 ('list_resumes', {'job_id': ids['job']}), ('read_resume', {'resume_id': ids['master']}),
                 ('read_resume', {'resume_id': ids['resume']}), ('get_resume_download_link', {'resume_id': ids['resume']}),
                 ('create_resume_upload_link', {'target': ids['job']}),
-                ('upload_resume', {'target': ids['job'], 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='})]
+                ('upload_resume', {'target': ids['job'], 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='}),
+                ('get_template', {'template_id': ids['template']}), ('read_resume', {'template_id': ids['template']}),
+                ('diff_resumes', {'from_id': ids['template'], 'to_id': ids['resume']})]
+    # B's own resume diffed against A's, either way round, fails like an unknown ID.
+    mine = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+        'name': 'upload_resume', 'arguments': {'target': 'master', 'filename': 'b.txt', 'content_base64': 'aW50cnVkZXI='}}})
+    own = mine.json['result']['structuredContent']['resume']['id']
+    attempts += [('diff_resumes', {'from_id': own, 'to_id': ids['master']}),
+                 ('diff_resumes', {'from_id': ids['template'], 'to_id': own})]
     for name, arguments in attempts:
         response = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                                                               'params': {'name': name, 'arguments': arguments}})

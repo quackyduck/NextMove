@@ -6,6 +6,7 @@ its scopes) also disables every link issued under it. Links are bearer
 capabilities: keep their lifetimes short and never log them.
 """
 import io
+import itertools
 import xml.etree.ElementTree as ElementTree
 import zipfile
 
@@ -52,16 +53,17 @@ def locate(user_id, resume_id):
 
 
 def latest_master(user_id):
-    return get_session().scalars(select(MasterResume).where(MasterResume.user_id == user_id)
-                                 .order_by(MasterResume.version.desc()).limit(1)).first()
+    from .resume_templates import latest_version
+    return latest_version(user_id)
 
 
-def read_paragraphs(path, media_type):
-    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction)."""
+def read_paragraphs(path, media_type, limit=None):
+    """[{id, text, kind, style}] for DOCX/TXT, in document order; None for PDF (no text extraction).
+    With `limit`, stops after limit + 1 paragraphs so callers can refuse oversized documents cheaply."""
     if media_type == 'text/plain':
         lines = path.read_text(encoding='utf-8').splitlines()
-        return [{'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
-                for index, line in enumerate(lines) if line.strip()]
+        return list(itertools.islice(({'id': f'p{index}', 'text': line.strip(), 'kind': _kind('', line), 'style': ''}
+                                      for index, line in enumerate(lines) if line.strip()), limit and limit + 1))
     if media_type != documents.MEDIA_TYPES['.docx']:
         return None
     try:
@@ -84,6 +86,8 @@ def read_paragraphs(path, media_type):
         numbered = paragraph.find(f'{WORD}pPr/{WORD}numPr') is not None
         paragraphs.append({'id': f'p{index}', 'text': text, 'kind': 'bullet' if numbered else _kind(style, text),
                            'style': style})
+        if limit and len(paragraphs) > limit:
+            break
     return paragraphs
 
 
@@ -131,14 +135,14 @@ def _kind(style, text):
 
 
 # Saving -------------------------------------------------------------------
-def save_upload(user_id, target, upload):
+def save_upload(user_id, target, upload, template_id=None):
     """Validate and store `upload` as a new master version (target 'master') or a job attachment."""
     if target == 'master':
         folder = master_folder(user_id)
         stored = documents.receive(upload, folder, RESUME_LIMIT, folder / '.incoming')
         try:
             stored.commit()
-            result, created = save_version(user_id, stored)
+            result, created = save_version(user_id, stored, template_id)
         except BaseException:
             stored.discard()
             raise

@@ -64,7 +64,7 @@ def downgrade_to_v8(app):
                 connection.execute(f'DROP TABLE "{table}_v9"')
         for (sql,) in legacy.execute("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
             connection.execute(sql)
-        for table in ('oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes',
+        for table in ('oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes', 'resume_templates',
                       'users', 'invite_codes', 'queued_tasks'):
             connection.execute(f'DROP TABLE IF EXISTS "{table}"')
         if credential:
@@ -84,3 +84,18 @@ def without_owner(result):
     keys = list(result.keys())
     keep = [index for index, key in enumerate(keys) if key != 'user_id']
     return [tuple(row[index] for index in keep) for row in result]
+
+
+def rewind_resume_templates(connection):
+    """Turn a schema-13 sqlite3 connection's resume tables back into schema 12 (rows kept)."""
+    columns = 'id, user_id, version, original_filename, stored_filename, media_type, size, sha256, created_at'
+    connection.executescript(
+        # legacy_alter_table keeps tailored_drafts' REFERENCES master_resumes pointing at the rebuilt table.
+        'PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON; ALTER TABLE master_resumes RENAME TO master_resumes_v13; '
+        'CREATE TABLE master_resumes (id VARCHAR(36) NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id), '
+        'version INTEGER NOT NULL, original_filename VARCHAR(500) NOT NULL, stored_filename VARCHAR(100) NOT NULL UNIQUE, '
+        'media_type VARCHAR(200) NOT NULL, size INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, created_at DATETIME NOT NULL, '
+        'UNIQUE (user_id, version), CHECK (size >= 0), CHECK (version > 0)); '
+        f'INSERT INTO master_resumes ({columns}) SELECT {columns} FROM master_resumes_v13; DROP TABLE master_resumes_v13; '
+        'CREATE INDEX ix_master_resumes_user_id ON master_resumes (user_id); DROP TABLE resume_templates; '
+        'UPDATE schema_version SET version=12; PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;')
