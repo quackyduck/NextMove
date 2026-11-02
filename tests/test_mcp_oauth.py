@@ -4,13 +4,14 @@ import hashlib
 import io
 import re
 import secrets
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import text
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, migrations
+from jobtracker import create_app, documents, migrations, resume_files, services
 from accounts import add_user, sign_in
 from test_documents import PDF, docx
 
@@ -444,6 +445,58 @@ def test_resumes_with_a_dtd_are_refused(client):
        content_base64=base64.b64encode(docx(document=bomb)).decode())
     refused = call(client, tokens, 'read_resume')
     assert refused['isError'] and 'could not be read' in refused['content'][0]['text']
+
+
+@pytest.mark.parametrize('codec, bom', [('utf-16-le', b'\xff\xfe'), ('utf-16-be', b'\xfe\xff'),
+                                        ('utf-16-le', b''), ('utf-16-be', b'')])
+def test_utf16_dtds_are_refused_and_utf16_documents_still_read(client, codec, bom):
+    # A UTF-16 document.xml hides '<!DOCTYPE' from a byte search; the parser itself must refuse it.
+    tokens, _ = connect(client)
+    entities = '<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">'
+    bomb = RESUME_XML.decode().replace('encoding="UTF-8"?>', f'encoding="UTF-16"?><!DOCTYPE d [{entities}]>')
+    bomb = bomb.replace('Experience', '&b;')
+    ok(client, tokens, 'upload_resume', target='master', filename='r.docx',
+       content_base64=base64.b64encode(docx(document=bom + bomb.encode(codec))).decode())
+    refused = call(client, tokens, 'read_resume')
+    assert refused['isError'] and 'could not be read' in refused['content'][0]['text']
+    assert 'aaaaaaaaaa' not in refused['content'][0]['text']
+    plain = bom + RESUME_XML.decode().replace('encoding="UTF-8"', 'encoding="UTF-16"').encode(codec)
+    ok(client, tokens, 'upload_resume', target='master', filename='r.docx',
+       content_base64=base64.b64encode(docx(document=plain)).decode())
+    assert [p['text'] for p in ok(client, tokens, 'read_resume')['paragraphs']] == [
+        'Experience', 'Led a platform team', 'Python\tGo']
+
+
+def read_docx(tmp_path, document):
+    path = tmp_path / 'r.docx'
+    path.write_bytes(docx(document=document))
+    return resume_files.read_paragraphs(path, documents.MEDIA_TYPES['.docx'])
+
+
+def test_a_refused_entity_bomb_stops_parsing_at_once(tmp_path):
+    # Just under expat's amplification guard: without chunked feeding this took ~2 s of CPU on Python 3.12.
+    entities = '<!ENTITY z "xxxxxxxxxx"><!ENTITY a "' + '&z;' * 30 + '">'
+    bomb = (f'<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE d [{entities}]><w:document xmlns:w="{WORD_NS}">'
+            f'<w:body><w:p><w:r><w:t>{"&a;" * ((4 * 1024 * 1024 - 2000) // 3)}</w:t></w:r></w:p></w:body></w:document>')
+    started = time.perf_counter()
+    with pytest.raises(services.ServiceError, match='could not be read'):
+        read_docx(tmp_path, bomb.encode('utf-16'))
+    assert time.perf_counter() - started < 0.5
+
+
+def test_deeply_nested_paragraphs_read_in_linear_time(tmp_path):
+    depth = 12_000
+    nested = '<w:p><w:r><w:t>x</w:t></w:r>' * depth + '</w:p>' * depth
+    started = time.perf_counter()
+    paragraphs = read_docx(tmp_path, f'<w:document xmlns:w="{WORD_NS}"><w:body>{nested}</w:body></w:document>'.encode())
+    assert time.perf_counter() - started < 2
+    assert len(paragraphs) == depth and {p['text'] for p in paragraphs} == {'x'}
+
+
+def test_an_unknown_encoding_is_refused(tmp_path):
+    with pytest.raises(services.ServiceError, match='could not be read') as refused:
+        read_docx(tmp_path, f'<?xml version="1.0" encoding="bogus"?><w:document xmlns:w="{WORD_NS}"/>'.encode())
+    assert refused.value.status_code == 422
 
 
 def test_upload_links_accept_one_file_and_die_with_the_connection(client):
