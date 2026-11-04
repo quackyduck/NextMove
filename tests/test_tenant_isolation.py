@@ -111,6 +111,7 @@ COLLECTIONS = {
     ('POST', '/api/v1/me/master-resumes'): 'test_harness_creations_belong_to_the_grant_owner',
     ('POST', '/api/v1/me/jobs'): 'test_harness_creations_belong_to_the_grant_owner',
     ('POST', '/api/v1/me/drafts'): 'test_harness_creations_belong_to_the_grant_owner',
+    ('GET', '/api/v1/me/templates'): 'test_lists_and_search_exclude_other_tenants',
     ('POST', '/api/v1/me/activation-links'): 'test_harness_api.py',
     ('GET', '/api/v1/auth/activation'): 'test_harness_api.py',
     ('POST', '/api/v1/auth/activate'): 'test_harness_api.py',
@@ -266,9 +267,13 @@ def test_lists_and_search_exclude_other_tenants(world):
     for mode in ('session', 'oauth'):
         client, headers = world['credentials'][mode]
         assert client.get('/api/v1/templates', headers=headers).json == {'templates': []}
+    client, headers = world['credentials']['harness']
+    assert client.get('/api/v1/me/templates', headers=headers).json == {'templates': []}
     # And A still sees its own.
     assert len(world['a'].get('/api/v1/jobs').json['jobs']) == 2
     assert [item['id'] for item in world['a'].get('/api/v1/templates').json['templates']] == [world['ids']['template']]
+    mine = world['a'].get('/api/v1/me/templates', headers=world['a_grant']).json['templates']
+    assert [item['id'] for item in mine] == [world['ids']['template']]
 
 
 def test_creations_belong_to_the_caller(world):

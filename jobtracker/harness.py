@@ -33,6 +33,7 @@ from . import extraction_tasks as tasks
 from .extraction import extract_posting, validate_url
 from .models import ActivationToken, ExtractionTask, HARNESS_SCOPES, HarnessGrant, MasterResume, TailoredDraft, User, new_id, now
 from .profile import RESUME_LIMIT, REQUEST_LIMIT, master_folder, save_version
+from .resume_templates import list_templates
 
 harness = Blueprint('harness', __name__)
 GRANT_PREFIX = 'nm_harness_'
@@ -211,6 +212,16 @@ def master_resume_file(resume_id):
     response = send_file(target, mimetype=resume.media_type, conditional=False)
     response.headers['X-Original-Filename'] = quote(resume.original_filename)
     return response
+
+
+@harness.get('/me/templates')
+@require_grant('resumes:read')
+def templates_list():
+    """Every template with its latest version, so the harness can pick the one closest to a posting.
+
+    Read-only: creating, renaming and promoting templates stay with the user in the browser.
+    """
+    return jsonify(templates=list_templates(g.user_id))
 
 
 # Jobs and postings ------------------------------------------------------

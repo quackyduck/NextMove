@@ -219,6 +219,7 @@ The Resume Agent harness acts on JobTracker strictly as one user. These routes a
 
 - `POST /me/master-resumes` multipart `file`: the same checks as `POST /profile/resume`. Returns 201 `{id, version, created}`, or 200 when the bytes match the latest version.
 - `GET /me/master-resumes/<id>/file`: the file, with `X-Original-Filename` (percent-encoded).
+- `GET /me/templates`: the same `{templates: [...]}` as `GET /templates`, default first. Each `latest.id` is a version the file route above downloads, so the harness can choose the template closest to a posting. Read-only (`resumes:read`): creating, renaming and promoting templates stay with the user.
 - `POST /me/jobs` `{url}`: creates the role at `needs_review` and queues posting extraction on the worker. It uses the same per-account admission as previews; when the queue is busy, `extraction_id` is null. Returns 202 `{id, url, title, company, stage, posting, extraction_id}`.
 - `GET /me/extractions/<id>`: `{id, status, error?}`. On success, the role's title, company, salary, notes and description are filled.
 - `GET /me/jobs/<id>`: the role. `posting` is its description, or null.
