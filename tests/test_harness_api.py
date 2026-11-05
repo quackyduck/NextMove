@@ -325,3 +325,33 @@ def test_draft_metadata_with_an_unpaired_surrogate_is_refused(client, app):
     response = save_draft(client, grant, job['id'], resume['id'], request_id='rq_\ud800')
     assert response.status_code == 400 and response.json == {'error': 'draft must be a JSON object'}
     assert save_draft(client, grant, job['id'], resume['id'], note='\U0001F600').status_code == 201
+
+
+def test_templates_list_every_template_with_a_readable_latest_version(client, app):
+    user_id, grant = account(client)
+    assert client.get('/api/v1/me/templates', headers=grant).json == {'templates': []}
+    main = upload_resume(client, grant).json
+    with app.app_context():
+        from jobtracker import resume_files, resume_templates
+        other = resume_templates.create_template(user_id, {'name': 'Engineering manager', 'description': 'EM roles'})['id']
+        resume_files.save_upload(user_id, 'master', FileStorage(io.BytesIO(b'EM v1'), filename='em.txt'), other)
+        resume_files.save_upload(user_id, 'master', FileStorage(io.BytesIO(b'EM v2'), filename='em.txt'), other)
+    templates = client.get('/api/v1/me/templates', headers=grant).json['templates']
+    assert [(t['name'], t['is_default'], t['version_count']) for t in templates] == \
+        [('Main resume', True, 1), ('Engineering manager', False, 2)]
+    assert templates[0]['latest']['id'] == main['id'] and templates[1]['description'] == 'EM roles'
+    # The listing never exposes where files are stored, and each latest version downloads through the grant.
+    assert 'stored_filename' not in json.dumps(templates)
+    latest = templates[1]['latest']
+    assert latest['version'] == 2
+    assert client.get(f"/api/v1/me/master-resumes/{latest['id']}/file", headers=grant).data == b'EM v2'
+
+
+def test_templates_list_needs_a_live_grant(client, app):
+    user_id, grant = account(client)
+    upload_resume(client, grant)
+    assert client.get('/api/v1/me/templates').status_code == 401
+    assert client.get('/api/v1/me/templates', headers={'Authorization': 'Bearer nm_harness_forged'}).status_code == 401
+    with app.app_context():
+        harness.revoke_grants(user_id)
+    assert client.get('/api/v1/me/templates', headers=grant).status_code == 401
