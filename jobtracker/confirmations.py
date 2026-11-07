@@ -29,7 +29,6 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request, se
 from sqlalchemy import delete, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import check_password_hash
-from markupsafe import escape
 
 from . import credentials, mailer, pow, taskqueue, throttle
 from .models import ActivationToken, EmailConfirmation, InviteCode, User, new_id, now
@@ -215,8 +214,9 @@ def prune(engine):
         connection.execute(delete(MailUsage).where(MailUsage.day < (now() - timedelta(days=400)).date()))
 
 
-# Email templates (one fixed family; only the link and the masked address are interpolated)
-def _message(kind, link=None):
+# Email templates (one fixed family; only the link and the masked address are interpolated). The plain
+# text is built here; the branded HTML part comes from mailer.render (templates/email/, email_content.py).
+def _message(kind, link=None, email=''):
     base = mailer.public_url('/')
     signin, forgot = base + '?signin', base + '?forgot'
     if kind == 'signup':
@@ -248,10 +248,7 @@ def _message(kind, link=None):
                  'but it already belongs to another account. To use that account from chat, contact support',
                  'and ask to link your phone.', '', 'If this wasn\'t you, you can ignore this email.']
     text = '\n'.join(lines) + '\n'
-    html = ''.join(f'<p>{escape(line)}</p>' if line else '' for line in lines)
-    if link:
-        html = html.replace(str(escape(link)), f'<a href="{escape(link)}">{escape(link)}</a>')
-    return subject, text, html
+    return mailer.render(kind, subject=subject, text=text, email=email, link=link)
 
 
 # Worker -------------------------------------------------------------------------
@@ -302,7 +299,8 @@ def deliver(identifier):
     if not mailer.has_room('signup', mail_kind):
         raise taskqueue.Retry('Mail quota spent', delay=3600, count_attempt=False)
     if notice:
-        subject, text, html = _message('account_exists' if kind == 'signup' else 'activation_exists')
+        subject, text, html = _message('account_exists' if kind == 'signup' else 'activation_exists',
+                                       email=row['email'])
         try:
             mailer.send_email(row['email'], subject, text, html, category='signup', recipient=recipient)
         except mailer.MailQuotaExceeded as exc:
@@ -321,7 +319,7 @@ def deliver(identifier):
             token_hash=_digest(raw), sent_at=now(), expires_at=now() + timedelta(hours=LINK_HOURS))).rowcount
     if not minted:
         return 'gone'
-    subject, text, html = _message(kind, mailer.public_url('/verify-email', {'token': raw}))
+    subject, text, html = _message(kind, mailer.public_url('/verify-email', {'token': raw}), email=row['email'])
     try:
         mailer.send_email(row['email'], subject, text, html, category='signup', kind=mail_kind, recipient=recipient)
     except mailer.MailQuotaExceeded as exc:

@@ -766,6 +766,54 @@ BACKEND_SENDERS = {'resend': _send_resend, 'smtp': _send_smtp, 'console': _send_
                    'memory': _send_memory, 'none': _send_none}
 
 
+# Branded HTML ----------------------------------------------------------------------
+LOGO_PATH = '/static/email/mascot-96-v1.png'
+DEFAULT_SUPPORT = 'support@mynextmoov.com'
+
+
+def support_address():
+    """The address emails tell people to write to: MAIL_REPLY_TO's address, else support@mynextmoov.com."""
+    address = deliverable(parseaddr(current_app.config.get('MAIL_REPLY_TO') or '')[1])
+    return address or DEFAULT_SUPPORT
+
+
+def _fill(value, facts):
+    return value.format(**facts) if isinstance(value, str) else value
+
+
+def render(kind, *, subject, text, email, link=None, **facts):
+    """(subject, text, html) for one email kind: the given subject and plain text unchanged, plus the branded
+    HTML part from templates/email/layout.html (Jinja autoescape).
+
+    Only the masked address, `link` (a server-built URL) and fixed `facts` reach the template; every URL in
+    it comes from public_url. Callers then pass all three to send_email.
+    """
+    from flask import render_template
+    from .email_content import EMAILS
+    content = EMAILS[kind]
+    support = support_address()
+    values = {'masked': mask_address(email), 'support': support,
+              **{key: str(value) for key, value in facts.items()}}
+    button = None
+    if content.get('button'):
+        label, target = content['button']
+        if target == 'link' and not link:
+            raise ValueError(f'Email {kind!r} needs a link')
+        button = {'label': label, 'url': link if target == 'link' else public_url(target),
+                  'show_link': target == 'link'}
+    secondary = None
+    if content.get('secondary'):
+        before, label, path = content['secondary']
+        secondary = {'before': before, 'label': label, 'url': public_url(path)}
+    html = render_template(
+        'email/layout.html', subject=subject, base=public_url('/').rstrip('/'), logo_url=public_url(LOGO_PATH),
+        preheader=_fill(content['preheader'], values), title=_fill(content['title'], values),
+        paragraphs=[_fill(paragraph, values) for paragraph in content['paragraphs']],
+        button=button, secondary=secondary, note=_fill(content.get('note'), values),
+        why=_fill(content['why'], values), support=support)
+    return subject, text, html
+
+
 def enqueue_notice(connection, user_id, kind, payload):
     """Queue a mail task whose payload carries no secret (e.g. a password-changed notice). Never a link with a token."""
     from . import taskqueue

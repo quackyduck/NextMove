@@ -253,7 +253,8 @@ def notify_password_changed(user_id, via='change'):
 
 
 # Mail --------------------------------------------------------------------------
-def _messages(kind, link=None, minutes=DEFAULT_MINUTES, at=None):
+def _messages(kind, link=None, minutes=DEFAULT_MINUTES, at=None, email=''):
+    """Subject and plain text built here; the branded HTML part comes from mailer.render."""
     forgot = mailer.public_url('/?forgot')
     if kind == 'reset':
         subject = 'Reset your My Next Moov password'
@@ -266,12 +267,10 @@ def _messages(kind, link=None, minutes=DEFAULT_MINUTES, at=None):
         lines = [f'The password of your My Next Moov account was changed at {at} (UTC).',
                  'Every browser was signed out.', '',
                  f'If this wasn\'t you, reset your password now: {forgot}']
-    from markupsafe import escape
     text = '\n'.join(lines) + '\n'
-    html = ''.join(f'<p>{escape(line)}</p>' if line else '' for line in lines)
-    target = link or forgot
-    html = html.replace(str(escape(target)), f'<a href="{escape(target)}">{escape(target)}</a>')
-    return subject, text, html
+    if kind == 'reset':
+        return mailer.render('password_reset', subject=subject, text=text, email=email, link=link, minutes=minutes)
+    return mailer.render('password_changed', subject=subject, text=text, email=email, at=at)
 
 
 def _record(user_id, outcome):
@@ -328,7 +327,8 @@ def deliver_request(email):
         minted = mint_reset_token(connection, user.id, minutes, 'email') if current == user.email else None
     if minted is None:
         return 'none'
-    subject, text, html = _messages('reset', mailer.public_url('/reset-password', {'token': minted[0]}), minutes)
+    subject, text, html = _messages('reset', mailer.public_url('/reset-password', {'token': minted[0]}), minutes,
+                                    email=user.email)
     try:
         _send(user.email, subject, text, html, 'reset', recipient)
     except mailer.PermanentMailError:
@@ -354,7 +354,7 @@ def run_notice(app, task):
     except ValueError:
         at = 'an unknown time'
     try:
-        subject, text, html = _messages('notice', at=at)
+        subject, text, html = _messages('notice', at=at, email=email)
         _send(email, subject, text, html, 'notice')
     except mailer.PermanentMailError:
         return 'failed'

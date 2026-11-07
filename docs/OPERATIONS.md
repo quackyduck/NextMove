@@ -380,3 +380,11 @@ Audit lines (logger `jobtracker.accounts`) carry ids and counts only:
 - `deletions replay …`.
 
 The bridge Mac's own logs (`~/Library/Logs/NextMove`) are redacted, and fall under the same log-retention statement.
+
+### Branded emails
+
+Every email has the existing plain-text part plus a branded HTML part, rendered by `mailer.render(kind, ...)` from `jobtracker/templates/email/layout.html` (Jinja autoescape) and the fixed wording in `jobtracker/email_content.py`. The only values filled in are the masked address, the server-built link and fixed facts (a time, minutes, a date). Token links appear both as the button and as copyable text.
+
+The logo is served publicly at `PUBLIC_BASE_URL/static/email/mascot-96-v1.png` (allowlisted, cached as immutable); it must stay reachable for emails already delivered. A new image gets a new versioned name (add it to `EMAIL_ASSETS` in `jobtracker/__init__.py`) rather than replacing this file. There are no tracking pixels or redirected links; keep Resend open and click tracking off.
+
+Before launch, send each kind to Gmail (web and iOS), Apple Mail (macOS and iOS) and Outlook (365 web and Windows) and check light, dark and images-off rendering. Gmail ignores the dark-mode styles and inverts the light design; Outlook for Windows shows square corners.

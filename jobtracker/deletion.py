@@ -422,13 +422,15 @@ def run_account_deleted_email(app, task):
             return 'skipped'
     except mailer.TransientMailError as exc:
         raise taskqueue.Retry('DNS lookup failed', delay=60) from exc
-    support = (current_app.config.get('MAIL_REPLY_TO') or '').strip()
+    support = mailer.support_address()  # MAIL_REPLY_TO's address, else support@mynextmoov.com (as in the HTML part).
     lines = [f'Your My Next Moov account and everything in it were deleted on {now().strftime("%Y-%m-%d")} (UTC).',
              'Backups are replaced within 4 weeks; until then, a backup can still contain this data.', '',
-             f'Questions? Reply to this email{" or write to " + support if support else ""}.']
+             f'Questions? Reply to this email or write to {support}.']
     text_body = '\n'.join(lines) + '\n'
+    subject, text_body, html = mailer.render('account_deleted', subject='Your My Next Moov account was deleted',
+                                             text=text_body, email=email, date=now().strftime('%Y-%m-%d'))
     try:
-        mailer.send_email(email, 'Your My Next Moov account was deleted', text_body, category='notice')
+        mailer.send_email(email, subject, text_body, html, category='notice')
     except mailer.MailQuotaExceeded as exc:
         raise taskqueue.Retry('Mail quota spent', delay=exc.delay, count_attempt=False) from exc
     except mailer.TransientMailError as exc:

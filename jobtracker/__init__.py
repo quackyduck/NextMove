@@ -126,6 +126,18 @@ def create_app(test_config=None):
         db.get_session().execute(text('SELECT 1'))
         return jsonify(status='ok')
 
+    # Images for branded emails (mailer.render links them with public_url). Public, immutable, allowlisted:
+    # registered before the SPA catch-all, which would otherwise answer with index.html.
+    email_assets = Path(__file__).resolve().parent / 'static' / 'email'
+
+    @app.get('/static/email/<name>')
+    def email_asset(name):
+        if name not in EMAIL_ASSETS:
+            return jsonify(error='Not found'), 404
+        response = send_from_directory(email_assets, name, mimetype='image/png', max_age=31536000)
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+
     @app.get('/')
     @app.get('/<path:asset_path>')
     def frontend(asset_path='index.html'):
@@ -163,6 +175,10 @@ def create_app(test_config=None):
         from .prefix import PrefixMount
         app.wsgi_app = PrefixMount(app.wsgi_app, prefix)
     return app
+
+
+# The only files served from /static/email/ (a new image gets a new versioned name).
+EMAIL_ASSETS = frozenset({'mascot-96-v1.png'})
 
 
 def request_is_private():
