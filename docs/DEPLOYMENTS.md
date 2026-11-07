@@ -98,6 +98,22 @@ Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshot
 
 Additive (`users.is_admin`, `users.last_seen_at`, `admin_actions`). Take the dated snapshot first. After cut-over, run `flask --app jobtracker user set-admin <your verified email>` in a one-off container, sign in, and open `/admin`. The privacy page wording for this release (last-use time, support-action records and their 1-year retention) was approved by the owner on November 7, 2026. Rolling back means restoring the snapshot, or the downgrade in OPERATIONS.md ("Admin page — schema 18"). **Every restore from now on** gets one more step: compare `flask user list`'s admin column with what you expect, and re-run `set-admin --revoke` before starting web.
 
+## Release record — admin page, November 7, 2026
+
+Production and the test server both run NextMove `3b3a2ab` (PR #45: the admin page, schema 18). NextMoveAgent stays at `065b7bb`. No settings changed.
+
+**Production (mynextmoov.com), about 15:57 UTC:**
+- **Before:** Droplet snapshot `pre-admin-page-2026-11-07`; volume checkpoint `/opt/nextmove/rollback/admin-page-3b3a2ab`; rollback image `nextmove/jobtracker:rollback-4ee109a`.
+- **Schema** went from 17 to 18. Counts were unchanged (5 accounts, 56 roles, 32 resumes, 203 activities). On a copy, the rehearsal showed every pre-existing value identical by id, integrity ok and no foreign-key problems.
+- **Admin:** `flask user set-admin` granted access to account #1 (the owner) only. Anonymous `/api/v1/admin/*` requests get 404.
+- **Record:** `/opt/nextmove/deployment-record-admin-page-3b3a2ab.json`; script `/opt/nextmove/nextmove-cutover-admin-page-3b3a2ab.py`.
+
+**Test server (nicolasmelo.com/nextmove), about 15:55 UTC:**
+- **Release** `/opt/next-move/releases/3b3a2ab24750d00e2d339e63bb27f598799063a1`, with the venv built on the server with `--require-hashes`. Checkpoint: `/opt/next-move/rollback/admin-page-3b3a2ab`.
+- **Schema** went from 17 to 18 with row counts unchanged. Account #1 is admin. Email stays off.
+
+**Privacy page:** dated November 7, 2026, with the owner-approved wording on last use, support actions and their 1-year retention.
+
 ## Release record — launch stack, November 7, 2026
 
 Production and the test server both run NextMove `4ee109a` (PRs #36–#42: email verification, password reset, data deletion and export, branded email, telemetry, the onboarding "Skip for now" fix, and Gunicorn's control socket turned off). Production also runs NextMoveAgent `065b7bb` (PRs #12–#16). The two shipped in one cutover, because the new JobTracker image installs only hash-pinned packages.
