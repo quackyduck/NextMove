@@ -70,8 +70,10 @@ test("browser errors are scrubbed: no URLs, breadcrumbs, request data or message
     if (request.url().includes("/api/v1/")) apiHeaders.push(request.headers());
   });
   // Tokens in the address bar must never be sent.
+  // Start waiting before navigating: the response can arrive before goto resolves.
+  const clientConfig = page.waitForResponse((response) => response.url().includes("/api/v1/client-config"));
   await page.goto(`${root}?activate=CANARYACTIVATE#token=CANARYFRAGMENT`);
-  await page.waitForResponse((response) => response.url().includes("/api/v1/client-config"));
+  await clientConfig;
   await page.waitForTimeout(300);
   await throwLater(page, "message");
   await throwLater(page, "json");
