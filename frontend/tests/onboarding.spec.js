@@ -61,9 +61,6 @@ async function signIn(page, email, password = "Onboarding-pass-2026") {
 for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "phone", width: 390, height: 844 }]) {
   test(`keyboard-only signup, resume upload, agent setup and checklist (${viewport.name})`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
-    await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: async (value) => { window.copied = [...(window.copied || []), value]; } },
-    }));
     const email = uniqueEmail(viewport.name);
     await signUp(page, email);
     await page.screenshot({ path: testInfo.outputPath(`onboarding-upload-${viewport.name}.png`), fullPage: true });
@@ -84,32 +81,24 @@ for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "
     expect(Buffer.from(await download.body()).equals(PDF)).toBe(true);
     await press(page, page.getByRole("button", { name: "Continue", exact: true }));
 
-    // Step 2: agent setup with the reused token flow.
+    // Step 2: only an explainer; the full token form lives on Agent access.
     await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeFocused();
-    await expect(page.getByRole("link", { name: /agent setup guide/ })).toHaveAttribute("href", /docs\/AGENT_SETUP\.md$/);
+    await expect(page.getByText("SETUP · STEP 2 OF 2")).toBeVisible();
+    await expect(page.getByRole("link", { name: /agent setup guide/i })).toHaveAttribute("href", /docs\/AGENT_SETUP\.md$/);
+    await expect(page.getByLabel("Current workspace password", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`onboarding-agent-${viewport.name}.png`), fullPage: true });
+    await press(page, page.getByRole("button", { name: "Create an agent token", exact: true }));
+
+    // Agent access: create and test a token; a successful test completes the step.
+    await expect(page.getByRole("heading", { name: "Agent access." })).toBeVisible();
+    await typeInto(page, page.getByLabel("Token name", { exact: true }), "My agent");
     await typeInto(page, page.getByLabel("Current workspace password", { exact: true }), "Onboarding-pass-2026");
     await press(page, page.getByRole("button", { name: "Create token", exact: true }));
     const secret = await page.getByLabel("New token", { exact: true }).inputValue();
     expect(secret).toMatch(/^nm_ingest_/);
-    const snippets = page.getByRole("region", { name: "Setup snippets" });
-    const origin = new URL(page.url()).origin;
-    await expect(snippets).toContainText(`${origin}${path.replace(/\/$/, "")}/api/v1`);
-    await expect(snippets).toContainText("roles:ingest, roles:search");
-    await expect(snippets).not.toContainText(secret);
-    await press(page, page.getByRole("button", { name: "Copy Claude Code snippet" }));
-    await press(page, page.getByRole("button", { name: "Copy HTTP agent snippet" }));
-    const copied = await page.evaluate(() => window.copied);
-    expect(copied).toHaveLength(2);
-    for (const text of copied) {
-      expect(text).not.toContain(secret);
-      expect(text).not.toMatch(/[?&](token|access_token)=/);
-    }
-    expect(copied[0]).toContain(`--base-url ${origin}${path.replace(/\/$/, "")}`);
-    expect(copied[1]).toContain("Authorization: Bearer");
-    await page.screenshot({ path: testInfo.outputPath(`onboarding-agent-${viewport.name}.png`), fullPage: true });
     await press(page, page.getByRole("button", { name: "Test connection", exact: true }));
     await expect(page.getByRole("status").first()).toContainText("Connected as My agent");
-    await press(page, page.getByRole("button", { name: "Continue", exact: true }));
+    await press(page, page.getByRole("button", { name: "Your pipeline" }).first());
 
     // Dashboard: everything done, so no checklist.
     await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
@@ -139,7 +128,7 @@ test("skip both steps, log out mid-flow, resume, and finish from the checklist",
   await page.getByRole("button", { name: "Sign out" }).click();
   await signIn(page, email);
   await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
-  await page.getByRole("button", { name: "Skip agent setup" }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
 
   const checklist = page.getByRole("region", { name: /Finish setting up/ });
   await expect(checklist).toContainText("1 of 3 done");
@@ -202,15 +191,25 @@ test("upload errors are reported without leaving the step", async ({ page }) => 
   expect((await (await page.request.get(`${api}/profile/resume`)).json()).resume).toBeNull();
 });
 
-test("continue later holds for this tab and the next sign-in resumes setup", async ({ page }) => {
+test("leaving setup for Agent access holds for this tab and the next sign-in resumes setup", async ({ page }) => {
   const email = uniqueEmail("later");
   await signUp(page, email);
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("button", { name: "Continue later" }).click();
+  await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+  // One action or skip: no "Continue later" on the last step.
+  await expect(page.getByRole("button", { name: /Continue later|Back to your pipeline/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Skip for now" }))
+    .toHaveAccessibleDescription("You can create an agent token anytime from Agent access in My Next Moov.");
+  await page.getByRole("button", { name: "Create an agent token", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Agent access." })).toBeVisible();
+  await page.getByRole("button", { name: "Your pipeline" }).first().click();
   const checklist = page.getByRole("region", { name: /Finish setting up/ });
   await expect(checklist).toContainText("1 of 3 done");
   await expect(checklist).toContainText("Upload your resume · skipped");
   await expect(checklist).toContainText("Connect an agent");
+  // The checklist skips the explainer and opens the form directly.
+  await checklist.getByRole("button", { name: "Set up an agent" }).click();
+  await expect(page.getByRole("heading", { name: "Agent access." })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
   await page.getByRole("button", { name: /Sign out/ }).click();
@@ -222,7 +221,8 @@ test("continue later holds for this tab and the next sign-in resumes setup", asy
 test("a skipped resume can be added later from Your resume templates", async ({ page }) => {
   await signUp(page, uniqueEmail("later-resume"));
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("button", { name: "Skip agent setup" }).click();
+  await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   const checklist = page.getByRole("region", { name: /Finish setting up/ });
   await expect(checklist).toContainText("Upload your resume · skipped");
   await page.getByRole("button", { name: "Your resume templates" }).click();

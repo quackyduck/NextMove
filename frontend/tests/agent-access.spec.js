@@ -38,6 +38,16 @@ test("mobile token creation, one-time secret, connection checks and revocation",
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
   expect(stored).not.toContain(secret);
+  // The agent prompt names this site's API and the token file, never the token.
+  const prompt = await page.getByLabel("Prompt for your agent", { exact: true }).inputValue();
+  const origin = new URL(page.url()).origin;
+  expect(prompt).toContain(`${origin}${path.replace(/\/$/, "")}/api/v1/agent-connection`);
+  expect(prompt).toContain("~/.config/nextmove/agent-token");
+  expect(prompt).not.toContain(secret);
+  expect(prompt).not.toContain("scripts/");
+  await page.getByRole("button", { name: "Copy prompt", exact: true }).click();
+  expect(await page.evaluate(() => window.copiedToken)).toBe(prompt);
+  await expect(page.getByRole("status")).toContainText("Prompt copied");
   await page.getByRole("button", { name: "I’ve saved my token" }).click();
   await expect(page.getByLabel("New token", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("agent-access-mobile.png"), fullPage: true });

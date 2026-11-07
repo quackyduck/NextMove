@@ -50,7 +50,7 @@ const SETUP_SCREENS = ["upload_resume", "connect_agent"];
 // The server names the next guided step; steps without a screen here wait for the checklist.
 const nextGuided = (state) =>
   state?.guided_active && SETUP_SCREENS.includes(state.next_step) ? state.next_step : null;
-// "Continue later" holds for this tab only; the next sign-in resumes setup.
+// Leaving setup for Agent access holds for this tab only; the next sign-in resumes setup.
 const DEFERRED = "nextmove.setupDeferred";
 function deferred(value) {
   try {
@@ -470,7 +470,7 @@ function App() {
           <Onboarding step={setup.id} done={current?.status === "done"} guided={setup.guided}
             position={guidedSteps.findIndex((step) => step.id === setup.id) + 1} total={guidedSteps.length}
             reauthRequired={reauthRequired} onState={setOnboarding} onNext={nextSetupStep}
-            onExit={() => { deferred(true); setSetup(null); setError(""); }}
+            onOpenAgentAccess={() => { deferred(true); setSetup(null); setError(""); setNotice(""); navigate("agent-access"); }}
             onSignOut={() => run(signOut)} />
         </Suspense>
         </SetupBoundary>
@@ -612,7 +612,12 @@ function App() {
               </button>
             </header>
             <OnboardingChecklist steps={onboarding?.steps}
-              onOpen={(id) => { setNotice(""); setSetup({ id, guided: false }); }} />
+              onOpen={(id) => {
+                setNotice("");
+                // The agent step is only an explainer; the checklist goes straight to the form.
+                if (id === "connect_agent") navigate("agent-access");
+                else setSetup({ id, guided: false });
+              }} />
             <section className="stats" aria-label="Pipeline summary">
               <div>
                 <span>ACTIVE OPPORTUNITIES</span>

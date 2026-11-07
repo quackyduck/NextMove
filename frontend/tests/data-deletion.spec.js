@@ -25,7 +25,8 @@ async function setUp(page, label) {
       headers, multipart: { file: { name, mimeType: "text/plain", buffer: Buffer.from(`${name} body\n`) } } });
   await page.goto(base);
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("button", { name: "Skip agent setup" }).click();
+  await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   return { headers, job };
 }

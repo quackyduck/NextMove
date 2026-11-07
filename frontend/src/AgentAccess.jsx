@@ -14,6 +14,25 @@ const CONNECTION_SCOPE_LABELS = {
   "resumes:write": "Upload resumes",
 };
 
+// Where the prompt tells a local agent to read its token.
+export const TOKEN_FILE = "~/.config/nextmove/agent-token";
+
+// Pasted into the agent: the real site URL and the token endpoints, never the token.
+export function agentPrompt(base) {
+  const api = `${base}/api/v1`;
+  return `You can use My Next Moov, my job search tracker, through its HTTP API.
+
+API base URL: ${api}
+Authentication: send the header "Authorization: Bearer <token>". Read the token from the file ${TOKEN_FILE} or the NEXTMOVE_INGEST_TOKEN environment variable. Never print the token, put it in a URL or command argument, or repeat it in chat. Only send it to ${base}, over HTTPS, and do not follow redirects.
+
+1. Check the connection: GET ${api}/agent-connection. It creates nothing and returns the token's name and permissions.
+2. When I give you a job posting URL, look for duplicates first: GET ${api}/jobs/search?url=<posting URL> (add company= and title= when you know them). If anything may match, show me and wait for my decision.
+3. If nothing matches, add it: POST ${api}/ingestions with the JSON body {"url": "<posting URL>"} and an Idempotency-Key header set to a new UUID. If the request fails or times out, retry with the same key. Then poll GET ${api}/ingestions/<id> about once a second until it finishes, and tell me the result and any warnings.
+4. To attach a resume to a saved role: POST ${api}/jobs/<job_id>/resumes as multipart/form-data with the file in a "file" field (PDF, DOCX or TXT). Each upload adds a new version; check with me before retrying an upload.
+
+New roles land in Needs review for me to check. Do not change a role's stage.`;
+}
+
 const formatDate = (value) => value ? new Date(value).toLocaleString() : "Never";
 
 // Checks a raw token from this browser. Credential failures belong to the agent
@@ -101,7 +120,7 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
   const [notice, setNotice] = useState("");
   const base = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const command = (args) => `python3 scripts/ingest_url.py ${args} --token-file /path/to/private/token --base-url ${base}`;
+  const prompt = agentPrompt(base);
 
   async function refresh() {
     setTokens((await api("/agent-tokens")).tokens);
@@ -201,22 +220,22 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
       ) : <TokenCreateForm busy={busy} onCreate={create} />}
       <section className="form-panel mb-4" aria-label="Agent setup instructions">
         <h2 className="section-heading mt-0">Connect your agent</h2>
+        <p>If your agent supports MCP connectors (Claude, Claude Code and many others do), the server URL under Connect an AI assistant is the easiest route: no token needed. For any other agent, use a token:</p>
         <ol>
-          <li>Store the token in your agent platform’s secret settings. For a local file, restrict it to your user with <code>chmod 600</code>.</li>
-          <li>Configure it to send <code>Authorization: Bearer &lt;token&gt;</code> to the API. Keep the token out of prompts, links, and logs.</li>
-          <li>Test the connection before submitting a role. The test does not create a role.</li>
+          <li>Create a token above and copy it. It is shown once.</li>
+          <li>Save it where your agent keeps secrets: an environment variable or secret named <code>NEXTMOVE_INGEST_TOKEN</code>, or a private file at <code>{TOKEN_FILE}</code> on the computer the agent runs on. Don’t paste it into the chat.</li>
+          <li>Copy this prompt and paste it into your agent. It tells the agent how to use My Next Moov and where to find the token, without containing it.</li>
         </ol>
-        <p>API base URL: <code className="agent-url">{base}/api/v1</code></p>
-        <p>Local client, from the project folder:</p>
-        <pre>{command("--test-connection")}</pre>
-        <p>Check duplicates first (review possible matches before submitting):</p>
-        <pre>{command('"POSTING_URL" --search')}</pre>
-        <p>Then submit a new posting for review:</p>
-        <pre>{command('"POSTING_URL" --wait')}</pre>
-        <p>After the role is saved, upload a resume using its returned job ID:</p>
-        <pre>{`python3 scripts/agent_example.py ROLE_UUID /path/to/resume.pdf --token-file /path/to/private/token --base-url ${base}`}</pre>
-        <p className="form-text">Existing Add roles tokens support uploads without replacement. Each upload adds a resume version; it does not change the role’s stage. Keep the upload receipt: retrying creates another version.</p>
-        <p className="form-text mb-0">For hosted agents, inject the secret as <code>NEXTMOVE_INGEST_TOKEN</code>. Connection test: <code>GET /agent-connection</code>. Submit: <code>POST /ingestions</code> with a URL and a fresh <code>Idempotency-Key</code>; reuse that key if the request must be retried.</p>
+        <label className="form-label" htmlFor="agent-prompt">Prompt for your agent</label>
+        <textarea id="agent-prompt" className="form-control agent-prompt" rows={14} value={prompt} readOnly spellCheck={false} />
+        <button type="button" className="btn btn-outline-secondary mt-3" disabled={busy}
+          onClick={() => run(async () => {
+            try { await navigator.clipboard.writeText(prompt); }
+            catch { throw new Error("Copy unavailable. Select the prompt and copy it manually."); }
+            setNotice("Prompt copied. Paste it into your agent.");
+          })}>
+          Copy prompt
+        </button>
       </section>
       <form className="form-panel mb-4" onSubmit={event => { event.preventDefault(); test(testToken); }}>
         <h2 className="section-heading mt-0">Test an existing token</h2>
