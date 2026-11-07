@@ -30,6 +30,7 @@ _REDACTIONS = [
                 r'[^&#\s"\']*', re.IGNORECASE), r'\1<redacted>'),
     (re.compile(r'\bBearer\s+[A-Za-z0-9._~+/=-]+', re.IGNORECASE), 'Bearer <redacted>'),
     (re.compile(r'\bnm(?:_(?:oat|ort|ingest|harness))_[A-Za-z0-9_-]+'), '<token>'),
+    (re.compile(r'\bnm[re]_[A-Za-z0-9_-]{16,}'), '<token>'),  # reset links (nmr_) and export links (nme_)
     (re.compile(r'\bnmc_[A-Za-z0-9_-]+'), '<client>'),
     # itsdangerous-shaped signed values: base64url.timestamp.signature
     (re.compile(r'\b[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{16,}\b'), '<signed>'),

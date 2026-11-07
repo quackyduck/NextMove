@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -430,6 +430,25 @@ def upgrade_v16_to_v17(connection):
     connection.execute(text('UPDATE schema_version SET version=17'))
 
 
+def upgrade_v17_to_v18(connection):
+    """Admin page: users.is_admin (nobody is an admin after the upgrade), users.last_seen_at (NULL until the next
+    browser request) and the admin_actions audit log (ids only, no foreign keys)."""
+    # No CHECK: matches the model (and a fresh database), and keeps DROP COLUMN possible for the rollback.
+    connection.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT '0' NOT NULL"))
+    connection.execute(text('ALTER TABLE users ADD COLUMN last_seen_at DATETIME'))
+    connection.execute(text(
+        'CREATE TABLE admin_actions (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, created_at DATETIME NOT NULL, '
+        'actor VARCHAR(4) NOT NULL, admin_user_id INTEGER, action VARCHAR(24) NOT NULL, target_user_id INTEGER, '
+        'detail JSON NOT NULL, '
+        "CONSTRAINT ck_admin_actions_actor CHECK (actor IN ('web','cli')), "
+        "CONSTRAINT ck_admin_actions_action CHECK (action IN ('grant_admin','revoke_admin','step_up','step_up_failed',"
+        "'view_user','reset_link','sign_out_everywhere','revoke_agents','mark_verified')), "
+        "CONSTRAINT ck_admin_actions_admin CHECK ((actor = 'web') = (admin_user_id IS NOT NULL)))"))
+    connection.execute(text('CREATE INDEX ix_admin_actions_created ON admin_actions (created_at)'))
+    connection.execute(text('CREATE INDEX ix_admin_actions_target ON admin_actions (target_user_id, created_at)'))
+    connection.execute(text('UPDATE schema_version SET version=18'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -479,5 +498,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [16]:
         upgrade_v16_to_v17(connection)
         versions = [17]
+    if versions == [17]:
+        upgrade_v17_to_v18(connection)
+        versions = [18]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

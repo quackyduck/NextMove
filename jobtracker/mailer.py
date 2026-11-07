@@ -495,7 +495,7 @@ def status(cached=False):
     return _cached('status', _status, cached)
 
 
-def _status():
+def _status(alert=True):
     reason = None
     pause = _pause_reason()
     if pause in ('monthly_limit', 'daily_limit', 'signup_share'):
@@ -507,9 +507,45 @@ def _status():
     elif _seen('dns-timeout', 600) >= 20:
         reason = 'dns'
     if reason:
-        _alert('degraded:' + reason, 'error', 6 * 3600, reason, template='degraded')
+        if alert:
+            _alert('degraded:' + reason, 'error', 6 * 3600, reason, template='degraded')
         return 'degraded'
     return 'ok'
+
+
+MAIL_TASK_KINDS = ('send_confirmation', 'resend_confirmation', 'password_reset_email', 'password_reset_request',
+                   'password_changed_email')
+
+
+def usage_report(alerts=False):
+    """Service-wide mail usage: counts against the limits, status, skipped confirmations and mail task states.
+
+    The admin page reads it with alerts=False (no side effects: no alert writes on page load); `flask mail status`
+    prints it with alerts=True, as before. Never anything about one address or any task's last_error.
+    """
+    from sqlalchemy import func, select
+    from .models import EmailConfirmation, QueuedTask
+    report = {'backend': backend_name(), 'status': ('off' if not enabled() else _status(alert=alerts))}
+    try:
+        report['signup_paused'] = _pause_reason()
+        report['last_24h'] = {
+            'total': sent_today(), 'limit': _config('MAIL_DAILY_LIMIT'),
+            'signup': sent_today('signup'), 'signup_limit': _config('MAIL_LIMIT_SIGNUP'),
+            'signup_new': sent_today('signup-new'), 'signup_new_limit': _category_limit('signup'),
+            'reset': sent_today('reset'), 'reset_limit': _config('MAIL_LIMIT_RESET')}
+    except throttle.Unavailable:
+        report['signup_paused'], report['last_24h'] = None, None
+    report['month'] = {'total': sent_this_month(), 'limit': _config('MAIL_MONTHLY_LIMIT')}
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    with _engine().connect() as connection:
+        report['skipped_24h'] = {reason: count for reason, count in connection.execute(
+            select(EmailConfirmation.skip_reason, func.count()).where(
+                EmailConfirmation.delivery == 'skipped', EmailConfirmation.created_at >= since)
+            .group_by(EmailConfirmation.skip_reason))}
+        report['tasks'] = {state: count for state, count in connection.execute(
+            select(QueuedTask.status, func.count()).where(QueuedTask.kind.in_(MAIL_TASK_KINDS))
+            .group_by(QueuedTask.status))}
+    return report
 
 
 # Recipient checks (worker only) ---------------------------------------------
@@ -844,27 +880,20 @@ def _register_cli(app):
     @mail.command('status')
     def mail_status():
         """Counts against the limits, the current status, and queued, deferred and failed mail tasks."""
-        from sqlalchemy import func, select
-        from .models import EmailConfirmation, QueuedTask
-        hard = _config('MAIL_DAILY_LIMIT')
-        click.echo(f'backend: {backend_name()}')
-        click.echo(f'status: {status()}')
-        click.echo(f'signup paused: {"yes (" + _pause_reason() + ")" if _pause_reason() else "no"}')
-        click.echo(f'last 24 h: {sent_today()} of {hard}')
-        click.echo(f'  signup: {sent_today("signup")} of {_config("MAIL_LIMIT_SIGNUP")} '
-                   f'(new sign-ups {sent_today("signup-new")} of {_category_limit("signup")})')
-        click.echo(f'  reset: {sent_today("reset")} of {_config("MAIL_LIMIT_RESET")}')
-        click.echo(f'this month (UTC): {sent_this_month()} of {_config("MAIL_MONTHLY_LIMIT")}')
-        since = datetime.now(timezone.utc) - timedelta(days=1)
-        with _engine().connect() as connection:
-            for reason, count in connection.execute(
-                    select(EmailConfirmation.skip_reason, func.count()).where(
-                        EmailConfirmation.delivery == 'skipped', EmailConfirmation.created_at >= since)
-                    .group_by(EmailConfirmation.skip_reason)):
-                click.echo(f'skipped ({reason}): {count}')
-            kinds = ('send_confirmation', 'resend_confirmation', 'password_reset_email', 'password_reset_request',
-                     'password_changed_email')
-            for state, count in connection.execute(
-                    select(QueuedTask.status, func.count()).where(QueuedTask.kind.in_(kinds))
-                    .group_by(QueuedTask.status)):
-                click.echo(f'mail tasks {state}: {count}')
+        report = usage_report(alerts=True)
+        day = report['last_24h']
+        if day is None:
+            raise click.ClickException('The throttle database is unavailable')
+        click.echo(f'backend: {report["backend"]}')
+        click.echo(f'status: {report["status"]}')
+        paused = report['signup_paused']
+        click.echo(f'signup paused: {"yes (" + paused + ")" if paused else "no"}')
+        click.echo(f'last 24 h: {day["total"]} of {day["limit"]}')
+        click.echo(f'  signup: {day["signup"]} of {day["signup_limit"]} '
+                   f'(new sign-ups {day["signup_new"]} of {day["signup_new_limit"]})')
+        click.echo(f'  reset: {day["reset"]} of {day["reset_limit"]}')
+        click.echo(f'this month (UTC): {report["month"]["total"]} of {report["month"]["limit"]}')
+        for reason, count in report['skipped_24h'].items():
+            click.echo(f'skipped ({reason}): {count}')
+        for state, count in report['tasks'].items():
+            click.echo(f'mail tasks {state}: {count}')

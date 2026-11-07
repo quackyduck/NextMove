@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import insert, inspect, select, text, update
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, credentials, deletion, harness, mailer, password_reset, taskqueue
+from jobtracker import create_app, credentials, deletion, harness, mailer, migrations, password_reset, taskqueue
 from jobtracker.db import Base
 from jobtracker.models import (ActivationToken, Activity, Contact, DataExport, Deletion, EmailConfirmation,
                                ExtractionTask, HarnessGrant, IngestionRequest, InviteCode, Job, MasterResume,
@@ -573,7 +573,7 @@ def test_v16_upgrade_creates_the_deletion_tables(config):
         connection.commit()
     upgraded = create_app(config)
     with engine(upgraded).connect() as connection:
-        assert connection.scalar(text('SELECT version FROM schema_version')) == 17
+        assert connection.scalar(text('SELECT version FROM schema_version')) == migrations.SCHEMA_VERSION
         assert {'deletions', 'data_exports', 'support_codes'} <= set(inspect(connection).get_table_names())
 
 

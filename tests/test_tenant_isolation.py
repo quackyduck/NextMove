@@ -145,6 +145,14 @@ COLLECTIONS = {
     # Data export (schema 17): the link's token, not an ID, names the export.
     ('GET', '/api/v1/exports/<token>'): 'test_data_deletion.py',
     ('POST', '/api/v1/exports/<token>'): 'test_data_deletion.py',
+    # Admin page (schema 18): administrators only; every other caller gets 404 (test_admin.py's matrix).
+    ('GET', '/api/v1/admin/overview'): 'test_admin.py', ('POST', '/api/v1/admin/users/query'): 'test_admin.py',
+    ('GET', '/api/v1/admin/users/<int:user_id>'): 'test_admin.py', ('POST', '/api/v1/admin/step-up'): 'test_admin.py',
+    ('POST', '/api/v1/admin/users/<int:user_id>/reset-link'): 'test_admin.py',
+    ('POST', '/api/v1/admin/users/<int:user_id>/sign-out'): 'test_admin.py',
+    ('POST', '/api/v1/admin/users/<int:user_id>/revoke-agents'): 'test_admin.py',
+    ('POST', '/api/v1/admin/users/<int:user_id>/verify'): 'test_admin.py',
+    ('GET', '/api/v1/admin/audit'): 'test_admin.py',
 }
 
 

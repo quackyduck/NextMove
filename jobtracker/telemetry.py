@@ -74,6 +74,8 @@ EXTRA_DENYLIST = [
     'text', 'payload', 'posting', 'resume', 'content', 'prompt', 'message', 'note', 'notes', 'token', 'raw_token',
     'activation_token', 'reset_token', 'verify_token', 'email', 'sender', 'to', 'phone', 'handle', 'authorization',
     'cookie', 'x-csrf-token', 'x-ra-signature', 'x-ra-nonce', 'state', 'redirect_uri',
+    # Admin page (schema 18): reset links, search text and the step-up time.
+    'link', 'reset_link', 'q', 'query', 'password_at',
 ]
 
 _state = {'service': None}

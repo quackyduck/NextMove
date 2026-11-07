@@ -63,6 +63,8 @@ class Credential:
     session_version: int
     created_at: object = None
     email_verified_at: object = None
+    is_admin: bool = False  # Schema 18.
+    last_seen_at: object = None  # Schema 18: truncated to the hour.
 
     @property
     def verified(self):
@@ -150,9 +152,24 @@ def revoke_agents(connection, user_id, *, harness, via):
     return counts
 
 
+def clear_admin(connection, user_id):
+    """Schema 18: drop administrator access when the account's identity changes (email change, unverify).
+
+    Inside the caller's transaction; writes a `revoke_admin` audit row (actor cli) when the flag was set.
+    Returns True when access was removed."""
+    removed = connection.execute(update(User).where(User.id == user_id, User.is_admin == True)  # noqa: E712
+                                 .values(is_admin=False)).rowcount == 1
+    if removed:
+        from .admin import record
+        record(connection, 'revoke_admin', actor='cli', target=user_id)
+        audit.info('admin revoked user_id=%d operator=cli reason=identity_change', user_id)
+    return removed
+
+
 def set_email(user_id, email, *, verified=False):
     """The one operator email change, in one transaction: deliverable check, update, clear verification
-    (unless `verified`), delete confirmations, run the email-change hooks, bump session_version."""
+    (unless `verified`), delete confirmations, run the email-change hooks, bump session_version.
+    Schema 18: also removes administrator access (see clear_admin). Returns the normalized address."""
     normalized = normalize_new_email(email)
     if normalized is None:
         raise ValueError('Enter a deliverable email address')
@@ -166,6 +183,7 @@ def set_email(user_id, email, *, verified=False):
             raise LookupError('No account with that ID')
         connection.execute(delete(EmailConfirmation).where(EmailConfirmation.user_id == user_id))
         on_email_change(connection, user_id)
+        clear_admin(connection, user_id)
         audit.info('email changed user_id=%d verified=%s', user_id, 'yes' if verified else 'no')
     return normalized
 
@@ -203,7 +221,7 @@ def engine():
 
 def _credential(row):
     return Credential(row.id, row.email, row.password_hash, row.session_version, row.created_at,
-                      row.email_verified_at) if row else None
+                      row.email_verified_at, bool(row.is_admin), row.last_seen_at) if row else None
 
 
 def read(user_id):
@@ -325,7 +343,7 @@ def init_app(app):
         from .mailer import deliverable
         with engine().connect() as connection:
             rows = connection.execute(select(User.id, User.email, User.password_hash, User.email_verified_at,
-                                             User.created_at).order_by(User.id)).all()
+                                             User.created_at, User.is_admin).order_by(User.id)).all()
         for row in rows:
             state = account_state(row)
             reachable = bool(row.email) and deliverable(row.email) is not None
@@ -334,7 +352,7 @@ def init_app(app):
             label = {'messaging': 'messaging account, not activated', 'legacy_unverified': 'unverified',
                      'verified': 'verified'}[state]
             click.echo(f'{row.id}\t{row.email or "-"}\t{label}\t{"deliverable" if reachable else "undeliverable"}'
-                       f'\t{_as_utc(row.created_at).isoformat()}')
+                       f'\t{_as_utc(row.created_at).isoformat()}{chr(9) + "admin" if row.is_admin else ""}')
 
     def account_by_email(email):
         credential = find(normalize_email(email) or '')
@@ -386,7 +404,10 @@ def init_app(app):
         with engine().begin() as connection:
             connection.execute(update(User).where(User.id == credential.user_id).values(
                 email_verified_at=None, session_version=User.session_version + 1))
+            admin_removed = clear_admin(connection, credential.user_id)
         click.echo(f'{credential.email} must verify at next sign-in; its browser sessions were signed out.')
+        if admin_removed:
+            click.echo('Administrator access removed; re-grant it with `flask user set-admin` once verified.')
 
     @users.command('send-verification')
     @click.argument('email', required=False)
@@ -460,6 +481,7 @@ def init_app(app):
     @click.option('--send-verification', is_flag=True, help='Queue a verification link to the new address.')
     def user_set_email(user_id, email, verified, send_verification):
         """Replace an account's sign-in email; clears verification (unless --verified) and signs it out everywhere."""
+        was_admin = bool(read(user_id) and read(user_id).is_admin)
         try:
             normalized = set_email(user_id, email, verified=verified)
         except ValueError:
@@ -470,6 +492,8 @@ def init_app(app):
             raise click.ClickException('Another account already uses that email') from None
         click.echo(f'User {user_id} now signs in as {normalized} ({"verified" if verified else "unverified"}); '
                    'their browser sessions were signed out.')
+        if was_admin:
+            click.echo('Administrator access removed; re-grant it with `flask user set-admin`.')
         if send_verification and not verified:
             from .confirmations import start_existing
             start_existing(read(user_id))

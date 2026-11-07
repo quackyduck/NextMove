@@ -3,7 +3,7 @@ import { BrandIdentity } from "./Brand.jsx";
 
 // The user-approved privacy text, word for word. Change it only with their approval.
 // Release checklist: set LAST_UPDATED to the publishing date before deploying (docs/DEPLOYMENTS.md).
-export const LAST_UPDATED = "[date of publishing]";
+export const LAST_UPDATED = "November 7, 2026";
 const SUPPORT = "support@mynextmoov.com";
 
 function Support() {
@@ -45,11 +45,12 @@ export function Privacy() {
           </ul>
 
           <h2>What we collect</h2>
-          <p><strong>Your account.</strong> Your email address and your password. Passwords are stored only as a secure hash, so nobody, including us, can read them.</p>
+          <p><strong>Your account.</strong> Your email address and your password. Passwords are stored only as a secure hash, so nobody, including us, can read them. We also record when you last used the site, rounded to the hour, so we can tell how many people actively use the service.</p>
           <p><strong>What you add.</strong> The roles you track, with their company, title, link, salary, notes, stages and outcomes; contacts you save; resumes and resume templates you upload; and the history of changes to your roles.</p>
           <p><strong>Links you paste.</strong> When you use Quick capture, our server visits the job posting link you gave it to read the role details. The posting site sees a request from our server, not from you.</p>
           <p><strong>Connected AI assistants.</strong> If you connect an assistant such as Claude or ChatGPT under Agent access, we record that connection and when it was last used. The assistant can read or change only what you allowed when you connected it, and you can disconnect it at any time.</p>
           <p><strong>Technical information.</strong> To keep the service working and secure, we record limited technical information: sign-in attempts, so we can block password guessing; error reports when something breaks; and short-lived server logs.</p>
+          <p><strong>Support actions.</strong> When we act on your account to help you or to protect it, for example by creating a password reset link for you, signing you out everywhere, disconnecting assistants or confirming your email address, we keep a record of what was done and when. The record identifies your account only by its number.</p>
 
           <h2>What we don't do</h2>
           <ul>
@@ -84,6 +85,7 @@ export function Privacy() {
             <li><strong>Unconfirmed sign-ups:</strong> deleted automatically within about 2 days.</li>
             <li><strong>Error reports (Sentry):</strong> about 30 days.</li>
             <li><strong>Server logs:</strong> a few days.</li>
+            <li><strong>Records of support actions:</strong> 1 year, including after an account is deleted. They identify the account only by its number.</li>
             <li><strong>Backups:</strong> up to 4 weeks, then automatically replaced. Until then, a backup can contain deleted data and recent server logs.</li>
           </ul>
 
@@ -99,6 +101,7 @@ export function Privacy() {
 
           <h2>Security</h2>
           <p>Connections to the site are encrypted (HTTPS). Passwords are stored as secure hashes. Links in our emails and access tokens for connected assistants are stored only in hashed form, expire, and can be revoked. Sign-in and sign-up are rate-limited. No system is perfectly secure. If something happens that affects your information, we'll tell you promptly by email.</p>
+          <p>The person who runs the service has an admin page that shows each account's email address, when it was created and last used, and how many roles, resumes and connections it has. It doesn't show what's in your roles, notes, contacts or resumes.</p>
 
           <h2>Age</h2>
           <p>My Next Moov is for people 18 and older. If you believe someone under 18 has created an account, email us and we'll delete it.</p>

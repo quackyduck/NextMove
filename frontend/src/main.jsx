@@ -32,6 +32,20 @@ import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
 const Onboarding = lazy(() => import("./Onboarding.jsx"));
+// Only administrators download the admin page (schema 18); /admin shows "Page not found" to everyone else.
+const Admin = lazy(() => import("./Admin.jsx"));
+const ADMIN_PATH = `${import.meta.env.BASE_URL}admin`;
+const isAdminRoute = (location = window.location) => location.pathname.replace(/\/$/, "") === ADMIN_PATH;
+
+function NotFoundView({ onBack }) {
+  return (
+    <section className="admin-not-found" aria-labelledby="not-found-title">
+      <h1 id="not-found-title">Page not found</h1>
+      <p>There's nothing at this address.</p>
+      <button type="button" className="btn btn-primary" onClick={onBack}>Back to your pipeline</button>
+    </section>
+  );
+}
 const SETUP_SCREENS = ["upload_resume", "connect_agent"];
 // The server names the next guided step; steps without a screen here wait for the checklist.
 const nextGuided = (state) =>
@@ -112,6 +126,9 @@ function App() {
     detailRequest.current += 1;
     setLoading(false);
     setPage(next);
+    // Only the admin page has its own address; every other page lives at the app root.
+    if (next === "admin" && !isAdminRoute()) window.history.pushState(null, "", ADMIN_PATH);
+    else if (next !== "admin" && isAdminRoute()) window.history.replaceState(null, "", import.meta.env.BASE_URL);
   }
 
   const [reauthRequired, setReauthRequired] = useState(false);
@@ -130,7 +147,7 @@ function App() {
     // { id, guided } while a setup screen is open; guided walks the remaining steps.
     [setup, setSetup] = useState(null),
     [jobs, setJobs] = useState([]),
-    [page, setPage] = useState("pipeline"),
+    [page, setPage] = useState(() => (isAdminRoute() ? "admin" : "pipeline")),
     [view, setView] = useState("table"),
     [search, setSearch] = useState(""),
     [status, setStatus] = useState("active"),
@@ -153,6 +170,16 @@ function App() {
     [notice, setNotice] = useState(""),
     // Data deletion (schema 17): { kind: "job" | "resume", preview?, resume? } while a confirmation is open.
     [deleting, setDeleting] = useState(null);
+  // Back and Forward between the app and /admin (the only page with its own address).
+  useEffect(() => {
+    const sync = () => {
+      detailRequest.current += 1;
+      setPage((current) => (isAdminRoute() ? "admin" : current === "admin" ? "pipeline" : current));
+    };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
   // Telemetry knows only the numeric account id and the page name, never URLs or content.
   useEffect(() => setTelemetryUser(auth ? userId : null), [auth, userId]);
   useEffect(() => setTelemetryPage(page), [page]);
@@ -521,6 +548,12 @@ function App() {
           >
             <span>Change password</span>
           </button>
+          {session.user?.is_admin && (
+            <button className={`nav-button ${page === "admin" ? "active" : ""}`}
+              onClick={() => { navigate("admin"); setError(""); setNotice(""); }}>
+              <span>Admin</span>
+            </button>
+          )}
         </nav>
         <button
           className="logout"
@@ -553,6 +586,11 @@ function App() {
           onSaved={async (job) => { await refresh({ showLoading: false }); await details(job); }}
           onManual={(url) => { setDraft((current) => ({ ...current, url: url.trim() })); navigate("intake"); setError(""); }} />
         {page === "resume" && <MasterResume reauthRequired={reauthRequired} onBusyChange={setBusy} onSaved={refreshOnboarding} />}
+        {page === "admin" && (session.user?.is_admin ? (
+          <Suspense fallback={<p role="status">Loading admin…</p>}>
+            <Admin onBack={() => navigate("pipeline")} onSignedOut={() => setReauthRequired(true)} />
+          </Suspense>
+        ) : <NotFoundView onBack={() => navigate("pipeline")} />)}
         {page === "agent-access" && <AgentAccess reauthRequired={reauthRequired} onBusyChange={setBusy} onConnected={refreshOnboarding} />}
         {page === "pipeline" && (
           <>

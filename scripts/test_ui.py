@@ -40,6 +40,8 @@ def run_file(spec, command=None):
         # (the CSP must name it); the spec intercepts every request to it, so nothing leaves this machine.
         for name in ('SENTRY_DSN', 'SENTRY_DSN_FILE', 'SENTRY_FRONTEND_DSN'):
             environment.pop(name, None)
+        if Path(spec).name == 'admin.spec.js':
+            environment['ADMIN_STEP_UP_SECONDS'] = '60'  # the floor: lets the spec force the step-up dialog
         if Path(spec).name == 'telemetry.spec.js':
             environment['SENTRY_FRONTEND_DSN'] = 'https://0123456789abcdef0123456789abcdef@o1.ingest.us.sentry.io/1'
         # One invite per suite lets browser tests create a second account.
