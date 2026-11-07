@@ -29,7 +29,7 @@ for payloads that hold an address.
 from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
-import traceback
+import sys
 from typing import Callable
 
 from sqlalchemy import and_, delete, func, insert, or_, select, update
@@ -64,16 +64,19 @@ class Handler:
     anonymous: bool = False
     delete_on_success: bool = False
     max_deferral: timedelta = MAX_DEFERRAL
+    # Sends email. Its failures are expected (bounces, provider limits) and are alerted on through the mail
+    # logger's templates and the mail failure window instead of one Sentry event each (telemetry.py).
+    mail: bool = False
 
 
 HANDLERS: dict[str, Handler] = {}
 
 
 def handler(kind, *, lease_seconds=30, max_attempts=2, give_up=None, anonymous=False, delete_on_success=False,
-            max_deferral=MAX_DEFERRAL):
+            max_deferral=MAX_DEFERRAL, mail=False):
     def register(function):
         HANDLERS[kind] = Handler(function, lease_seconds, max_attempts, give_up, anonymous, delete_on_success,
-                                 max_deferral)
+                                 max_deferral, mail)
         return function
     return register
 
@@ -204,6 +207,35 @@ def _deferral_expired(spec, task):
     return created < now() - spec.max_deferral
 
 
+def is_mail_kind(kind):
+    """True only for a registered handler flagged mail=True; an unknown kind is never treated as mail."""
+    spec = HANDLERS.get(kind)
+    return spec is not None and spec.mail is True
+
+
+def _expected_failure(kind, exc):
+    """Failures that are part of normal operation and must not page anyone."""
+    from .services import ServiceError
+    if isinstance(exc, (Retry, ServiceError, TimeoutError, OSError)):  # unreadable posting, network trouble
+        return True
+    if is_mail_kind(kind):
+        return True
+    mailer = sys.modules.get('jobtracker.mailer')  # imported only by the verification branch
+    mail_error = getattr(mailer, 'MailError', None)
+    return isinstance(mail_error, type) and isinstance(exc, mail_error)
+
+
+def _report_final_failure(task, exc):
+    from . import telemetry
+    if is_mail_kind(task.kind):
+        telemetry.mail_failures.record()
+    if _expected_failure(task.kind, exc):
+        return
+    # Tags and the numeric owner only; the payload is never attached.
+    telemetry.throttled_capture(f'task:{task.kind}:{type(exc).__name__}', exc, user_id=task.user_id,
+                                tags={'task_kind': task.kind, 'attempt': str(task.attempts)})
+
+
 def execute(app, task):
     """Run one claimed task; record success, retry, or final failure."""
     engine = app.extensions['jobtracker_db']['engine']
@@ -227,12 +259,14 @@ def execute(app, task):
                 _give_up(engine, spec, task.user_id, task.payload, task.id)
             return 'failed'
         log.warning('Queue task %s (%s) attempt %s failed: %s', task.id, task.kind, task.attempts, summary)
-        log.debug(''.join(traceback.format_exception(exc)))
+        # exc_info, not format_exception: the JSON formatter writes the type and stack, never the message.
+        log.debug('Queue task %s failure detail', task.id, exc_info=exc)
         if task.attempts < task.max_attempts:
             _finish(engine, task, status='queued', run_after=now() + timedelta(seconds=delay), last_error=summary)
             return 'retry'
         if _finish(engine, task, status='failed', last_error=summary):
             _give_up(engine, spec, task.user_id, task.payload, task.id)
+            _report_final_failure(task, exc)
         return 'failed'
     if spec.delete_on_success:
         return 'succeeded' if _delete(engine, task) else 'lost'

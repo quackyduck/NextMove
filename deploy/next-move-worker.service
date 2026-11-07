@@ -19,6 +19,9 @@ UnsetEnvironment=APP_PASSWORD AGENT_API_TOKEN
 ExecStart=/opt/next-move/current/.venv/bin/python -m jobtracker.worker
 Restart=on-failure
 RestartSec=5
+# Logs go to a separate journal kept about 7 days (deploy/journald-nextmove.conf); read them with
+# `journalctl --namespace=nextmove -u <unit>`.
+LogNamespace=nextmove
 # SIGTERM finishes the current task (network reads are capped at ~20 s) and exits 0.
 TimeoutStopSec=45
 KillSignal=SIGTERM

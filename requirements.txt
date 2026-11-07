@@ -3,4 +3,5 @@ SQLAlchemy==2.1.5
 dnspython==2.9.0
 python-dotenv==1.2.4
 gunicorn==26.2.0
+sentry-sdk==2.73.0
 pytest==9.1.1

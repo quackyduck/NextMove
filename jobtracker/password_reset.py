@@ -336,13 +336,13 @@ def deliver_request(email):
     return _record(user.id, 'sent')
 
 
-@taskqueue.handler('password_reset_request', anonymous=True, delete_on_success=True, max_attempts=3,
+@taskqueue.handler('password_reset_request', mail=True, anonymous=True, delete_on_success=True, max_attempts=3,
                    lease_seconds=60)
 def run_request(app, task):
     return deliver_request(task.payload.get('email'))
 
 
-@taskqueue.handler('password_changed_email', max_attempts=5, lease_seconds=60)
+@taskqueue.handler('password_changed_email', mail=True, max_attempts=5, lease_seconds=60)
 def run_notice(app, task):
     """The takeover alarm. Reads the address at send time; the payload holds none."""
     with _engine().connect() as connection:

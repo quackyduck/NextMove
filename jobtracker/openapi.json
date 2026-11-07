@@ -1704,6 +1704,10 @@
         "properties": {
           "error": {
             "type": "string"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Present on 5xx responses: the request's X-Request-ID, to quote to My Next Moov support."
           }
         },
         "required": [

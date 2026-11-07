@@ -37,7 +37,7 @@ To roll back, stop both services, restore the snapshot with `cp -a`, tag the rol
 
 ## Test (nicolasmelo.com/nextmove)
 
-Releases are unpacked into `/opt/next-move/releases/<sha>`, with `/opt/next-move/current` as a symlink, and use `deploy/next-move.service`, `deploy/next-move-worker.service` and the `deploy/nginx-nextmove.conf` snippet. `PUBLIC_BASE_URL` is `https://nicolasmelo.com/nextmove`. Because the app is mounted under `/nextmove`, nginx maps the path-inserted `/.well-known/…/nextmove` URLs. The memory margin is small, so don't load-test on this host.
+Logs go to the `nextmove` journal namespace and are kept about 7 days (`deploy/journald-nextmove.conf`; see [Operations](OPERATIONS.md), "Logs are kept about 7 days"). Read them with `journalctl --namespace=nextmove -u next-move`. Releases are unpacked into `/opt/next-move/releases/<sha>`, with `/opt/next-move/current` as a symlink, and use `deploy/next-move.service`, `deploy/next-move-worker.service` and the `deploy/nginx-nextmove.conf` snippet. `PUBLIC_BASE_URL` is `https://nicolasmelo.com/nextmove`. Because the app is mounted under `/nextmove`, nginx maps the path-inserted `/.well-known/…/nextmove` URLs. The memory margin is small, so don't load-test on this host.
 
 ## Schema 15: email verification, the mailer and the privacy page
 
