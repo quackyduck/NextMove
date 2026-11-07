@@ -3,7 +3,6 @@ import { BrandIdentity } from "./Brand.jsx";
 
 // The user-approved privacy text, word for word. Change it only with their approval.
 // Release checklist: set LAST_UPDATED to the publishing date before deploying (docs/DEPLOYMENTS.md).
-// Pending owner approval (admin page, schema 18): the wording below about last use and support actions.
 export const LAST_UPDATED = "November 7, 2026";
 const SUPPORT = "support@mynextmoov.com";
 

@@ -96,7 +96,7 @@ Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshot
 
 ## Schema 18: admin page
 
-Additive (`users.is_admin`, `users.last_seen_at`, `admin_actions`). Take the dated snapshot first. After cut-over, run `flask --app jobtracker user set-admin <your verified email>` in a one-off container, sign in, and open `/admin`. **The privacy page wording for this release needs the owner's approval before deploy** (last-use time, support-action records and their 1-year retention). Rolling back means restoring the snapshot, or the downgrade in OPERATIONS.md ("Admin page — schema 18"). **Every restore from now on** gets one more step: compare `flask user list`'s admin column with what you expect, and re-run `set-admin --revoke` before starting web.
+Additive (`users.is_admin`, `users.last_seen_at`, `admin_actions`). Take the dated snapshot first. After cut-over, run `flask --app jobtracker user set-admin <your verified email>` in a one-off container, sign in, and open `/admin`. The privacy page wording for this release (last-use time, support-action records and their 1-year retention) was approved by the owner on November 7, 2026. Rolling back means restoring the snapshot, or the downgrade in OPERATIONS.md ("Admin page — schema 18"). **Every restore from now on** gets one more step: compare `flask user list`'s admin column with what you expect, and re-run `set-admin --revoke` before starting web.
 
 ## Release record — launch stack, November 7, 2026
 
