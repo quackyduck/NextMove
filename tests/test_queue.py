@@ -253,7 +253,10 @@ def test_a_full_queue_refuses_new_previews_until_its_tasks_go_stale(app, engine,
     register()
     client = app.test_client()
     headers = sign_in(client, password=PASSWORD)
-    ids = [enqueue(engine) for _ in range(extraction_tasks.MAX_PENDING)]
+    taskqueue.load_handlers()
+    with engine.begin() as connection:  # Only posting work counts toward the shared admission limit.
+        ids = [taskqueue.enqueue(connection, 1, 'extract_preview', {'task_id': new_id(), 'url': 'https://example.com/'})
+               for _ in range(extraction_tasks.MAX_PENDING)]
     response = client.post('/api/v1/jobs/extract', json={'url': 'https://example.com/job'}, headers=headers)
     assert response.status_code == 429 and response.json['error'] == extraction_tasks.FULL
     # A dead worker leaves rows behind; once they can no longer succeed they stop counting.
@@ -347,3 +350,63 @@ def test_worker_process_runs_a_preview_and_exits_cleanly_on_sigterm(config, tmp_
             process.kill()
             process.wait()
         log.close()
+
+
+# Schema 15: anonymous tasks, refunded deferrals, fenced deletion -------------------------
+@pytest.mark.parametrize('kind', ['extract_preview', 'ingest_url', 'harness_fill_job'])
+def test_tenant_kinds_can_never_be_enqueued_without_an_owner(app, engine, kind):
+    taskqueue.load_handlers()
+    with engine.begin() as connection, pytest.raises(ValueError, match='owning user'):
+        taskqueue.enqueue(connection, None, kind, {'task_id': 'x', 'url': 'https://example.com/'})
+
+
+def test_claim_refuses_an_ownerless_row_of_a_non_anonymous_kind(app, engine, register):
+    calls = register()
+    with engine.begin() as connection:
+        connection.execute(insert(QueuedTask).values(
+            id=new_id(), user_id=None, kind=KIND, payload={}, status='queued', attempts=0, max_attempts=2,
+            run_after=now(), last_error='', created_at=now(), updated_at=now()))
+    assert taskqueue.run_once(app) is None
+    assert calls.runs == [] and calls.give_ups == []
+    with engine.connect() as connection:
+        assert connection.execute(select(QueuedTask.status, QueuedTask.last_error)).one() == (
+            'failed', 'Anonymous task refused')
+
+
+def test_anonymous_kinds_run_with_no_owner(app, engine, register):
+    calls = register(anonymous=True)
+    task_id = enqueue(engine, user_id=None)
+    assert taskqueue.run_once(app) == 'succeeded' and calls.runs == [task_id]
+
+
+def test_quota_deferrals_refund_the_attempt_until_max_deferral(app, engine, register):
+    calls = register(behave=failing(taskqueue.Retry('quota', delay=0, count_attempt=False)), max_attempts=1)
+    task_id = enqueue(engine)
+    for _ in range(4):
+        assert taskqueue.run_once(app) == 'deferred'
+    assert row(engine, task_id)['attempts'] == 0 and row(engine, task_id)['status'] == 'queued'
+    set_fields(engine, task_id, created_at=utcnow() - taskqueue.MAX_DEFERRAL - timedelta(minutes=1))
+    assert taskqueue.run_once(app) == 'failed'
+    assert row(engine, task_id)['last_error'] == 'Deferred past max_deferral' and len(calls.give_ups) == 1
+
+
+def test_delete_on_success_removes_the_row_only_for_the_claim_holder(app, engine, register):
+    calls = register(delete_on_success=True, anonymous=True)
+    task_id = enqueue(engine, {'email': 'someone@example.com'}, user_id=None)
+    assert taskqueue.run_once(app) == 'succeeded'
+    with engine.connect() as connection:
+        assert connection.scalar(select(QueuedTask.id).where(QueuedTask.id == task_id)) is None
+    # A stale worker whose lease was taken over cannot delete the newer claim's row.
+    task_id = enqueue(engine, {'email': 'someone@example.com'}, user_id=None)
+    claim = taskqueue.claim(engine)
+    set_fields(engine, task_id, claim_token='someone-else')
+    assert taskqueue._delete(engine, claim) is False
+    assert row(engine, task_id)['claim_token'] == 'someone-else'
+
+
+def test_extraction_admission_ignores_queued_mail(app, engine):
+    from jobtracker import confirmations  # noqa: F401 - registers the mail kinds
+    with engine.begin() as connection:
+        for _ in range(extraction_tasks.MAX_PENDING + 5):
+            taskqueue.enqueue(connection, None, 'resend_confirmation', {'email': 'a@example.com'})
+        extraction_tasks.admit(connection, 1)  # Does not raise 429.

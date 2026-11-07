@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import text
 
 from jobtracker import create_app, migrations, resume_files, resume_templates
-from accounts import add_user, sign_in
+from accounts import add_user, sign_in, verify_all
 from legacy import rewind_resume_templates
 from test_documents import PDF, docx
 from test_mcp_oauth import WORD_NS, app, bearer, call, client, connect, ok, rpc  # noqa: F401  (fixtures)
@@ -156,6 +156,7 @@ def test_schema_12_master_resumes_become_default_templates(app, client):
     create_app({**app.config, 'TESTING': True, 'DATABASE_URL': f'sqlite:///{path}.fresh'})
     for table in ('resume_templates', 'master_resumes'):  # The migrated tables match a fresh database's.
         assert shape(path, table) == shape(f'{path}.fresh', table)
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     browser = upgraded.test_client()
     headers = sign_in(browser)
     assert [v['id'] for v in browser.get(MASTER).json['versions']] == [second['id'], first['id']]

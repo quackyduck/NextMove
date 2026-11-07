@@ -67,7 +67,9 @@ export function Home({ signupEnabled }) {
           </p>
         </section>
       </main>
-      <footer className="home-footer">© {new Date().getFullYear()} My Next Moov</footer>
+      <footer className="home-footer">
+        © {new Date().getFullYear()} My Next Moov · <a href={`${import.meta.env.BASE_URL}privacy`}>Privacy</a>
+      </footer>
     </div>
   );
 }

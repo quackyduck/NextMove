@@ -64,7 +64,7 @@ def downgrade_to_v8(app):
                 connection.execute(f'DROP TABLE "{table}_v9"')
         for (sql,) in legacy.execute("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
             connection.execute(sql)
-        for table in ('oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes', 'resume_templates',
+        for table in ('email_confirmations', 'mail_usage', 'oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes', 'resume_templates',
                       'users', 'invite_codes', 'queued_tasks'):
             connection.execute(f'DROP TABLE IF EXISTS "{table}"')
         if credential:
@@ -86,8 +86,23 @@ def without_owner(result):
     return [tuple(row[index] for index in keep) for row in result]
 
 
+def rewind_verification(connection):
+    """Turn a schema-15 sqlite3 connection back into schema 14 (rows kept, except ownerless queue tasks)."""
+    from jobtracker.migrations import QUEUED_TASKS_COLUMNS, QUEUED_TASKS_V9_DDL
+    connection.executescript(
+        'PRAGMA foreign_keys=OFF; DROP TABLE email_confirmations; DROP TABLE mail_usage; '
+        'ALTER TABLE users DROP COLUMN email_verified_at; ALTER TABLE queued_tasks RENAME TO queued_tasks_v15; '
+        + QUEUED_TASKS_V9_DDL.format(name='queued_tasks', user_id='INTEGER NOT NULL') + '; '
+        f'INSERT INTO queued_tasks ({QUEUED_TASKS_COLUMNS}) SELECT {QUEUED_TASKS_COLUMNS} FROM queued_tasks_v15 '
+        'WHERE user_id IS NOT NULL; DROP TABLE queued_tasks_v15; '
+        'CREATE INDEX ix_queued_tasks_claim ON queued_tasks (status, run_after, created_at); '
+        'UPDATE schema_version SET version=14; PRAGMA foreign_keys=ON;')
+
+
 def rewind_resume_sources(connection):
     """Turn a schema-14 sqlite3 connection back into schema 13: resumes lose source_master_resume_id (rows kept)."""
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] == 15:
+        rewind_verification(connection)
     columns = 'id, user_id, job_id, original_filename, stored_filename, media_type, size, sha256, created_at'
     connection.executescript(
         'PRAGMA foreign_keys=OFF; ALTER TABLE resumes RENAME TO resumes_v14; '
@@ -104,7 +119,7 @@ def rewind_resume_sources(connection):
 
 def rewind_resume_templates(connection):
     """Turn a schema-13 (or 14) sqlite3 connection's resume tables back into schema 12 (rows kept)."""
-    if connection.execute('SELECT version FROM schema_version').fetchone()[0] == 14:
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (14, 15):
         rewind_resume_sources(connection)
     columns = 'id, user_id, version, original_filename, stored_filename, media_type, size, sha256, created_at'
     connection.executescript(

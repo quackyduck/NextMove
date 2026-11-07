@@ -1,3 +1,5 @@
+// Must stay the first import: it strips emailed link tokens from the URL before any other code runs.
+import "./authLink.js";
 import React, { lazy, Suspense, useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -19,7 +21,10 @@ import { MasterResume } from "./MasterResume.jsx";
 import { PasswordSettings } from "./PasswordSettings.jsx";
 
 import { ActivateForm, activationToken, initialAuthScreen, LoginForm, oauthReturn, SignupForm } from "./AuthScreens.jsx";
+import { linkRoute } from "./authLink.js";
 import { Home } from "./Home.jsx";
+import { isPrivacyRoute, Privacy } from "./Privacy.jsx";
+import { VerifyEmail } from "./VerifyEmail.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -78,7 +83,9 @@ function App() {
   useEffect(() => onAuthenticationRequired(() => setReauthRequired(true)), []);
 
   const [auth, setAuth] = useState(null),
-    [session, setSession] = useState({ user: null, signup: null }),
+    [session, setSession] = useState({ user: null, signup: null, mailStatus: "ok" }),
+    // Email links (/verify-email) and /privacy render before, and regardless of, sign-in state.
+    [publicPage, setPublicPage] = useState(() => (isPrivacyRoute() ? "privacy" : linkRoute() === "verify" ? "verify" : null)),
     [userId, setUserId] = useState(null),
     [authScreen, setAuthScreen] = useState(initialAuthScreen),
     [onboarding, setOnboarding] = useState(null),
@@ -110,7 +117,7 @@ function App() {
     api("/auth/session")
       .then((data) => {
         setCsrf(data.csrf_token);
-        setSession({ user: data.user || null, signup: data.signup || null });
+        setSession({ user: data.user || null, signup: data.signup || null, mailStatus: data.mail_status || "ok" });
         if (data.user) setUserId(data.user.id);
         if (data.authenticated && oauthReturn()) return window.location.assign(oauthReturn());
         setAuth(data.authenticated);
@@ -353,21 +360,25 @@ function App() {
         "panel_interview",
       ].includes(j.stage),
     );
+  if (publicPage === "privacy") return <Privacy />;
   if (auth === null)
     return (
       <main className="login">
         <p role="status">Opening your workspace…</p>
       </main>
     );
-  if (!auth && authScreen === "home" && !error) return <Home signupEnabled={Boolean(session.signup?.enabled)} />;
+  if (publicPage === "verify")
+    return <VerifyEmail signedInEmail={auth ? session.user?.email : null} mailStatus={session.mailStatus}
+      onAuthenticated={(data) => { setPublicPage(null); authenticated(data); }} />;
+  if (!auth && authScreen === "home" && !error) return <Home signupEnabled={Boolean(session.signup?.enabled || session.signup?.paused)} />;
   if (!auth && authScreen === "activate")
-    return <ActivateForm token={activationToken()} onAuthenticated={authenticated} onLogin={() => setAuthScreen("login")} />;
+    return <ActivateForm token={activationToken()} mailStatus={session.mailStatus} onLogin={() => setAuthScreen("login")} />;
   if (!auth)
-    return authScreen === "signup" && session.signup?.enabled ? (
-      <SignupForm signup={session.signup} onAuthenticated={authenticated}
+    return authScreen === "signup" && (session.signup?.enabled || session.signup?.paused) ? (
+      <SignupForm signup={session.signup} mailStatus={session.mailStatus}
         onLogin={() => setAuthScreen("login")} />
     ) : (
-      <LoginForm signup={session.signup} initialError={error} onAuthenticated={authenticated}
+      <LoginForm signup={session.signup} mailStatus={session.mailStatus} initialError={error} onAuthenticated={authenticated}
         onSignup={() => { setError(""); setAuthScreen("signup"); }} />
     );
   if (setup) {

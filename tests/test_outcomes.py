@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from jobtracker import create_app, migrations
+from accounts import verify_all
 from legacy import downgrade_to_v8, without_owner
 from test_api import app, client, login  # noqa: F401
 
@@ -78,6 +79,7 @@ def test_schema7_upgrade_preserves_all_rows_and_attachments(client, app):
             connection.execute(text("UPDATE jobs SET outcome='not_interested' WHERE id=:id"), {'id': job_id})
         connection.rollback()
     fresh = create_app(dict(app.config))
+    verify_all(fresh)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     with fresh.extensions['jobtracker_db']['engine'].begin() as connection:
         assert snapshot(connection) == before
         assert connection.exec_driver_sql('SELECT version FROM schema_version').scalar() == migrations.SCHEMA_VERSION

@@ -121,6 +121,64 @@ class User(Base):
     # ROLE_SEARCH_TOKEN_SHA256 act for this account only. Never set by sign-up.
     owns_legacy_tokens: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Schema 15: when this account's current email was proven. NULL only for accounts
+    # that existed before verification was required (legacy); they verify at next sign-in.
+    # Set through credentials.mark_verified; cleared when the email changes.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+CONFIRMATION_KINDS = ("signup", "activation", "existing")
+DELIVERY_STATES = ("queued", "sent", "failed", "skipped")
+SKIP_REASONS = ("dns", "domain_cap", "mx_cap", "account_exists", "stale")
+
+
+class EmailConfirmation(Base):
+    """A pending email confirmation (schema 15); only a SHA-256 of its token persists.
+
+    `signup`: a sign-up that is not an account yet (user_id NULL; holds the chosen
+    password hash). `activation`: a messaging account's chosen email and password,
+    not bound until confirmed. `existing`: verifying a legacy account's email.
+    Confirming needs the token plus proof of the password: the browser that chose
+    it (browser_hash, the digest of the binding cookie) or typing it again.
+    """
+    __tablename__ = "email_confirmations"
+    __table_args__ = (
+        CheckConstraint("kind IN ('signup','activation','existing')", name="ck_email_confirmations_kind"),
+        CheckConstraint("delivery IN ('queued','sent','failed','skipped')", name="ck_email_confirmations_delivery"),
+        CheckConstraint("skip_reason IS NULL OR skip_reason IN ('dns','domain_cap','mx_cap','account_exists','stale')",
+                        name="ck_email_confirmations_skip_reason"),
+        CheckConstraint("password_attempts >= 0 AND password_attempts <= 5", name="ck_email_confirmations_attempts"),
+        CheckConstraint(
+            "(kind = 'signup' AND user_id IS NULL AND password_hash IS NOT NULL) OR "
+            "(kind = 'activation' AND user_id IS NOT NULL AND password_hash IS NOT NULL AND invite_id IS NULL) OR "
+            "(kind = 'existing' AND user_id IS NOT NULL AND password_hash IS NULL AND invite_id IS NULL)",
+            name="ck_email_confirmations_shape"),
+        Index("ix_email_confirmations_email_created", "email", "created_at"),
+        Index("ix_email_confirmations_user_id", "user_id"),
+        Index("ix_email_confirmations_browser_hash", "browser_hash"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    email: Mapped[str] = mapped_column(String(254), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    invite_id: Mapped[int | None] = mapped_column(ForeignKey("invite_codes.id"), nullable=True)
+    browser_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    password_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery: Mapped[str] = mapped_column(String(10), nullable=False, default="queued")
+    skip_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class MailUsage(Base):
+    """Accepted sends per UTC day (schema 15), for the monthly provider quota."""
+    __tablename__ = "mail_usage"
+    day: Mapped[object] = mapped_column(Date, primary_key=True)
+    sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class InviteCode(Base):
@@ -194,7 +252,8 @@ class QueuedTask(Base):
         Index("ix_queued_tasks_claim", "status", "run_after", "created_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # NULL only for kinds whose handler is declared anonymous (taskqueue enforces it), schema 15.
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")

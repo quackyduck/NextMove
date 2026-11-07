@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from jobtracker import extraction
+from accounts import verify_all
 from jobtracker.services import ServiceError
 from test_api import app, client, login  # noqa: F401
 
@@ -272,6 +273,7 @@ def test_v3_migration_preserves_jobs_and_adds_preview_storage(app, client):
     with upgraded.app_context():
         assert 'extraction_tasks' in inspect(upgraded.extensions['jobtracker_db']['engine']).get_table_names()
         assert db.get_session().scalar(text('SELECT version FROM schema_version')) == db.SCHEMA_VERSION
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     fresh = upgraded.test_client()
     login(fresh)
     assert fresh.get(f'/api/v1/jobs/{job["id"]}').json['notes'] == 'Keep me'

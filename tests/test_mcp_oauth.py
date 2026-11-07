@@ -13,7 +13,7 @@ from sqlalchemy import text
 from werkzeug.security import generate_password_hash
 
 from jobtracker import create_app, documents, migrations, resume_files, services
-from accounts import add_user, sign_in
+from accounts import add_user, sign_in, verify_all
 from legacy import rewind_resume_templates
 from test_documents import PDF, docx
 
@@ -538,6 +538,7 @@ def test_schema_11_databases_upgrade_to_12(app, tmp_path):
         assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION
         tables = {row[0] for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'oauth_clients', 'oauth_grants', 'oauth_codes', 'oauth_tokens'} <= tables
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     tokens, _ = connect(upgraded.test_client())
     assert tokens['token_type'] == 'Bearer'
 

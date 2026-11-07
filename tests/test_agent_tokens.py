@@ -8,6 +8,7 @@ from sqlalchemy import select, text, update
 from werkzeug.security import generate_password_hash
 
 from jobtracker import agent_tokens, create_app, credentials, db
+from accounts import verify_all
 from jobtracker.models import AgentToken, IngestionRequest, now
 from test_api import app, client, login  # noqa: F401
 
@@ -227,6 +228,7 @@ def test_stage_upgrade_preserves_children_versions_and_foreign_key_enforcement(c
         snapshots = {table: connection.execute(text(f'SELECT * FROM {table} ORDER BY id')).all()
                      for table in ['jobs', 'contacts', 'resumes', 'activities']}
     fresh = create_app(dict(app.config))
+    verify_all(fresh)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     with fresh.extensions['jobtracker_db']['engine'].connect() as connection:
         for table, rows in snapshots.items():
             assert without_owner(connection.execute(text(f'SELECT * FROM {table} ORDER BY id'))) == [tuple(row) for row in rows]

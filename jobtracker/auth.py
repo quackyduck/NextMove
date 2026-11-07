@@ -3,13 +3,18 @@
 Every authenticated request sets `g.user_id`; services scope all reads and
 writes by it. Browser sessions carry the user id and that account's session
 generation, so a password change signs out only that account's other sessions.
+
+Schema 15: a browser session exists only for a verified account. Sign-up and
+activation return 202 and create no session; the emailed link signs in (see
+confirmations.py). A legacy account that signs in with the right password but
+has not verified gets 403 verification_required and a link.
 """
 from datetime import timezone
 from functools import wraps
 import hmac
 import secrets
 
-from flask import Blueprint, current_app, g, jsonify, request, session
+from flask import Blueprint, current_app, g, jsonify, make_response, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 from . import credentials, throttle
 
@@ -42,6 +47,9 @@ def browser_authenticated():
     credential = credentials.read(user_id)
     if credential is None or session.get('session_version') != credential.session_version:
         session.clear()
+        return False
+    if not credential.verified:
+        session.clear()  # Schema 15: unverified (legacy) accounts sign in again and verify first.
         return False
     g.credential = credential
     g.user_id = credential.user_id
@@ -186,9 +194,16 @@ def same_origin():
     return not origin or origin.rstrip('/') == request.host_url.rstrip('/')
 
 
-def signup_settings():
-    return {'enabled': bool(current_app.config.get('SIGNUP_ENABLED', True)),
-            'invite_required': bool(current_app.config.get('SIGNUP_REQUIRES_INVITE', True))}
+PAUSED_MESSAGE = 'Sign-up is paused for today. Try again tomorrow.'
+
+
+def signup_settings(cached=True):
+    from . import mailer
+    enabled = bool(current_app.config.get('SIGNUP_ENABLED', True)) and mailer.enabled()
+    paused = enabled and mailer.signup_paused(cached=cached)
+    return {'enabled': enabled and not paused,
+            'invite_required': bool(current_app.config.get('SIGNUP_REQUIRES_INVITE', True)),
+            'paused': paused, 'paused_message': PAUSED_MESSAGE if paused else None}
 
 
 def signed_in(status=200):
@@ -201,21 +216,45 @@ def session_status():
         valid = browser_authenticated()
     except credentials.Unavailable:
         return error('Sign-in temporarily unavailable; try again later', 503)
+    from . import mailer
     return jsonify(authenticated=valid, csrf_token=session.get('csrf_token') if valid else None,
-                   user=user_summary(g.credential) if valid else None, signup=signup_settings())
+                   user=user_summary(g.credential) if valid else None, signup=signup_settings(),
+                   mail_status=mailer.status(cached=True))
+
+
+CHECK_EMAIL = 'Check your email to finish creating your account.'
+CHECK_EMAIL_ACTIVATION = 'Check your email to finish opening your dashboard.'
+
+
+def _paused():
+    return jsonify(error=PAUSED_MESSAGE, code='signup_paused'), 503
+
+
+def _accepted(message, binding):
+    from .confirmations import set_binding
+    response = make_response(jsonify(message=message), 202)
+    return set_binding(response, binding)
 
 
 @auth.post('/auth/signup')
 def signup():
+    """Store a pending sign-up and email a link; the same 202 whether or not the address has an account."""
+    from . import mailer
+    from .confirmations import guard_mail_request, new_binding, start_signup
     if not same_origin():
         return error('Invalid request origin', 403)
-    settings = signup_settings()
-    if not settings['enabled']:
+    settings = signup_settings(cached=False)
+    if not current_app.config.get('SIGNUP_ENABLED', True) or not mailer.enabled():
         return error('Sign-up is closed', 403)
+    if settings['paused']:
+        return _paused()
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return error('A JSON object is required', 400)
-    email = credentials.normalize_email(payload.get('email'))
+    rejection = guard_mail_request('signup', payload.get('proof'))
+    if rejection is not None:
+        return rejection
+    email = credentials.normalize_new_email(payload.get('email'))
     if email is None:
         return error('Enter a valid email address', 400, 'email')
     password = payload.get('password')
@@ -233,14 +272,24 @@ def signup():
     rejection = throttled(throttle.reserve_signup)
     if rejection:
         return rejection
+    # Hash for every request, before knowing anything about the address: same cost and timing.
+    password_hash = generate_password_hash(password)
     try:
-        g.credential = credentials.create_user(email, generate_password_hash(password), invite)
-    except credentials.SignupError as exc:
-        return error(str(exc), exc.status, exc.field)
-    except credentials.Unavailable:
+        invite_id = credentials.live_invite(invite) if invite is not None else None
+        if invite is not None and invite_id is None:
+            return error('This invite code is invalid, expired, or already used', 403, 'invite_code')
+        raw, digest = new_binding()
+        # Per address (canonical form), silently: over budget, nothing is stored or sent, same 202.
+        if throttle.reserve_per_address('confirm-addr', email):
+            start_signup(email, password_hash, invite_id, digest)
+    except (credentials.Unavailable, throttle.Unavailable):
         return error('Sign-up temporarily unavailable; try again later', 503)
-    issue_session(g.credential)
-    return signed_in(201)
+    except Exception as exc:  # noqa: BLE001 - storage errors must not leak details
+        from sqlalchemy.exc import SQLAlchemyError
+        if isinstance(exc, SQLAlchemyError):
+            return error('Sign-up temporarily unavailable; try again later', 503)
+        raise
+    return _accepted(CHECK_EMAIL, raw)
 
 
 @auth.post('/auth/login')
@@ -265,11 +314,36 @@ def login():
     verified = check_password_hash(credential.password_hash if credential else credentials.dummy_hash(), password)
     if credential is None or not verified:
         return error('Invalid email or password', 401)
+    if not credential.verified:
+        return verification_required(credential)
     # Bind to the generation observed BEFORE hashing. A concurrent password
     # reset must not give this older verification the new session authority.
     issue_session(credential)
     g.credential = credential
     return signed_in()
+
+
+def verification_required(credential):
+    """A legacy account proved its password but not its email: no session; email a link (rate-limited)."""
+    from . import mailer
+    from .confirmations import new_binding, set_binding, start_existing
+    if not mailer.enabled() or mailer.deliverable(credential.email) is None:
+        return jsonify(error="This account's email can't receive mail. Contact support.",
+                       code='verification_unavailable'), 403
+    raw, digest = new_binding()
+    try:
+        queued = start_existing(credential, digest)
+    except Exception as exc:  # noqa: BLE001
+        from sqlalchemy.exc import SQLAlchemyError
+        if isinstance(exc, SQLAlchemyError):
+            return error('Sign-in temporarily unavailable; try again later', 503)
+        raise
+    hint = mailer.mask_address(credential.email)
+    response = make_response(jsonify(
+        error=f'Confirm your email to continue. We sent a link to {hint}.', code='verification_required',
+        email_hint=hint), 403)
+    # Within the resend cooldown nothing new was queued: keep the cookie that matches the earlier link.
+    return set_binding(response, raw) if queued else response
 
 
 @auth.post('/auth/password')
@@ -324,13 +398,22 @@ def activation_status():
 
 @auth.post('/auth/activate')
 def activate():
-    """Set the email and password of an account created from chat, then sign it in."""
+    """Choose the email and password of an account created from chat. The email is bound only once confirmed."""
+    from . import mailer
+    from .confirmations import ConfirmationError, guard_mail_request, new_binding, start_activation
     if not same_origin():
         return error('Invalid request origin', 403)
+    if not mailer.enabled():
+        return error('Activation is unavailable right now; keep using chat.', 503)
+    if mailer.signup_paused():
+        return _paused()
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return error('A JSON object is required', 400)
-    email = credentials.normalize_email(payload.get('email'))
+    rejection = guard_mail_request('activate', payload.get('proof'))
+    if rejection is not None:
+        return rejection
+    email = credentials.normalize_new_email(payload.get('email'))
     if email is None:
         return error('Enter a valid email address', 400, 'email')
     password = payload.get('password')
@@ -343,11 +426,20 @@ def activate():
     rejection = throttled(throttle.reserve_signup)
     if rejection:
         return rejection
+    password_hash = generate_password_hash(password)
+    raw, digest = new_binding()
     try:
-        g.credential = credentials.activate(payload.get('token'), email, generate_password_hash(password))
-    except credentials.SignupError as exc:
-        return error(str(exc), exc.status, exc.field)
-    except credentials.Unavailable:
+        # Per address (canonical form), silently, as for sign-up and resend: a chat user minting activation
+        # links cannot mail an address more than the shared per-address budget allows.
+        start_activation(payload.get('token'), email, password_hash, digest,
+                         allow_send=lambda: throttle.reserve_per_address('confirm-addr', email))
+    except throttle.Unavailable:
         return error('Activation temporarily unavailable; try again later', 503)
-    issue_session(g.credential)
-    return signed_in()
+    except ConfirmationError as exc:
+        return error(str(exc), exc.status)
+    except Exception as exc:  # noqa: BLE001
+        from sqlalchemy.exc import SQLAlchemyError
+        if isinstance(exc, SQLAlchemyError):
+            return error('Activation temporarily unavailable; try again later', 503)
+        raise
+    return _accepted(CHECK_EMAIL_ACTIVATION, raw)

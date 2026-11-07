@@ -18,6 +18,8 @@ from .models import ExtractionTask, IngestionRequest, new_id, now
 from .services import ServiceError
 
 TASK_SECONDS = 60
+# Queue kinds that fetch postings; only these count toward the shared MAX_PENDING admission.
+EXTRACTION_KINDS = ('extract_preview', 'ingest_url', 'harness_fill_job')
 MAX_ACTIVE = 2
 MAX_PENDING = 20
 BUSY = 'Two postings are already being read. Wait a moment and try again.'
@@ -45,7 +47,9 @@ def admit(connection, user_id):
         raise ServiceError(BUSY, 429)
     # Only tasks whose preview/receipt can still succeed count: when the worker
     # is down, stale rows must not keep every account at 429.
-    if taskqueue.pending(connection, since=now() - timedelta(seconds=TASK_SECONDS)) >= MAX_PENDING:
+    # Only posting work counts: queued mail (sign-up bursts) must never make extraction busy.
+    if taskqueue.pending(connection, since=now() - timedelta(seconds=TASK_SECONDS),
+                         kinds=EXTRACTION_KINDS) >= MAX_PENDING:
         raise ServiceError(FULL, 429)
 
 

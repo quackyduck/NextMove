@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -153,6 +153,18 @@ def bootstrap_email(value):
     return email
 
 
+# queued_tasks as schema 9 created it; schema 15 rebuilds it with a nullable user_id.
+QUEUED_TASKS_V9_DDL = (
+    'CREATE TABLE {name} (id VARCHAR(36) NOT NULL, user_id {user_id}, kind VARCHAR(50) NOT NULL, '
+    'payload JSON NOT NULL, status VARCHAR(20) NOT NULL, attempts INTEGER NOT NULL, max_attempts INTEGER NOT NULL, '
+    'run_after DATETIME NOT NULL, lease_expires_at DATETIME, claim_token VARCHAR(36), last_error TEXT NOT NULL, '
+    'created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (id), '
+    "CHECK (status IN ('queued','running','succeeded','failed')), CHECK (attempts >= 0 AND max_attempts > 0), "
+    'FOREIGN KEY(user_id) REFERENCES users (id))')
+QUEUED_TASKS_COLUMNS = ('id, user_id, kind, payload, status, attempts, max_attempts, run_after, lease_expires_at, '
+                        'claim_token, last_error, created_at, updated_at')
+
+
 TENANT_TABLES = ('Job', 'Contact', 'Resume', 'Activity', 'AgentToken', 'ExtractionTask', 'IngestionRequest')
 
 
@@ -165,7 +177,9 @@ def upgrade_v8_to_v9(connection, admin_email=None, bootstrap_hash=None):
     from . import models
     models.User.__table__.create(connection)
     models.InviteCode.__table__.create(connection)
-    models.QueuedTask.__table__.create(connection)
+    # Frozen: schema 15 made user_id nullable, so the schema-9 table is spelled out.
+    connection.execute(text(QUEUED_TASKS_V9_DDL.format(name='queued_tasks', user_id='INTEGER NOT NULL')))
+    connection.execute(text('CREATE INDEX ix_queued_tasks_claim ON queued_tasks (status, run_after, created_at)'))
     credential = connection.execute(text(
         'SELECT password_hash, session_version FROM workspace_credentials WHERE id=1')).first()
     if credential is None and bootstrap_hash:
@@ -333,6 +347,48 @@ def upgrade_v13_to_v14(connection):
     connection.execute(text('UPDATE schema_version SET version=14'))
 
 
+def upgrade_v14_to_v15(connection):
+    """Email verification is required (schema 15).
+
+    users gains email_verified_at (NULL for every existing account: they verify at
+    their next sign-in). email_confirmations holds pending sign-ups, activations and
+    legacy verifications. queued_tasks is rebuilt so user_id can be NULL (only for
+    anonymous task kinds, enforced in taskqueue). mail_usage counts sends per day.
+    Nothing is backfilled and nothing is sent.
+    """
+    connection.execute(text('ALTER TABLE users ADD COLUMN email_verified_at DATETIME'))
+    connection.execute(text(
+        'CREATE TABLE email_confirmations (id VARCHAR(36) NOT NULL, kind VARCHAR(12) NOT NULL, '
+        'email VARCHAR(254) NOT NULL, user_id INTEGER, password_hash VARCHAR(512), invite_id INTEGER, '
+        'browser_hash VARCHAR(64), token_hash VARCHAR(64), password_attempts INTEGER NOT NULL, '
+        'created_at DATETIME NOT NULL, sent_at DATETIME, expires_at DATETIME, used_at DATETIME, '
+        'delivery VARCHAR(10) NOT NULL, skip_reason VARCHAR(16), PRIMARY KEY (id), UNIQUE (token_hash), '
+        "CONSTRAINT ck_email_confirmations_kind CHECK (kind IN ('signup','activation','existing')), "
+        "CONSTRAINT ck_email_confirmations_delivery CHECK (delivery IN ('queued','sent','failed','skipped')), "
+        "CONSTRAINT ck_email_confirmations_skip_reason CHECK (skip_reason IS NULL OR skip_reason IN "
+        "('dns','domain_cap','mx_cap','account_exists','stale')), "
+        'CONSTRAINT ck_email_confirmations_attempts CHECK (password_attempts >= 0 AND password_attempts <= 5), '
+        "CONSTRAINT ck_email_confirmations_shape CHECK ("
+        "(kind = 'signup' AND user_id IS NULL AND password_hash IS NOT NULL) OR "
+        "(kind = 'activation' AND user_id IS NOT NULL AND password_hash IS NOT NULL AND invite_id IS NULL) OR "
+        "(kind = 'existing' AND user_id IS NOT NULL AND password_hash IS NULL AND invite_id IS NULL)), "
+        'FOREIGN KEY(user_id) REFERENCES users (id), FOREIGN KEY(invite_id) REFERENCES invite_codes (id))'))
+    connection.execute(text('CREATE INDEX ix_email_confirmations_email_created ON email_confirmations (email, created_at)'))
+    connection.execute(text('CREATE INDEX ix_email_confirmations_user_id ON email_confirmations (user_id)'))
+    connection.execute(text('CREATE INDEX ix_email_confirmations_browser_hash ON email_confirmations (browser_hash)'))
+    connection.execute(text('CREATE TABLE mail_usage (day DATE NOT NULL, sent INTEGER NOT NULL, PRIMARY KEY (day))'))
+
+    def rebuild():
+        connection.execute(text(QUEUED_TASKS_V9_DDL.format(name='queued_tasks_new', user_id='INTEGER')))
+        connection.exec_driver_sql(f'INSERT INTO queued_tasks_new ({QUEUED_TASKS_COLUMNS}) '
+                                   f'SELECT {QUEUED_TASKS_COLUMNS} FROM queued_tasks')
+        connection.exec_driver_sql('DROP TABLE queued_tasks')
+        connection.exec_driver_sql('ALTER TABLE queued_tasks_new RENAME TO queued_tasks')
+        connection.execute(text('CREATE INDEX ix_queued_tasks_claim ON queued_tasks (status, run_after, created_at)'))
+    with_deferred_foreign_keys(connection, rebuild)
+    connection.execute(text('UPDATE schema_version SET version=15'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -373,5 +429,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [13]:
         upgrade_v13_to_v14(connection)
         versions = [14]
+    if versions == [14]:
+        upgrade_v14_to_v15(connection)
+        versions = [15]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

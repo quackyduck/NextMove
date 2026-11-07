@@ -1,7 +1,8 @@
 """Accounts: signup (invites, validation, races, throttling), login and the admin CLI.
 
-No email verification exists and nothing sends email, so recovery is the
-`user reset-password` / `reset-workspace-password` admin commands.
+Schema 15: sign-up stores a pending row and returns 202; the emailed link creates
+the (verified) account and signs in. These tests drive sign-up through that flow;
+test_email_confirmation.py covers the confirmation rules themselves.
 """
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -10,10 +11,10 @@ import pytest
 from sqlalchemy import select, update
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, credentials
-from jobtracker.models import InviteCode, User, now
+from jobtracker import create_app, credentials, mailer, taskqueue
+from jobtracker.models import EmailConfirmation, InviteCode, User, now
 
-from accounts import OWNER, add_user, sign_in
+from accounts import OWNER, add_user, last_link, sign_in, sign_up, solve_proof
 
 PASSWORD = 'signup-password-1'
 
@@ -52,6 +53,21 @@ def signup_body(email='new@example.com', password=PASSWORD, confirmation=None, c
     return body
 
 
+def submit(client, body, **kwargs):
+    """POST /auth/signup with a fresh proof-of-work."""
+    return client.post('/api/v1/auth/signup', json={**body, 'proof': solve_proof(client, 'signup')}, **kwargs)
+
+
+def confirm_last(app, client, email):
+    taskqueue.drain(app)
+    return client.post('/api/v1/auth/email-verification/confirm', json={'token': last_link(email)})
+
+
+def pending(app):
+    with app.extensions['jobtracker_db']['engine'].connect() as connection:
+        return connection.execute(select(EmailConfirmation.kind, EmailConfirmation.email)).all()
+
+
 def unused_invites(app):
     with app.extensions['jobtracker_db']['engine'].connect() as connection:
         return connection.scalar(select(InviteCode.id).where(InviteCode.used_at.is_(None)).limit(1)) is not None
@@ -62,30 +78,43 @@ def users(app):
         return connection.execute(select(User.id, User.email).order_by(User.id)).all()
 
 
-def test_signup_starts_a_session_with_working_csrf(app, client):
-    response = client.post('/api/v1/auth/signup', json=signup_body(code=invite(app)))
-    assert response.status_code == 201
-    assert response.json['authenticated'] is True and response.json['user']['email'] == 'new@example.com'
+def test_signup_creates_no_account_until_the_link_signs_in(app, client):
+    response = submit(client, signup_body(code=invite(app)))
+    assert response.status_code == 202 and response.json == {'message': 'Check your email to finish creating your account.'}
+    assert 'next_move_confirm=' in response.headers['Set-Cookie'] and 'HttpOnly' in response.headers['Set-Cookie']
+    assert 'Max-Age=172800' in response.headers['Set-Cookie']
+    assert client.get('/api/v1/auth/session').json['authenticated'] is False
+    assert len(users(app)) == 1 and pending(app) == [('signup', 'new@example.com')]
+    confirmed = confirm_last(app, client, 'new@example.com')
+    assert confirmed.status_code == 200 and confirmed.json['authenticated'] is True
     session = client.get('/api/v1/auth/session').json
-    assert set(session) == {'authenticated', 'csrf_token', 'user', 'signup'}
-    assert session['authenticated'] is True and session['csrf_token'] == response.json['csrf_token']
+    assert set(session) == {'authenticated', 'csrf_token', 'user', 'signup', 'mail_status'}
+    assert session['authenticated'] is True and session['csrf_token'] == confirmed.json['csrf_token']
     assert set(session['user']) == {'id', 'email', 'created_at'}
     assert session['user']['id'] == 2 and session['user']['created_at'].endswith('Z')
-    assert session['signup'] == {'enabled': True, 'invite_required': True}
+    assert session['signup'] == {'enabled': True, 'invite_required': True, 'paused': False, 'paused_message': None}
+    assert session['mail_status'] == 'ok'
     assert client.post('/api/v1/jobs', json={'title': 'Mine'}).status_code == 403
     created = client.post('/api/v1/jobs', json={'title': 'Mine'}, headers={'X-CSRF-Token': session['csrf_token']})
     assert created.status_code == 201
     assert [job['title'] for job in client.get('/api/v1/jobs').json['jobs']] == ['Mine']
+    assert pending(app) == [] and not unused_invites(app)
+
+
+def test_signup_without_a_proof_of_work_is_refused(app, client):
+    response = client.post('/api/v1/auth/signup', json=signup_body(code=invite(app)))
+    assert response.status_code == 400 and response.json['code'] == 'proof_invalid'
+    assert pending(app) == []
 
 
 def test_anonymous_session_reports_signup_settings(app, client):
     assert client.get('/api/v1/auth/session').json == {
-        'authenticated': False, 'csrf_token': None, 'user': None,
-        'signup': {'enabled': True, 'invite_required': True}}
+        'authenticated': False, 'csrf_token': None, 'user': None, 'mail_status': 'ok',
+        'signup': {'enabled': True, 'invite_required': True, 'paused': False, 'paused_message': None}}
 
 
 def test_email_is_trimmed_and_lowercased(app, client):
-    assert client.post('/api/v1/auth/signup', json=signup_body(' A@X.COM ', code=invite(app))).status_code == 201
+    sign_up(app, client, ' A@X.COM ', PASSWORD, invite_code=invite(app))
     assert users(app)[-1].email == 'a@x.com'
     sign_in(app.test_client(), 'a@x.com', PASSWORD)
     sign_in(app.test_client(), '  A@x.Com', PASSWORD)
@@ -95,92 +124,128 @@ def test_email_is_trimmed_and_lowercased(app, client):
     (signup_body('not-an-email'), 'email'),
     (signup_body('a@b'), 'email'),
     (signup_body(''), 'email'),
+    (signup_body('foo<bar@evil.com>'), 'email'),
+    (signup_body('someone@localhost'), 'email'),
     (signup_body(password='short'), 'password'),
     (signup_body(password='x' * 129), 'password'),
     (signup_body(confirmation='different-password'), 'password_confirmation'),
 ])
 def test_invalid_signups_name_the_field_and_keep_the_invite(app, client, body, field):
     code = invite(app)
-    response = client.post('/api/v1/auth/signup', json={**body, 'invite_code': code})
+    response = submit(client, {**body, 'invite_code': code})
     assert response.status_code == 400 and response.json['field'] == field
-    assert unused_invites(app) and len(users(app)) == 1
+    assert unused_invites(app) and len(users(app)) == 1 and pending(app) == []
     assert client.get('/api/v1/auth/session').json['authenticated'] is False
 
 
 def test_missing_unknown_used_and_expired_invites_are_refused(app, client):
     for code in (None, '', 'short', 'definitely-not-a-real-invite'):
-        response = client.post('/api/v1/auth/signup', json=signup_body(code=code))
+        response = submit(client, signup_body(code=code))
         assert response.status_code == 403 and response.json['field'] == 'invite_code'
     used = invite(app)
-    assert app.test_client().post('/api/v1/auth/signup', json=signup_body('first@example.com', code=used)).status_code == 201
-    again = client.post('/api/v1/auth/signup', json=signup_body('second@example.com', code=used))
+    sign_up(app, app.test_client(), 'first@example.com', PASSWORD, invite_code=used)
+    again = submit(client, signup_body('second@example.com', code=used))
     assert again.status_code == 403 and again.json['field'] == 'invite_code'
     expired = invite(app)
     with app.extensions['jobtracker_db']['engine'].begin() as connection:
         connection.execute(update(InviteCode).where(InviteCode.code_hash == credentials.invite_digest(expired))
                            .values(expires_at=now() - timedelta(seconds=1)))
-    response = client.post('/api/v1/auth/signup', json=signup_body('third@example.com', code=expired))
+    response = submit(client, signup_body('third@example.com', code=expired))
     assert response.status_code == 403 and response.json['field'] == 'invite_code'
     assert [row.email for row in users(app)] == [OWNER, 'first@example.com']
 
 
-def test_duplicate_email_conflicts_and_uses_up_the_invite(app, client):
-    """One invite answers at most one "is this email registered?" question."""
+def test_signup_never_reveals_registered_emails(app, client):
+    """An existing address gets the same 202 and cookie; the worker mails a notice and stores nothing."""
     add_user(app, 'taken@example.com')
     code = invite(app)
-    response = client.post('/api/v1/auth/signup', json=signup_body(' TAKEN@example.com', code=code))
-    assert response.status_code == 409 and response.json['field'] == 'email'
-    assert not unused_invites(app)
-    reused = client.post('/api/v1/auth/signup', json=signup_body('fresh@example.com', code=code))
-    assert reused.status_code == 403 and reused.json['field'] == 'invite_code'
+    taken = submit(client, signup_body(' TAKEN@example.com', code=code))
+    fresh = submit(app.test_client(), signup_body('fresh@example.com', code=code))
+    assert taken.status_code == fresh.status_code == 202 and taken.data == fresh.data
+    assert unused_invites(app)  # Invites are only consumed when a sign-up is confirmed.
+    taskqueue.drain(app)
+    notice = next(message for message in mailer.outbox if message['To'] == 'taken@example.com')
+    assert 'already has an account' in notice.get_body(('plain',)).get_content()
+    assert '#token=' not in notice.get_body(('plain',)).get_content()
+    assert pending(app) == [('signup', 'fresh@example.com')]
 
 
-def test_an_invite_is_single_use_under_concurrency(app):
+def test_an_invite_is_single_use_across_two_pending_signups(app):
     code = invite(app)
-
-    def attempt(index):
-        return app.test_client().post('/api/v1/auth/signup', json=signup_body(f'racer{index}@example.com', code=code)).status_code
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        statuses = sorted(executor.map(attempt, range(2)))
-    assert statuses == [201, 403]
+    first, second = app.test_client(), app.test_client()
+    assert submit(first, signup_body('racer1@example.com', code=code)).status_code == 202
+    assert submit(second, signup_body('racer2@example.com', code=code)).status_code == 202
+    assert confirm_last(app, first, 'racer1@example.com').status_code == 200
+    lost = confirm_last(app, second, 'racer2@example.com')
+    assert lost.status_code == 403 and lost.json['code'] == 'invite_used'
     assert len(users(app)) == 2
 
 
 def test_open_signup_needs_no_invite(config):
     app = create_app({**config, 'SIGNUP_REQUIRES_INVITE': False})
     client = app.test_client()
-    assert client.get('/api/v1/auth/session').json['signup'] == {'enabled': True, 'invite_required': False}
+    assert client.get('/api/v1/auth/session').json['signup']['invite_required'] is False
     # An invite supplied anyway is ignored rather than validated.
-    response = client.post('/api/v1/auth/signup', json=signup_body(code='ignored-invite-code'))
-    assert response.status_code == 201
-    assert client.post('/api/v1/auth/signup', json=signup_body()).status_code == 409
+    assert submit(client, signup_body(code='ignored-invite-code')).status_code == 202
+    assert confirm_last(app, client, 'new@example.com').status_code == 200
+    assert submit(app.test_client(), signup_body()).status_code == 202  # Taken now, and still no 409.
 
 
 def test_closed_signup_is_refused(config):
     app = create_app({**config, 'SIGNUP_ENABLED': False})
     client = app.test_client()
     assert client.get('/api/v1/auth/session').json['signup']['enabled'] is False
-    assert client.post('/api/v1/auth/signup', json=signup_body(code=invite(app))).status_code == 403
+    assert submit(client, signup_body(code=invite(app))).status_code == 403
     assert len(users(app)) == 1
 
 
+def test_signup_is_closed_when_mail_is_off(config):
+    app = create_app({**config, 'MAIL_BACKEND': 'none'})
+    client = app.test_client()
+    session = client.get('/api/v1/auth/session').json
+    assert session['signup']['enabled'] is False and session['mail_status'] == 'off'
+    assert submit(client, signup_body(code=invite(app))).status_code == 403
+
+
 def test_cross_origin_signup_is_refused(app, client):
-    response = client.post('/api/v1/auth/signup', json=signup_body(code=invite(app)),
-                           headers={'Origin': 'https://evil.example'})
-    assert response.status_code == 403 and unused_invites(app) and len(users(app)) == 1
+    response = submit(client, signup_body(code=invite(app)), headers={'Origin': 'https://evil.example'})
+    assert response.status_code == 403 and unused_invites(app) and pending(app) == []
 
 
-def test_signup_is_throttled_per_ip(config):
+def test_signup_is_throttled_per_ip_five_per_five_minutes(config):
     app = create_app({**config, 'SIGNUP_REQUIRES_INVITE': False})
     client = app.test_client()
-    for index in range(10):
-        assert client.post('/api/v1/auth/signup', json=signup_body(f'user{index}@example.com')).status_code == 201
-    denied = client.post('/api/v1/auth/signup', json=signup_body('one-more@example.com'))
+    for index in range(5):
+        assert submit(client, signup_body(f'user{index}@example.com')).status_code == 202
+    denied = submit(client, signup_body('one-more@example.com'))
     assert denied.status_code == 429 and denied.headers['Retry-After'] == '300'
-    other_ip = client.post('/api/v1/auth/signup', json=signup_body('elsewhere@example.com'),
-                           environ_base={'REMOTE_ADDR': '198.51.100.7'})
-    assert other_ip.status_code == 201
+    other_ip = submit(client, signup_body('elsewhere@example.com'), environ_base={'REMOTE_ADDR': '198.51.100.7'})
+    assert other_ip.status_code == 202
+
+
+def test_repeated_signups_for_one_address_are_capped_silently(config):
+    """Mail-bombing guard: per canonical address, 3 a day (6 with fresh clients); still 202 every time."""
+    app = create_app({**config, 'SIGNUP_REQUIRES_INVITE': False})
+    for index, email in enumerate(('victim+1@example.com', 'victim+2@example.com', 'victim@example.com',
+                                   'victim+3@example.com')):
+        response = submit(app.test_client(), signup_body(email), environ_base={'REMOTE_ADDR': '198.51.100.1'})
+        assert response.status_code == 202
+    assert len(pending(app)) == 3
+
+
+def test_signup_pauses_honestly_when_its_mail_share_is_spent(config):
+    app = create_app({**config, 'SIGNUP_REQUIRES_INVITE': False, 'MAIL_DAILY_LIMIT': 20, 'MAIL_LIMIT_SIGNUP': 6,
+                      'MAIL_LIMIT_RESET': 4})
+    with app.app_context():
+        mailer.send_email('a@example.com', 'Hi', 'Body', category='signup')
+    client = app.test_client()
+    signup = client.get('/api/v1/auth/session').json['signup']
+    assert signup == {'enabled': False, 'invite_required': False, 'paused': True,
+                      'paused_message': 'Sign-up is paused for today. Try again tomorrow.'}
+    # Refused before any proof-of-work, row or mail.
+    response = client.post('/api/v1/auth/signup', json=signup_body())
+    assert response.status_code == 503 and response.json['code'] == 'signup_paused'
+    assert pending(app) == []
 
 
 def test_login_does_not_reveal_whether_an_account_exists(app, client):
@@ -213,16 +278,16 @@ def test_invite_create_prints_working_single_use_codes(app):
     assert len(rows) == 3
     for row in rows:
         assert timedelta(days=2) - timedelta(minutes=1) < row.expires_at - row.created_at <= timedelta(days=2, seconds=1)
-    for index, code in enumerate(codes):
-        assert app.test_client().post('/api/v1/auth/signup',
-                                      json=signup_body(f'invited{index}@example.com', code=code)).status_code == 201
-        assert app.test_client().post('/api/v1/auth/signup',
-                                      json=signup_body(f'reuse{index}@example.com', code=code)).status_code == 403
+    for index, code in enumerate(codes):  # One client address each: sign-up allows 5 per address per 5 minutes.
+        client = app.test_client()
+        client.environ_base['REMOTE_ADDR'] = f'198.51.100.{index + 10}'
+        sign_up(app, client, f'invited{index}@example.com', PASSWORD, invite_code=code)
+        assert submit(client, signup_body(f'reuse{index}@example.com', code=code)).status_code == 403
 
 
 def test_invite_list_shows_prefix_and_status_never_the_code(app):
     used, unused, expired = cli(app, 'invite', 'create', '--count', '3').output.split()
-    assert app.test_client().post('/api/v1/auth/signup', json=signup_body(code=used)).status_code == 201
+    sign_up(app, app.test_client(), 'new@example.com', PASSWORD, invite_code=used)
     with app.extensions['jobtracker_db']['engine'].begin() as connection:
         connection.execute(update(InviteCode).where(InviteCode.code_hash == credentials.invite_digest(expired))
                            .values(expires_at=now() - timedelta(minutes=1)))
@@ -261,10 +326,18 @@ def test_reset_password_rejects_unknown_email_and_short_password(app):
 
 def test_set_email_replaces_the_sign_in_address(app):
     add_user(app, 'other@example.com')
+    owner = app.test_client()
+    sign_in(owner)
     result = cli(app, 'user', 'set-email', '1', ' New@Example.com ')
-    assert result.exit_code == 0 and 'new@example.com' in result.output
+    assert result.exit_code == 0 and 'new@example.com' in result.output and '(unverified)' in result.output
+    assert owner.get('/api/v1/jobs').status_code == 401  # Every session of that account is signed out.
+    # The new address is unproven until its owner confirms it at the next sign-in.
+    unverified = app.test_client().post('/api/v1/auth/login', json={'email': 'new@example.com',
+                                                                      'password': 'test-password'})
+    assert unverified.status_code == 403 and unverified.json['code'] == 'verification_required'
+    assert cli(app, 'user', 'set-email', '1', 'new@example.com', '--verified').exit_code == 0
     sign_in(app.test_client(), 'new@example.com', 'test-password')
-    for args, message in ((('1', 'not-an-email'), 'valid email'), (('1', 'other@example.com'), 'already uses'),
+    for args, message in ((('1', 'not-an-email'), 'deliverable'), (('1', 'other@example.com'), 'already uses'),
                           (('99', 'free@example.com'), 'No account with that ID')):
         result = cli(app, 'user', 'set-email', *args)
         assert result.exit_code != 0 and message in result.output

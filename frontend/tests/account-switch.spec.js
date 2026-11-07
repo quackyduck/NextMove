@@ -1,5 +1,6 @@
 // Its own suite (fresh server and login budget): recovery as another account.
 import { test, expect } from "@playwright/test";
+import { apiSignUp } from "./mail.js";
 const workspacePath = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`;
 const apiPath = `${workspacePath}api/v1`;
 const password = process.env.E2E_PASSWORD || "local-demo-only";
@@ -36,17 +37,11 @@ test("signing back in as a different account starts a fresh workspace", async ({
   await page
     .getByLabel("Your notes", { exact: true })
     .fill("Owner draft must not reach another account");
-  const other = await page.request.post(`${apiPath}/auth/signup`, {
-    data: {
-      email: `other-${Date.now()}@example.com`,
-      password: "other-account-password",
-      password_confirmation: "other-account-password",
-      invite_code: process.env.E2E_INVITE_CODE,
-    },
-  });
-  expect(other.status()).toBe(201);
-  const otherEmail = (await other.json()).user.email;
-  // The signup replaced this browser's session; the next save needs recovery.
+  // Sign up and confirm another account from this browser's cookie jar (schema 15: the link signs in).
+  const other = await apiSignUp(page.request, `other-${Date.now()}@example.com`, "other-account-password",
+    process.env.E2E_INVITE_CODE);
+  const otherEmail = other.user.email;
+  // The confirmation replaced this browser's session; the next save needs recovery.
   await context.clearCookies();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Sign in again" });

@@ -214,7 +214,7 @@ no writes); raise `QUEUE_POLL_SECONDS` to trade latency for even less.
 
 ### Accounts administration
 
-No email is ever sent. Share invite codes yourself (`flask --app jobtracker invite create --count 1 --expires-days 7`;
+Since schema 15, accounts must verify their email; see "Outbound email and email verification" below. Share invite codes yourself (`flask --app jobtracker invite create --count 1 --expires-days 7`;
 `invite list` shows status without the code). Forgotten passwords use
 `flask --app jobtracker user reset-password EMAIL` (prompts, signs that user out
 everywhere). Run these as the service's data identity with its environment, as
@@ -259,3 +259,63 @@ sudo install -m 0755 deploy/next-move-admin.sh /usr/local/sbin/next-move-admin
 sudo next-move-admin invite create --count 1 --expires-days 7
 sudo next-move-admin user reset-password you@example.com
 ```
+
+
+## Outbound email and email verification — schema 15
+
+Sign-up, account activation and older accounts' first sign-in all depend on email. Only the queue worker sends; the web process enqueues and never holds the mail key. API.md ("Email confirmation") has the account rules; this section covers running it.
+
+### Configuration
+
+| Setting | Production value | Notes |
+| --- | --- | --- |
+| `MAIL_BACKEND` | `resend` | Required in production. `resend` uses Resend's HTTPS API (port 443; DigitalOcean blocks outbound SMTP on 25, 465 and 587). `smtp` works with any provider on any port (Resend 2587 STARTTLS / 2465 TLS, Postmark 2525, SES 2587). `none` turns email off and requires `SIGNUP_ENABLED=0`. `console`, `file` and `memory` are refused in production. |
+| `MAIL_FROM` | `My Next Moov <no-reply@mail.mynextmoov.com>` | The domain must be verified at the provider. |
+| `MAIL_REPLY_TO` | `support@mynextmoov.com` | |
+| `MAIL_API_KEY_FILE` | `/run/secrets/mail_api_key` | **Worker only.** A Resend key with "Sending access" only, restricted to `mail.mynextmoov.com`. |
+| `MAIL_TIMEOUT_SECONDS` | `15` | 1–20. |
+| `MAIL_DAILY_LIMIT` | `90` | Rolling 24 h, all email. Resend's free tier allows about 100 a day. |
+| `MAIL_LIMIT_SIGNUP` / `MAIL_LIMIT_RESET` | `50` / `25` | Sign-up email (5 of the 50 reserved for older accounts' verification links) and reset email; the remainder (15) is kept for "password changed" notices. Startup refuses limits that leave under 10% for notices. |
+| `MAIL_MONTHLY_LIMIT` | `3000` | UTC calendar month, counted from `mail_usage`. |
+| `POW_BITS` | `18` | Proof-of-work difficulty for sign-up, activation, resend and reset (+2 while email is degraded). |
+| `PUBLIC_BASE_URL` | `https://mynextmoov.com` | Required in **both** web and worker: the worker builds the links. |
+
+Startup checks (the service refuses to start otherwise): a known backend allowed in this environment; a valid single-line `MAIL_FROM`; an https `PUBLIC_BASE_URL` that ends with `APP_ROOT_PATH` (it is never appended); an https API URL; the key present in the worker; recipient DNS checks not disabled. A production worker started with `WORKER_LOG_LEVEL=DEBUG` logs a warning (debug tracebacks can include message text); keep it at INFO.
+
+Scaling up after upgrading the Resend plan: raise the four limits together, for example `MAIL_DAILY_LIMIT=950`, `MAIL_LIMIT_SIGNUP=525`, `MAIL_LIMIT_RESET=265`, `MAIL_MONTHLY_LIMIT=30000`, then restart web and worker.
+
+### Watching it
+
+- `flask --app jobtracker mail status` (in the worker container) prints the 24 h counts against each limit, the month-to-date total, the current status (`ok`, `degraded`, `off`), whether sign-up is paused and why, skipped recipients by reason, and queued, deferred and failed email tasks.
+- `flask --app jobtracker mail test ADDRESS` sends a fixed message with no link and prints `sent` or the error type.
+- `flask --app jobtracker signup pending [--email E]` shows pending confirmations (addresses masked).
+- Alert log lines (logger `jobtracker.mail`; they go to Sentry and email the owner): `mail daily usage at 80% …`, `mail daily limit reached …`, `mail monthly usage at 80% …`, `mail monthly limit reached …`, `mail <kind> share at 80% …`, `signup paused: <reason>`, `mail degraded: <reason>`, `mail provider rejected credentials (HTTP n)`, `mail recipient skipped: <reason>`. **An 80% warning means: upgrade the Resend plan.** Logs never contain addresses, subjects, bodies, links, tokens or keys.
+- Turn on Resend's own account notifications and send them to a mailbox outside Resend.
+
+### When email is degraded or the quota is spent
+
+Requests never wait on email. While the provider fails or a limit is spent, sign-up still answers "Check your email", the auth screens say email is delayed, and the worker retries. Quota deferrals are not counted as failed attempts. A link that cannot be sent within 24 hours is cancelled. When sign-up's daily share is spent, sign-up and activation pause for the day with an honest message; password reset and notices keep their own shares.
+
+### Bounce and complaint runbook
+
+Triggers: a Resend notification; a bounce rate above 2% over the last 24 hours in the Resend dashboard; **any** spam complaint; or a surge of `mail recipient skipped` warnings.
+
+1. Set `SIGNUP_REQUIRES_INVITE=1` and restart web. Sign-up becomes invite-only immediately; reset and notices are unaffected.
+2. Check `mail status` and the skipped reasons; look at `signup pending` for a pattern (one domain, one client network).
+3. Raise `POW_BITS` by 2 (about four times the work) and/or lower the per-domain caps in `mailer.py`.
+4. Answer Resend support if the account was paused.
+5. Reopen sign-up once the bounce rate stays under 1% for 48 hours.
+
+If abuse continues despite proof-of-work, the next step is Cloudflare Turnstile (a CSP and privacy-policy change). The first follow-up after launch is Resend's signed bounce and complaint webhook, so hard-bounced addresses are never sent to again.
+
+### Rotating the mail key
+
+Create a new send-only, domain-restricted key in Resend; update the worker's secret file; `docker compose up -d --no-deps jobtracker-worker`; run `mail test`; delete the old key. Rotate after any suspected worker compromise, and yearly otherwise.
+
+### Accounts from before schema 15
+
+They keep working through their agents (OAuth connections, agent tokens, the legacy token and harness grants are not suspended), but their browser sessions end and the next sign-in asks them to confirm their email. While unverified they **cannot revoke their own connections in the dashboard**. After confirming the owner's identity out of band, support revokes them with `flask user revoke-agents ID [--harness]`. Fix addresses that cannot receive mail (`flask user list --unverified --undeliverable`) with `flask user set-email ID EMAIL --verified`. On a server with email off (the test server), run `flask user verify EMAIL` for each account, and create new accounts with `flask user create EMAIL`.
+
+### Backups and pending sign-ups
+
+`email_confirmations` holds pending sign-ups' email addresses and password hashes for about two days in the live database. **Snapshots contain them for as long as the snapshot is kept.** Treat snapshots as sensitive as the live database, and do not keep them longer than recovery needs (the privacy page promises at most 4 weeks).

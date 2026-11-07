@@ -34,6 +34,8 @@ def run(app, stop=None, poll_seconds=None):
                     with engine.begin() as connection:
                         expire_tasks(connection)
                     taskqueue.prune(engine)
+                    from .confirmations import prune as prune_confirmations
+                    prune_confirmations(engine)
                 next_maintenance = time.monotonic() + MAINTENANCE_SECONDS
             if taskqueue.run_once(app) is None:
                 stop.wait(poll)

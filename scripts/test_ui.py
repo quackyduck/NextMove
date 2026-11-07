@@ -29,7 +29,13 @@ def run_file(spec, command=None):
                            DATABASE_URL=f'sqlite:///{directory}/test.sqlite3',
                            UPLOAD_FOLDER=f'{directory}/resumes',
                            E2E_BASE_URL=f'http://127.0.0.1:{port}', E2E_PASSWORD='isolated-browser-test', E2E_EMAIL='owner@localhost',
-                           E2E_PYTHON=sys.executable)
+                           E2E_PYTHON=sys.executable,
+                           # Email confirmation: messages land as .eml files the specs read (tests/mail.js).
+                           MAIL_BACKEND='file', MAIL_FILE_DIR=f'{directory}/mail',
+                           # Specs may name a client address with X-Forwarded-For (one per test), so the strict
+                           # per-IP sign-up budget (5 per 5 minutes) applies per test, as for real visitors.
+                           TRUST_PROXY='1',
+                           PUBLIC_BASE_URL=f'http://127.0.0.1:{port}{prefix}')
         # One invite per suite lets browser tests create a second account.
         invite = subprocess.run([sys.executable, '-m', 'flask', '--app', 'jobtracker:create_app', 'invite', 'create'],
                                 cwd=ROOT, env=environment, check=True, capture_output=True, text=True)
