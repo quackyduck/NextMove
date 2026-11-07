@@ -125,6 +125,13 @@ class User(Base):
     # that existed before verification was required (legacy); they verify at next sign-in.
     # Set through credentials.mark_verified; cleared when the email changes.
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Schema 18: administrators see the admin page (/api/v1/admin). Granted only from the shell
+    # (`flask user set-admin`); cleared whenever the account's email changes or is unverified.
+    # No CHECK (like owns_legacy_tokens): a table-level CHECK on a fresh database would block the documented
+    # `ALTER TABLE users DROP COLUMN is_admin` rollback, and the migrated and fresh schemas must match.
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # Schema 18: the last browser-session request, truncated to the hour (written at most once an hour).
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 CONFIRMATION_KINDS = ("signup", "activation", "existing")
@@ -513,3 +520,31 @@ class SupportCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+ADMIN_ACTIONS = ("grant_admin", "revoke_admin", "step_up", "step_up_failed", "view_user", "reset_link",
+                 "sign_out_everywhere", "revoke_agents", "mark_verified")
+
+
+class AdminAction(Base):
+    """Schema 18: the admin audit log. Ids, action names and small allowlisted numbers only (see admin.record).
+
+    No foreign keys on purpose: like the deletion ledger, a row outlives the accounts it names. Kept
+    admin.ADMIN_ACTION_DAYS days, pruned by the worker's maintenance."""
+    __tablename__ = "admin_actions"
+    __table_args__ = (
+        CheckConstraint("actor IN ('web','cli')", name="ck_admin_actions_actor"),
+        CheckConstraint("action IN ('grant_admin','revoke_admin','step_up','step_up_failed','view_user','reset_link',"
+                        "'sign_out_everywhere','revoke_agents','mark_verified')", name="ck_admin_actions_action"),
+        CheckConstraint("(actor = 'web') = (admin_user_id IS NOT NULL)", name="ck_admin_actions_admin"),
+        Index("ix_admin_actions_created", "created_at"),
+        Index("ix_admin_actions_target", "target_user_id", "created_at"),
+        {"sqlite_autoincrement": True},
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    actor: Mapped[str] = mapped_column(String(4), nullable=False)
+    admin_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    target_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

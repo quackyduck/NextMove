@@ -30,7 +30,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import credentials, mailer, services, storage, taskqueue, throttle
 from .auth import require_browser_auth
-from .models import (Activity, ActivationToken, AgentToken, Contact, DataExport, Deletion, EmailConfirmation,
+from .models import (Activity, ActivationToken, AdminAction, AgentToken, Contact, DataExport, Deletion, EmailConfirmation,
                      ExtractionTask, HarnessGrant, IngestionRequest, InviteCode, Job, MasterResume, OAuthCode,
                      OAuthGrant, OAuthToken, OnboardingStep, PasswordResetRequest, PasswordResetToken, QueuedTask, Resume,
                      ResumeTemplate, SupportCode, TailoredDraft, User, new_id, now)
@@ -480,7 +480,13 @@ def build_export(user_id, code):
             return None
         data = {
             'account': {'id': user.id, 'email': user.email, 'created_at': _value(user.created_at),
-                        'email_verified_at': _value(user.email_verified_at)},
+                        'email_verified_at': _value(user.email_verified_at),
+                        'last_seen_at': _value(user.last_seen_at), 'is_admin': bool(user.is_admin)},
+            # Schema 18: support actions taken on this account (when and what; not who).
+            'support_actions': [{'created_at': _value(row.created_at), 'action': row.action}
+                                for row in connection.execute(select(AdminAction.created_at, AdminAction.action)
+                                                              .where(AdminAction.target_user_id == user_id)
+                                                              .order_by(AdminAction.id))],
             'roles': _rows(connection, Job, Job.user_id == user_id),
             'contacts': _rows(connection, Contact, Contact.user_id == user_id),
             'activities': _rows(connection, Activity, Activity.user_id == user_id),
@@ -759,6 +765,8 @@ def maintenance(app):
     with app.app_context():
         with _engine().begin() as connection:
             prune_ledger(connection)
+            from .admin import prune as prune_admin_actions
+            prune_admin_actions(connection)
             connection.execute(delete(SupportCode).where(SupportCode.expires_at < now() - timedelta(days=1)))
         try:
             sweep(apply=True)

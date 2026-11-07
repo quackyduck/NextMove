@@ -389,6 +389,58 @@ The logo is served publicly at `PUBLIC_BASE_URL/static/email/mascot-96-v1.png` (
 
 Before launch, send each kind to Gmail (web and iOS), Apple Mail (macOS and iOS) and Outlook (365 web and Windows) and check light, dark and images-off rendering. Gmail ignores the dark-mode styles and inverts the light design; Outlook for Windows shows square corners.
 
+## Admin page — schema 18
+
+A browser page at `/admin` (`/nextmove/admin` on the test server) that shows usage and runs four support actions, so routine support doesn't need SSH. API: [API.md](API.md#admin-schema-18-browser-session-administrators-only).
+
+### Granting and removing access
+- `flask --app jobtracker user set-admin EMAIL` (or `--id N`) grants access, and adding `--revoke` removes it. Only **verified** accounts can be granted. There is no API route that grants admin, and the migration makes nobody an admin (not even user #1).
+- Revoking takes effect on the account's next request; no sign-out is needed. `flask user list` marks administrators with `admin`.
+- `user set-email` (with or without `--verified`) and `user unverify` **remove admin access** and say so. Re-grant it with `set-admin` once the new address is verified.
+- An administrator's sign-out also ends copies of their session cookie, along with their other browsers.
+- Not built yet: a notice email when access is granted.
+
+### What the page shows
+- **Overview:** accounts by status, sign-ups per day (30 days) and per week (12 weeks), active accounts (last seen within 1, 7 and 30 days), and roles in total, by stage, by outcome and per account. Also resumes (templates, versions, job resumes, tailored), active agent connections (OAuth, agent tokens, chat links), failed URL imports in the last 7 days, pending confirmations, and mail usage (the same figures as `flask mail status`, read without firing alerts).
+- **Accounts:** a search by email substring and a paginated list with counts. A detail page shows metadata, counts, connections and recent admin actions.
+- **Never shown:** what's in a role, note, contact, resume or template, OAuth client names or agent-token names.
+- `last_seen_at` is the hour of an account's last browser request, written at most once an hour. Agent, OAuth and chat requests don't count. It's included in the account's export.
+- Errors, uptime and chat (bridge and agent) health aren't on the page: use Sentry and the uptime checks ("Telemetry and alerting" below).
+
+### Password checks
+- Reading the page needs a session in which the password was typed at some point (sign-in, the session-recovery sign-in, or a password change). A session that started from an email link asks for the password once.
+- **Actions** need the password typed within the last 10 minutes (`ADMIN_STEP_UP_SECONDS`, 60–1800). Otherwise the page asks again.
+- Password checks share the 10-per-5-minutes budget with `POST /auth/password`, and are capped at 20 per day per administrator.
+
+### Actions
+Each action runs in one transaction with its audit row. None of them can target your own account, another administrator, or the workspace owner (user #1): those stay with the shell.
+- **Create password reset link:** the same link as `flask user reset-link`, valid 5–240 minutes (60 by default; the shell allows up to 1440). It never verifies the address. The page shows it once, with the credential warning. Give it to the account holder only, over a channel you trust, after confirming who they are. Never paste it into a ticket.
+- **Sign out everywhere:** ends every browser session of the account, plus any live reset link.
+- **Disconnect agents:** OAuth connections and agent tokens, plus chat links if you tick the box. Unticked, the phone stays linked.
+- **Mark email verified:** only for an unverified account with a deliverable address. Only do it after confirming identity out of band (the steps in "Deletion and export requests"). The dialog shows what's still connected and can disconnect it too.
+
+### Audit
+- Every grant and revoke, password check (passed or failed), account view (one per administrator, account and hour) and action writes a row to `admin_actions`. A row holds account ids, the action and a few numbers, never an email, link, token or search text. Rows are kept 365 days (`ADMIN_ACTION_DAYS`, pinned to the privacy page by a test) and pruned by the worker. They outlive a deleted account, and an account's export lists the actions on it.
+- Log lines (logger `jobtracker.accounts`, ids only):
+  - `admin granted|revoked user_id=N operator=cli`;
+  - `admin step-up [failed] admin_id=N`;
+  - `admin reset link minted user_id=N admin_id=A minutes=M expires=…`;
+  - `admin signed out …`, `admin revoked agents …`, `admin marked verified …`;
+  - `revoked … via=admin`, `user verified … via=admin`.
+- Separately, a signed-in non-admin who reaches an admin route is logged as `admin route refused user_id=N` (logger `jobtracker.admin`, at most once an hour).
+
+### Upgrade, restore and rollback
+- **Upgrade:** additive. Back up and stop writers as for any schema change, then grant yourself access with `set-admin`.
+- **Restoring any backup or snapshot:** with web stopped, run `flask user list` and compare the `admin` column with what you expect, checking any `admin revoked` lines still in the journal. Run `user set-admin EMAIL --revoke` for anyone who shouldn't be an admin **before** starting web, because a restore brings back access revoked after the backup was taken. Do this next to the deletion-ledger replay.
+- **Rollback:** older releases refuse schema 18. Either restore the pre-migration snapshot (then replay the deletion ledger), or keep the data and drop only the admin additions. With web and worker stopped, after a backup:
+  1. Check `sqlite3 <db> 'SELECT sqlite_version()'` is 3.35 or newer. Check it with the SQLite that will run the script: the image's on production, the systemd venv's on the test server.
+  2. Keep the audit trail: `sqlite3 -json <db> 'SELECT * FROM admin_actions' > /secure/admin-actions-<date>.json`. That file falls under the same 365-day retention.
+  3. Run:
+     ```sql
+     DROP TABLE admin_actions; ALTER TABLE users DROP COLUMN last_seen_at; ALTER TABLE users DROP COLUMN is_admin; UPDATE schema_version SET version=17;
+     ```
+  Upgrading again later makes nobody an admin.
+
 ## Telemetry and alerting
 
 Errors go to Sentry (SaaS, US region) only when a DSN is configured. With no DSN, `sentry_sdk.init` is never

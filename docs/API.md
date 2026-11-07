@@ -383,3 +383,32 @@ Administrators (`flask --app jobtracker …`):
 | `support code --id N --for delete\|export` / `support check CODE` | Issues a one-time code bound to one account and one action (72 h), and shows what a returned code authorizes without using it up |
 | `deletions export` / `deletions replay FILE [--force]` | Ledger export before a restore, and replay after it (never sends mail) |
 | `storage sweep [--apply] [--force]` | Reports, or with `--apply` removes, orphan files and deleted accounts' folders. Guarded. |
+
+## Admin (schema 18; browser session, administrators only)
+
+For the operator's admin page. Only a browser session of a **verified** account with administrator access (granted with `flask user set-admin`, never through the API) is accepted. Writes need `X-CSRF-Token`, and HTTPS is required outside development.
+
+The following all get the same `404 {"error": "Not found"}` that an unknown API path gets:
+- any request carrying an `Authorization` header (the legacy `AGENT_API_TOKEN`, OAuth/MCP access tokens, managed agent tokens, harness grants) or harness signature headers;
+- no session;
+- a non-admin or unverified session;
+- plain HTTP outside development;
+- `OPTIONS`.
+
+None of these routes is in the OpenAPI contract, in MCP or in any OAuth scope.
+
+A read needs a session whose password was checked at some point. An action needs one checked within `ADMIN_STEP_UP_SECONDS` (600). Otherwise the answer is `403 {"code": "step_up_required"}`: call `POST /admin/step-up` and retry. Actions on yourself, another administrator or the workspace owner get `409 {"code": "admin_target"}`. An unknown account id gets `404 {"error": "Account not found", "code": "account_not_found"}`, which an admin can tell apart from the route-level 404. Responses carry counts and metadata only, never content.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| POST | /admin/step-up | `{password}` | 200 `{ok, valid_for}`; 400 `{code: "step_up_failed"}`; 429 (shares the `POST /auth/password` budget; 20 per day) |
+| GET | /admin/overview | — | `{accounts, signups: {daily[30], weekly[12]}, active, roles, resumes, agents, imports_failed_7d, pending_confirmations, mail}` |
+| POST | /admin/users/query | `{q?, page?}` | `{users: [{id, email, state, is_admin, created_at, last_seen_at, counts}], page, page_size: 50, total}`. A POST so search text never sits in a URL |
+| GET | /admin/users/{id} | — | `{user, counts, agents, pending, actions, protected, self, can}`; records one `view_user` row per hour |
+| POST | /admin/users/{id}/reset-link | `{minutes?: 5..240}` | `{link, expires_at, warning}` (`no-store`); 409 for messaging accounts; 503 without `PUBLIC_BASE_URL` |
+| POST | /admin/users/{id}/sign-out | `{}` | `{signed_out: true}`; 409 for messaging accounts |
+| POST | /admin/users/{id}/revoke-agents | `{include_harness?: bool}` | `{oauth, agent, harness}` |
+| POST | /admin/users/{id}/verify | `{confirm: "verify", revoke_agents?, include_harness?}` | `{verified: true, revoked}`; 409 unless the account is unverified with a deliverable address |
+| GET | /admin/audit?limit=1..500 | — | `{actions: [{id, created_at, actor, admin_user_id, action, target_user_id, detail}]}` |
+
+Admin reads are throttled at 300 per 5 minutes and actions at 30 per 5 minutes, per administrator. `GET /auth/session`'s `user` now includes `is_admin`: only ever the caller's own flag, used to show the Admin link.

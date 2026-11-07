@@ -12,13 +12,16 @@ has not verified gets 403 verification_required and a link.
 from datetime import timezone
 from functools import wraps
 import hmac
+import logging
 import secrets
+import time
 
 from flask import Blueprint, current_app, g, jsonify, make_response, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 from . import credentials, throttle
 
 auth = Blueprint('auth', __name__)
+log = logging.getLogger('jobtracker.auth')
 # The deprecated environment tokens (AGENT_API_TOKEN, ROLE_SEARCH_TOKEN_SHA256)
 # predate accounts and act only for the account flagged owns_legacy_tokens (the
 # migrated/bootstrapped workspace owner, user #1); see credentials.legacy_owner_id.
@@ -35,7 +38,9 @@ def user_summary(credential):
     created = credential.created_at
     if created is not None:
         created = created.replace(tzinfo=created.tzinfo or timezone.utc).isoformat().replace('+00:00', 'Z')
-    return {'id': credential.user_id, 'email': credential.email, 'created_at': created}
+    # is_admin is only ever the caller's own flag (schema 18): it shows the Admin link.
+    return {'id': credential.user_id, 'email': credential.email, 'created_at': created,
+            'is_admin': bool(getattr(credential, 'is_admin', False))}
 
 
 def browser_authenticated():
@@ -53,15 +58,52 @@ def browser_authenticated():
         return False
     g.credential = credential
     g.user_id = credential.user_id
+    if request.method not in ('HEAD', 'OPTIONS'):
+        touch_last_seen(credential)
     return True
 
 
-def issue_session(credential):
+def touch_last_seen(credential):
+    """Schema 18: record the hour of this browser request, at most one write per account per hour.
+
+    Only browser_authenticated calls this (never bearer, OAuth, agent-token, harness or link requests). A conditional
+    UPDATE on its own short connection, with a short busy timeout; any database error is skipped, never retried,
+    and never fails the request.
+    """
+    from datetime import datetime
+    from sqlalchemy import or_, update
+    from sqlalchemy.exc import SQLAlchemyError
+    from .models import User
+    hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    seen = credential.last_seen_at
+    if seen is not None and seen.replace(tzinfo=seen.tzinfo or timezone.utc) >= hour:
+        return
+    try:
+        with credentials.engine().begin() as connection:
+            sqlite = connection.dialect.name == 'sqlite'
+            if sqlite:
+                connection.exec_driver_sql('PRAGMA busy_timeout=250')
+            try:
+                connection.execute(update(User).where(
+                    User.id == credential.user_id,
+                    or_(User.last_seen_at.is_(None), User.last_seen_at < hour)).values(last_seen_at=hour))
+            finally:
+                if sqlite:
+                    connection.exec_driver_sql('PRAGMA busy_timeout=5000')
+    except SQLAlchemyError:
+        log.debug('last seen not recorded')
+
+
+def issue_session(credential, *, password_verified=False):
+    """A fresh session for the account. password_verified: this request just checked the account's password
+    (login, password change). It records `password_at`, which the admin step-up reads (schema 18)."""
     session.clear()
     session['authenticated'] = True
     session['user_id'] = credential.user_id
     session['session_version'] = credential.session_version
     session['csrf_token'] = secrets.token_urlsafe(32)
+    if password_verified:
+        session['password_at'] = int(time.time())
     session.permanent = True
 
 
@@ -323,7 +365,7 @@ def login():
         return verification_required(credential)
     # Bind to the generation observed BEFORE hashing. A concurrent password
     # reset must not give this older verification the new session authority.
-    issue_session(credential)
+    issue_session(credential, password_verified=True)
     g.credential = credential
     return signed_in()
 
@@ -381,7 +423,8 @@ def change_password():
     if not changed:
         session.clear()
         return error('Your sign-in changed. Sign in again before updating the password', 409)
-    issue_session(credentials.Credential(observed.user_id, observed.email, '', observed.session_version + 1))
+    issue_session(credentials.Credential(observed.user_id, observed.email, '', observed.session_version + 1),
+                  password_verified=True)
     from .password_reset import notify_password_changed
     notify_password_changed(observed.user_id)  # Password reset (schema 16): the "password changed" notice.
     return jsonify(authenticated=True, csrf_token=session['csrf_token'],
@@ -391,6 +434,18 @@ def change_password():
 @auth.post('/auth/logout')
 @require_auth
 def logout():
+    if g.auth_type == 'session' and g.credential.is_admin:
+        # Schema 18: an administrator's sign-out also ends copies of this cookie (and their other browsers).
+        from sqlalchemy import update
+        from sqlalchemy.exc import SQLAlchemyError
+        from .models import User
+        try:
+            with credentials.engine().begin() as connection:
+                connection.execute(update(User).where(
+                    User.id == g.credential.user_id, User.session_version == g.credential.session_version,
+                ).values(session_version=User.session_version + 1))
+        except SQLAlchemyError:
+            log.warning('admin sign-out could not end other sessions user_id=%d', g.credential.user_id)
     session.clear()
     return jsonify(authenticated=False, csrf_token=None)
 

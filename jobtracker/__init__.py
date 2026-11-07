@@ -120,6 +120,9 @@ def create_app(test_config=None):
     # Data deletion and export (schema 17): browser-only delete routes, the export link, and the operator CLI.
     from . import deletion
     deletion.init_app(app)
+    # Admin page (schema 18): browser-only, admins only, and `flask user set-admin`.
+    from . import admin
+    admin.init_app(app)
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
     from .profile import profile

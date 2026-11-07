@@ -90,7 +90,7 @@ def test_signup_creates_no_account_until_the_link_signs_in(app, client):
     session = client.get('/api/v1/auth/session').json
     assert set(session) == {'authenticated', 'csrf_token', 'user', 'signup', 'mail_status', 'password_reset'}
     assert session['authenticated'] is True and session['csrf_token'] == confirmed.json['csrf_token']
-    assert set(session['user']) == {'id', 'email', 'created_at'}
+    assert set(session['user']) == {'id', 'email', 'created_at', 'is_admin'}
     assert session['user']['id'] == 2 and session['user']['created_at'].endswith('Z')
     assert session['signup'] == {'enabled': True, 'invite_required': True, 'paused': False, 'paused_message': None}
     assert session['mail_status'] == 'ok'

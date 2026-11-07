@@ -94,6 +94,10 @@ Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshot
 2. Run `flask user delete --id <test account>` and the printed agent step.
 3. Run `flask storage sweep` (a dry run) and check it reports nothing unexpected.
 
+## Schema 18: admin page
+
+Additive (`users.is_admin`, `users.last_seen_at`, `admin_actions`). Take the dated snapshot first. After cut-over, run `flask --app jobtracker user set-admin <your verified email>` in a one-off container, sign in, and open `/admin`. **The privacy page wording for this release needs the owner's approval before deploy** (last-use time, support-action records and their 1-year retention). Rolling back means restoring the snapshot, or the downgrade in OPERATIONS.md ("Admin page — schema 18"). **Every restore from now on** gets one more step: compare `flask user list`'s admin column with what you expect, and re-run `set-admin --revoke` before starting web.
+
 ## Release record — launch stack, November 7, 2026
 
 Production and the test server both run NextMove `4ee109a` (PRs #36–#42: email verification, password reset, data deletion and export, branded email, telemetry, the onboarding "Skip for now" fix, and Gunicorn's control socket turned off). Production also runs NextMoveAgent `065b7bb` (PRs #12–#16). The two shipped in one cutover, because the new JobTracker image installs only hash-pinned packages.
