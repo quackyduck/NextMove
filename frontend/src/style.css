@@ -1427,6 +1427,12 @@ nav {
 .agent-url {
   overflow-wrap: anywhere;
 }
+.agent-prompt {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
 .agent-token {
   padding: var(--space-5) 0;
   border-top: var(--border-width) solid var(--color-line);
