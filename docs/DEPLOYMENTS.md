@@ -130,9 +130,9 @@ Production and the test server both run NextMove `4ee109a` (PRs #36–#42: email
 - Checkpoint: `/opt/next-move/rollback/launch-stack-bd90c30`. The release then moved to `4ee109a`, which differs from `bd90c30` only in `deploy/gunicorn.conf.py`.
 
 **Still to do:**
-1. Check the test email's headers: SPF, DKIM and DMARC should all pass.
-2. Sign up end to end with a throwaway address.
-3. Turn on password reset after one real reset: set `PASSWORD_RESET_ENABLED=1` and restart web and worker.
+1. ~~Check the test email's headers.~~ SPF, DKIM and DMARC pass at Gmail and Yahoo.
+2. ~~Sign up end to end with a throwaway address.~~ It works.
+3. ~~Turn on password reset.~~ Done the same morning: `PASSWORD_RESET_ENABLED=1` (previous env in the checkpoint as `jobtracker.env.before-reset`). One real reset passed end to end, the "password changed" notice arrived, and the raw link went straight to `https://mynextmoov.com/reset-password#token=…` with no tracking redirect.
 4. Redeploy the Mac bridge for heartbeats, then send the canary chat.
 5. Turn on Sentry by filling in the DSN files.
 6. Delete the release snapshots after 28 days.
