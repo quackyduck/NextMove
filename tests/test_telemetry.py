@@ -238,6 +238,9 @@ def test_checkins_keep_only_their_own_fields():
 @pytest.mark.parametrize('dsn,origin', [
     ('https://0123456789abcdef0123456789abcdef@o123.ingest.us.sentry.io/456', 'https://o123.ingest.us.sentry.io'),
     ('https://0123456789abcdef0123456789abcdef@o123.ingest.sentry.io/456', 'https://o123.ingest.sentry.io'),
+    # Current Sentry accounts: 16-digit organization and project IDs.
+    ('https://0123456789abcdef0123456789abcdef@o4500000000000001.ingest.us.sentry.io/4500000000000002',
+     'https://o4500000000000001.ingest.us.sentry.io'),
 ])
 def test_valid_frontend_dsn_adds_exactly_its_ingest_host(tmp_path, dsn, origin):
     client = create_app(base_config(tmp_path, SENTRY_FRONTEND_DSN=dsn)).test_client()
@@ -259,6 +262,8 @@ def test_valid_frontend_dsn_adds_exactly_its_ingest_host(tmp_path, dsn, origin):
     'https://0123456789abcdef0123456789abcdef@o123.ingest.us.sentry.io\n/456',
     'https://0123456789abcdef0123456789abcdef@o123.ingest.us.sentry.io/456\nX',
     "https://0123456789abcdef0123456789abcdef@o123.ingest.us.sentry.io/456'; script-src *",
+    'https://0123456789abcdef0123456789abcdef@o123456789012345678901.ingest.us.sentry.io/456',
+    'https://0123456789abcdef0123456789abcdef@o123.ingest.us.sentry.io/123456789012345678901',
 ])
 def test_invalid_frontend_dsn_keeps_csp_and_config_closed(tmp_path, dsn):
     client = create_app(base_config(tmp_path, SENTRY_FRONTEND_DSN=dsn)).test_client()

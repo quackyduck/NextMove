@@ -29,9 +29,10 @@ SERVICES = frozenset({'jobtracker-web', 'jobtracker-worker'})
 _IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_.]{0,80}')
 _DIGITS = re.compile(r'\d{1,12}')
 _RELEASE = re.compile(r'[0-9a-f]{7,40}|unknown')
-_INGEST_HOST = re.compile(r'o\d{1,12}\.ingest(\.us)?\.sentry\.io')
+# Sentry organization and project IDs are 16 digits on accounts created since 2024; allow up to 20.
+_INGEST_HOST = re.compile(r'o\d{1,20}\.ingest(\.us)?\.sentry\.io')
 _PUBLIC_KEY = re.compile(r'[0-9a-f]{16,64}')
-_PROJECT_PATH = re.compile(r'/\d{1,12}')
+_PROJECT_PATH = re.compile(r'/\d{1,20}')
 
 # Mail alerts: the verification branch's constant templates (logger `jobtracker.mail`) that become Sentry events.
 # The event carries the template only, never its arguments. Keys are the exact `%`-style templates.
