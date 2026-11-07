@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { execFileSync } from "node:child_process";
+import { latestLink, useOwnClientAddress } from "./mail.js";
 
 const path = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`;
 const api = `${path}api/v1`;
@@ -8,16 +9,22 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n"
 const invite = () => execFileSync(process.env.E2E_PYTHON || "python3", ["-m", "flask", "--app", "jobtracker:create_app", "invite", "create"],
   { cwd: new URL("../..", import.meta.url), env: process.env, encoding: "utf8" }).trim().split(/\s+/).pop();
 
+useOwnClientAddress(test);
+
 const uniqueEmail = (label) => `${label}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}@example.com`;
 
 // A fresh account, past onboarding, on the templates page.
 async function openTemplates(page, label) {
+  const email = uniqueEmail(label);
   await page.goto(`${path}?signup`);
-  await page.getByLabel("Email", { exact: true }).fill(uniqueEmail(label));
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("Templates-pass-2026");
   await page.getByLabel("Confirm password", { exact: true }).fill("Templates-pass-2026");
   await page.getByLabel("Invite code", { exact: true }).fill(invite());
   await page.getByRole("button", { name: /Create account/ }).click();
+  await expect(page.getByRole("heading", { name: "Check your email." })).toBeVisible();
+  await page.goto(latestLink(email));
+  await page.getByRole("button", { name: /Create my account/ }).click();
   await page.getByRole("button", { name: "Skip for now" }).click();
   await page.getByRole("button", { name: "Skip agent setup" }).click();
   await page.getByRole("button", { name: "Your resume templates" }).click();

@@ -13,7 +13,8 @@ from sqlalchemy import text
 from werkzeug.datastructures import FileStorage
 from werkzeug.security import generate_password_hash
 
-from jobtracker import create_app, harness, migrations, taskqueue
+from jobtracker import create_app, harness, mailer, migrations, taskqueue
+from accounts import verify_all, add_user, last_link, solve_proof
 
 from test_documents import PDF, docx
 
@@ -257,19 +258,35 @@ def activation_token(client, grant):
 
 def activate(client, token, email='chat@example.com', password='chat-password-1'):
     return client.post('/api/v1/auth/activate', json={'token': token, 'email': email, 'password': password,
-                                                      'password_confirmation': password})
+                                                      'password_confirmation': password,
+                                                      'proof': solve_proof(client, 'activate')})
 
 
-def test_activation_sets_credentials_once_and_signs_in(client, app):
-    _, grant = account(client)
+def user_row(app, user_id):
+    with app.extensions['jobtracker_db']['engine'].connect() as connection:
+        return connection.execute(text('SELECT email, password_hash, email_verified_at FROM users WHERE id=:id'),
+                                  {'id': user_id}).one()
+
+
+def test_activation_binds_the_email_only_once_confirmed_and_then_signs_in(client, app):
+    user_id, grant = account(client)
     token = activation_token(client, grant)
     # Link previews and scanners only read; reading never consumes the link.
     assert client.get('/api/v1/auth/activation', query_string={'token': token}).json == {'valid': True}
     assert client.get('/api/v1/auth/activation', query_string={'token': token}).json == {'valid': True}
     done = activate(client, token)
-    assert done.status_code == 200 and done.json['user']['email'] == 'chat@example.com'
+    assert done.status_code == 202 and 'Set-Cookie' in done.headers
+    assert client.get('/api/v1/auth/session').json['authenticated'] is False
+    # Still messaging-only: the chosen email is not bound until the link is confirmed; the harness still works.
+    assert user_row(app, user_id) == (None, None, None)
+    assert client.post('/api/v1/me/activation-links', headers=grant).json['activated'] is False
     assert client.get('/api/v1/auth/activation', query_string={'token': token}).json == {'valid': False}
     assert activate(app.test_client(), token, email='other@example.com').status_code == 410
+    taskqueue.drain(app)
+    confirmed = client.post('/api/v1/auth/email-verification/confirm', json={'token': last_link('chat@example.com')})
+    assert confirmed.status_code == 200 and confirmed.json['user']['email'] == 'chat@example.com'
+    email, password_hash, verified_at = user_row(app, user_id)
+    assert email == 'chat@example.com' and password_hash and verified_at
     fresh = app.test_client()
     assert fresh.post('/api/v1/auth/login', json={'email': 'chat@example.com',
                                                   'password': 'chat-password-1'}).status_code == 200
@@ -278,14 +295,40 @@ def test_activation_sets_credentials_once_and_signs_in(client, app):
         'url': 'https://nextmove.example.com/', 'activated': True}
 
 
-def test_activation_rejects_taken_emails_expired_and_unknown_links(client, app):
-    _, grant = account(client)
+def test_activation_never_reveals_taken_emails_and_rejects_expired_and_unknown_links(client, app):
+    user_id, grant = account(client)
     token = activation_token(client, grant)
-    assert activate(client, token, email='owner@localhost').status_code == 409
+    # An address that already has an account gets the same 202; the worker mails a notice instead of a link.
+    assert activate(client, token, email='taken@example.com').status_code == 202
+    add_user(app, 'taken@example.com')
+    taskqueue.drain(app)
+    notice = mailer.outbox[-1]
+    assert notice['To'] == 'taken@example.com' and '#token=' not in notice.get_body(('plain',)).get_content()
+    assert user_row(app, user_id) == (None, None, None)
+    token = activation_token(client, grant)
     assert activate(client, 'x' * 40).status_code == 410
     with app.extensions['jobtracker_db']['engine'].begin() as connection:
         connection.execute(text("UPDATE activation_tokens SET expires_at='2000-01-01 00:00:00'"))
     assert activate(client, token).status_code == 410
+
+
+def test_a_victim_cannot_confirm_an_activation_someone_else_started(client, app):
+    """The attacker's phone activates with the victim's address; the victim opens the link without the password."""
+    user_id, grant = account(client)
+    attacker = app.test_client()
+    assert activate(attacker, activation_token(client, grant), email='victim@example.com').status_code == 202
+    taskqueue.drain(app)
+    victim = app.test_client()
+    link = last_link('victim@example.com')
+    check = victim.post('/api/v1/auth/email-verification/check', json={'token': link}).json
+    assert check['valid'] and check['needs_password'] and check['kind'] == 'activation'
+    assert victim.post('/api/v1/auth/email-verification/confirm', json={'token': link}).json['code'] == 'password_required'
+    for _ in range(5):
+        assert victim.post('/api/v1/auth/email-verification/confirm',
+                           json={'token': link, 'password': 'a-guess-123'}).json['code'] == 'wrong_password'
+    assert victim.post('/api/v1/auth/email-verification/confirm',
+                       json={'token': link, 'password': 'chat-password-1'}).status_code == 410  # Dead after 5.
+    assert user_row(app, user_id) == (None, None, None)
 
 
 def test_schema_11_upgrade_keeps_users_and_the_id_sequence(app, tmp_path):
@@ -314,6 +357,7 @@ def test_schema_11_upgrade_keeps_users_and_the_id_sequence(app, tmp_path):
         new_id = connection.execute(text("INSERT INTO users (email, password_hash, session_version, created_at) "
                                          "VALUES (NULL, NULL, 1, '2026-01-01 00:00:00') RETURNING id")).scalar()
     assert new_id == 8  # the deleted account's ID 7 is never reissued
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     login = upgraded.test_client().post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': 'test-password'})
     assert login.status_code == 200
 
@@ -355,3 +399,17 @@ def test_templates_list_needs_a_live_grant(client, app):
     with app.app_context():
         harness.revoke_grants(user_id)
     assert client.get('/api/v1/me/templates', headers=grant).status_code == 401
+
+
+def test_activation_uses_the_per_address_budget_too(client, app):
+    """A chat user minting activation links cannot mail one address more than sign-up could."""
+    _, grant = account(client)
+    mailer.outbox.clear()
+    for index in range(4):
+        response = activate(client, activation_token(client, grant), email=f'target+{index}@example.com')
+        assert response.status_code == 202  # Same answer when over budget; the link is still used up.
+        taskqueue.drain(app)
+    with app.extensions['jobtracker_db']['engine'].connect() as connection:
+        used_links = connection.execute(text('SELECT COUNT(*) FROM activation_tokens WHERE used_at IS NOT NULL')).scalar()
+    sent = [message for message in mailer.outbox if message['To'].startswith('target+')]
+    assert len(sent) == 3 and used_links == 4  # The canonical address (no +tag) got its 3 for the day.

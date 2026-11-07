@@ -28,7 +28,7 @@ Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), 
 | Duplicate search | `GET /jobs/search` with explainable evidence (company, title, URL) | `search.py`, `docs/saved-role-search-api.md` |
 | Agent access | Named, expiring, hashed tokens with scopes `roles:search`, `roles:ingest`; create/revoke in UI; connection test | `agent_tokens.py`, `AgentAccess.jsx` |
 | Agent skill | `nextmove-url-intake`: search, then submit, never fabricate, never change stage | `.agents/skills/`, `docs/AGENT_SETUP.md` |
-| Accounts and tenancy | `users` table; `user_id` on every row and file path (`uploads/<user_id>/`); email + password login; invite-code signup with password confirmation, no outbound email; per-account and per-IP throttle; tenant-isolation suite blocks release | `auth.py`, `credentials.py`, `throttle.py`, `storage.py`, `test_tenant_isolation.py` |
+| Accounts and tenancy | `users` table; `user_id` on every row and file path (`uploads/<user_id>/`); email + password login; sign-up confirmed by email link (schema 15), optional invite codes; per-account and per-IP throttle; tenant-isolation suite blocks release | `auth.py`, `credentials.py`, `throttle.py`, `storage.py`, `test_tenant_isolation.py` |
 | Background queue | SQLite `queued_tasks` with leases and retries; separate `next-move-worker` process runs extraction and agent ingestion | `taskqueue.py`, `worker.py`, `deploy/next-move-worker.service` |
 | Onboarding | Signup → optional master-resume upload → optional agent setup (token, snippets, connection test); versioned step registry and dashboard checklist | `onboarding.py`, `AuthScreens.jsx`, `Onboarding.jsx`, `OnboardingChecklist.jsx` |
 | Operations | Coordinated SQLite + uploads backup/restore, path-prefix mount, Gunicorn/systemd/nginx templates | `scripts/backup.py`, `deploy/`, `docs/OPERATIONS.md` |
@@ -43,7 +43,7 @@ Today Next Move is a working multi-user tracker (schema 10, `main` at de129f0), 
 
 - **No resume understanding.** Files are stored, never parsed; there is no profile (titles, skills, history) or master template.
 - **No LLM layer.** Extraction is deterministic; resume parsing, tailoring, crawling and applying all need a model provider, prompts, cost tracking and evals. The gateway was deferred out of Phase 0.
-- **No email.** Signup has no verification and password resets go through the admin CLI; self-service reset needs an email provider.
+- **Email.** Sign-up is confirmed by an emailed link (schema 15, Resend); self-service password reset builds on the same mailer.
 - **No account deletion.** There is no delete-account path for users or the admin yet; required before opening signup beyond invites.
 - **No cost or billing data.** Nothing measures per-user spend today.
 
@@ -428,7 +428,7 @@ Phase 0 (without the LLM gateway), onboarding v1 and the design refresh shipped 
 - [x] Account before or after resume upload? **Account first**; upload is optional and skippable.
 - [x] Stay on SQLite for the first few users, or move to PostgreSQL in PR 1? **SQLite for now**; PostgreSQL arrives with the Kubernetes move.
 - [ ] Which model provider for the gateway, and what monthly LLM budget before donations cover it?
-- [ ] Email delivery provider for verification, password reset and digests? Deferred: no email is sent today.
+- [x] Email delivery provider for verification and password reset: Resend (schema 15). Digests later.
 - [ ] Stripe Payment Link vs GitHub Sponsors for donations v1?
 - [ ] Planned enhancement E1 (multiple resume templates): see the open questions under "Planned enhancements".
 - [ ] Planned enhancement E2 (job-hunt sessions): see the open questions under "Planned enhancements".

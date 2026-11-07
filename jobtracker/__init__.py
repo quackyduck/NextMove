@@ -34,7 +34,7 @@ def create_app(test_config=None):
         FRONTEND_DIST=os.getenv('FRONTEND_DIST', str(Path(__file__).resolve().parent.parent / 'frontend' / 'dist')),
         TRUST_PROXY=os.getenv('TRUST_PROXY') == '1',
         LOGIN_THROTTLE_DATABASE=os.getenv('LOGIN_THROTTLE_DATABASE'),
-        # Accounts: sign-up is invite-only by default; nothing ever sends email.
+        # Accounts: sign-up is invite-only by default. Email verification is required (schema 15).
         SIGNUP_ENABLED=os.getenv('SIGNUP_ENABLED', '1') != '0',
         SIGNUP_REQUIRES_INVITE=os.getenv('SIGNUP_REQUIRES_INVITE', '1') != '0',
         BOOTSTRAP_ADMIN_EMAIL=os.getenv('BOOTSTRAP_ADMIN_EMAIL'),
@@ -91,6 +91,12 @@ def create_app(test_config=None):
     from . import credentials, worker
     credentials.init_app(app)
     worker.init_app(app)
+    # Email verification (schema 15): outbound mail, proof-of-work and the confirmation routes.
+    from . import mailer, pow
+    mailer.init_app(app)
+    pow.init_app(app)
+    from .confirmations import confirmations
+    app.register_blueprint(confirmations, url_prefix='/api/v1')
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
     from .profile import profile

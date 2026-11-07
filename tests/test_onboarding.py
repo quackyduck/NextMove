@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine, inspect
 
 from jobtracker import credentials, migrations, onboarding
+from accounts import sign_up
 from legacy import rewind_resume_sources
 from test_api import app, client, login  # noqa: F401
 from test_documents import PDF, docx
@@ -16,10 +17,7 @@ PASSWORD = 'Onboarding-pass-2026'
 def signup(client, app, email='new@example.com'):
     with app.app_context():
         code, = credentials.create_invites(1, 7)
-    result = client.post('/api/v1/auth/signup', json={
-        'email': email, 'password': PASSWORD, 'password_confirmation': PASSWORD, 'invite_code': code})
-    assert result.status_code == 201, result.json
-    return {'X-CSRF-Token': result.json['csrf_token']}
+    return sign_up(app, client, email, PASSWORD, invite_code=code)
 
 
 def statuses(client):

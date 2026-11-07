@@ -29,6 +29,8 @@ from werkzeug.security import generate_password_hash
 from jobtracker import create_app, credentials, extraction_tasks, harness, ingestion, oauth, resume_files, taskqueue
 from jobtracker.models import OAUTH_SCOPES, Contact, OAuthClient, OAuthGrant, OAuthToken, now
 
+from accounts import sign_up
+
 from test_documents import docx
 
 B_PASSWORD = 'b-owner-password'
@@ -115,6 +117,11 @@ COLLECTIONS = {
     ('POST', '/api/v1/me/activation-links'): 'test_harness_api.py',
     ('GET', '/api/v1/auth/activation'): 'test_harness_api.py',
     ('POST', '/api/v1/auth/activate'): 'test_harness_api.py',
+    # Email confirmation (schema 15): unauthenticated; the token, not an ID, names the row.
+    ('GET', '/api/v1/auth/challenge'): 'test_pow.py',
+    ('POST', '/api/v1/auth/email-verification/check'): 'test_email_confirmation.py',
+    ('POST', '/api/v1/auth/email-verification/confirm'): 'test_email_confirmation.py',
+    ('POST', '/api/v1/auth/email-verification/resend'): 'test_email_confirmation.py',
     # Third-party agents (schema 12). Signed links name a grant, not an ID the caller chooses.
     ('GET', '/api/v1/oauth/connections'): 'test_lists_and_search_exclude_other_tenants',
     ('GET', '/api/v1/openapi.json'): 'public',
@@ -153,10 +160,7 @@ def world(tmp_path, monkeypatch):
     with app.app_context():
         [code] = credentials.create_invites(1, 7)
     a = app.test_client()
-    signup = a.post('/api/v1/auth/signup', json={'email': 'a@example.com', 'password': A_PASSWORD,
-                                                  'password_confirmation': A_PASSWORD, 'invite_code': code})
-    assert signup.status_code == 201
-    a_headers = {'X-CSRF-Token': signup.json['csrf_token']}
+    a_headers = sign_up(app, a, 'a@example.com', A_PASSWORD, invite_code=code)
     job = a.post('/api/v1/jobs', json=FIELDS, headers=a_headers).json
     a.post(f"/api/v1/jobs/{job['id']}/contacts", json={'name': 'A contact', 'email': 'c@example.com'}, headers=a_headers)
     resume = a.post(f"/api/v1/jobs/{job['id']}/resumes", headers=a_headers,
@@ -346,7 +350,9 @@ def test_database_rejects_children_that_cross_tenants(world):
         tables = ['jobs', 'contacts', 'resumes', 'activities', 'agent_tokens', 'extraction_tasks',
                   'ingestion_requests', 'queued_tasks']
         for table in tables:
-            assert connection.scalar(text(f'SELECT count(*) FROM {table} WHERE user_id IS NULL')) == 0
+            # Schema 15: only anonymous (pre-account mail) queue kinds may lack an owner.
+            anonymous = " AND kind NOT IN ('send_confirmation', 'resend_confirmation')" if table == 'queued_tasks' else ''
+            assert connection.scalar(text(f'SELECT count(*) FROM {table} WHERE user_id IS NULL{anonymous}')) == 0
 
 
 def test_queue_tasks_cannot_finish_another_tenants_record(world):

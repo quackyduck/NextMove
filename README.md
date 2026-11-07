@@ -61,6 +61,10 @@ If your session expires or another tab changes it, a sign-in dialog opens over t
 
 The browser test launcher gives each spec file separate disposable storage and a fresh persistent login budget. This lets recovery tests exercise real failed/repeated logins without exhausting the unrelated workflow suite's limiter; production limits remain enabled.
 
+## Email and verification
+
+Accounts confirm their email before they can be used: sign-up emails a link that creates the account and signs in. The queue worker sends all email (`scripts/run.sh` starts it); locally the `console` mail backend logs messages, including links, to the terminal, and nothing is delivered. See [Email confirmation](docs/API.md#email-confirmation-schema-15) and [Outbound email](docs/OPERATIONS.md#outbound-email-and-email-verification--schema-15). The public privacy page is at `/privacy`.
+
 ## Change your password
 
 Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.

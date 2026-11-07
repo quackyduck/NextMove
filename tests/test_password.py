@@ -7,6 +7,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import text
 
 from jobtracker import create_app, credentials, db
+from accounts import verify_all
 from jobtracker import auth as auth_module
 
 
@@ -166,6 +167,7 @@ def test_v2_upgrade_preserves_workspace_and_seeds_existing_bootstrap_once(app, c
         c.execute('DROP TABLE workspace_credentials')
         c.execute('UPDATE schema_version SET version=2')
     upgraded = create_app(config)
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     fresh = upgraded.test_client()
     login(fresh)
     assert fresh.get('/api/v1/jobs').json['jobs'][0]['id'] == job['id']

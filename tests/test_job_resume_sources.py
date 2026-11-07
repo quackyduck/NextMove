@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import text
 
 from jobtracker import create_app, migrations
-from accounts import sign_in
+from accounts import sign_in, verify_all
 from legacy import rewind_resume_sources
 from test_mcp_oauth import app, call, client, connect, ok  # noqa: F401  (fixtures)
 from test_resume_templates import MASTER, create, shape, upload
@@ -110,6 +110,7 @@ def test_schema_13_job_resumes_upgrade_with_no_source(client, app):
         assert connection.execute(text('SELECT version FROM schema_version')).scalar() == migrations.SCHEMA_VERSION
         assert connection.execute(text('SELECT id, source_master_resume_id FROM resumes')).all() == [(resume['id'], None)]
         connection.execute(text('UPDATE resumes SET source_master_resume_id=:id'), {'id': version['id']})
+    verify_all(upgraded)  # Schema 15: upgraded accounts are unverified until the operator (or a link) verifies them.
     browser = upgraded.test_client()
     sign_in(browser)
     assert browser.get(f'/api/v1/jobs/{job}/resumes').json['resumes'][0]['source']['resume_id'] == version['id']

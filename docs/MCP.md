@@ -79,7 +79,7 @@ Agents can create templates and add versions to them, but never choose the defau
   - A 401 from `/mcp` names the metadata URL in `WWW-Authenticate`.
   - With `APP_ROOT_PATH`, nginx must also map the path-inserted URLs; see `deploy/nginx-nextmove.conf`.
 - **REST.** The same tokens work on the job, contact, resume, search and master-resume routes listed in the OpenAPI document. A missing scope gets 403 with `error="insufficient_scope"`.
-- **Consent page.** Rendered by the server. It can't be framed, and it requires the browser session's CSRF token. Signed-out users go to `/?signin&oauth_return=…`, and the dashboard returns them to the consent page after sign-in or sign-up. Only `oauth/authorize?…` is accepted as a return target.
+- **Consent page.** Rendered by the server. It can't be framed, and it requires the browser session's CSRF token. Signed-out users go to `/?signin&oauth_return=…`, and the dashboard returns them to the consent page after sign-in. Only `oauth/authorize?…` is accepted as a return target. Since schema 15 a browser session exists only for an account with a verified email, so new connections need a verified account; connections an older account made before verifying keep working.
 
 ## Security notes
 

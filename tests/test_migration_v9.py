@@ -21,7 +21,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from jobtracker import create_app, db, migrations, storage
 
-from accounts import sign_in
+from accounts import sign_in, sign_up, verify_all
 from legacy import create_legacy_db
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -154,6 +154,10 @@ def test_upgrade_keeps_every_row_and_file_for_user_one(legacy):
                                                                        SESSION_VERSION, 1)
 
     client = app.test_client()
+    # Schema 15: the migrated owner verifies its email before the next browser session.
+    assert client.post('/api/v1/auth/login', json={'email': 'me@example.com', 'password': PASSWORD}
+                       ).json['code'] == 'verification_required'
+    verify_all(app)
     sign_in(client, 'me@example.com', PASSWORD)
     jobs = client.get('/api/v1/jobs').json['jobs']
     assert sorted((job['id'], job['version'], job['stage'], job['outcome']) for job in jobs) == sorted(
@@ -200,7 +204,13 @@ def test_failed_upgrade_rolls_back_completely(legacy, monkeypatch):
 def test_placeholder_email_when_none_is_configured(legacy):
     app = start(legacy, BOOTSTRAP_ADMIN_EMAIL=None)
     assert query(legacy.path, 'SELECT id, email FROM users') == [(1, migrations.PLACEHOLDER_ADMIN_EMAIL)]
-    sign_in(app.test_client(), 'owner@localhost', PASSWORD)
+    # The placeholder cannot receive a link: the operator sets a real address (verified) first.
+    client = app.test_client()
+    assert client.post('/api/v1/auth/login', json={'email': 'owner@localhost', 'password': PASSWORD}
+                       ).json['code'] == 'verification_unavailable'
+    result = app.test_cli_runner().invoke(args=['user', 'set-email', '1', 'owner@example.com', '--verified'])
+    assert result.exit_code == 0, result.output
+    sign_in(client, 'owner@example.com', PASSWORD)
 
 
 def test_invalid_bootstrap_email_aborts_the_upgrade(legacy):
@@ -267,6 +277,7 @@ def test_configured_hash_seeds_the_owner_when_the_credential_is_missing(tmp_path
     assert query(path, 'SELECT id, email, password_hash, session_version, owns_legacy_tokens FROM users') == [
         (1, 'me@example.com', configured, 1, 1)]
     client = app.test_client()
+    verify_all(app)
     sign_in(client, 'me@example.com', 'configured-password')
     assert len(client.get('/api/v1/jobs').json['jobs']) == 3
 
@@ -275,10 +286,9 @@ def test_signups_after_the_upgrade_never_take_or_reuse_ids(legacy):
     app = start(legacy, SIGNUP_REQUIRES_INVITE=False)
 
     def signup(email):
-        response = app.test_client().post('/api/v1/auth/signup', json={
-            'email': email, 'password': 'new-user-password', 'password_confirmation': 'new-user-password'})
-        assert response.status_code == 201
-        return response.json['user']['id']
+        client = app.test_client()
+        sign_up(app, client, email, 'new-user-password')
+        return client.get('/api/v1/auth/session').json['user']['id']
 
     first = signup('second@example.com')
     assert first >= 2

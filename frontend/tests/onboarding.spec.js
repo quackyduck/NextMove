@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { latestLink, useOwnClientAddress } from "./mail.js";
 
 const path = `${(process.env.APP_ROOT_PATH || "").replace(/\/$/, "")}/`;
 const api = `${path}api/v1`;
@@ -14,6 +15,8 @@ function invite() {
     { cwd: root, env: process.env, encoding: "utf8" });
   return output.trim().split(/\s+/).pop();
 }
+
+useOwnClientAddress(test);
 
 const uniqueEmail = (label) => `${label}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}@example.com`;
 
@@ -43,6 +46,10 @@ async function signUp(page, email, password = "Onboarding-pass-2026") {
   await typeInto(page, page.getByLabel("Confirm password", { exact: true }), password);
   await typeInto(page, page.getByLabel("Invite code", { exact: true }), invite());
   await press(page, page.getByRole("button", { name: /Create account/ }));
+  // Schema 15: nothing is signed in until the emailed link is confirmed (same browser: one key press).
+  await expect(page.getByRole("heading", { name: "Check your email." })).toBeVisible();
+  await page.goto(latestLink(email));
+  await press(page, page.getByRole("button", { name: /Create my account/ }));
 }
 
 async function signIn(page, email, password = "Onboarding-pass-2026") {

@@ -8,37 +8,69 @@ logs. Production requests must use HTTPS.
 
 Browser sessions use `/auth/signup`, `/auth/login`, `/auth/session`, `/auth/logout` and a CSRF token returned by signup/login/session. Send `X-CSRF-Token` on session-authenticated writes. Bearer clients do not need CSRF tokens.
 
-## Accounts and tenancy (schema 9)
+## Accounts and tenancy (schema 9; email verification required since schema 15)
 
-Every job, contact, resume (and its file), activity, agent token, extraction preview and ingestion receipt belongs to one account. Every request acts as exactly one account: the signed-in browser user, the user who created the managed token, or the migrated workspace owner (user #1, flagged `owns_legacy_tokens`; never a signed-up account) for the deprecated `AGENT_API_TOKEN` / `ROLE_SEARCH_TOKEN_SHA256`. Another account's IDs behave exactly like IDs that do not exist (404), and lists and search only include your own records. Nothing in the service sends email.
+Every job, contact, resume (and its file), activity, agent token, extraction preview and ingestion receipt belongs to one account. Every request acts as exactly one account: the signed-in browser user, the user who created the managed token, or the migrated workspace owner (user #1, flagged `owns_legacy_tokens`; never a signed-up account) for the deprecated `AGENT_API_TOKEN` / `ROLE_SEARCH_TOKEN_SHA256`. Another account's IDs behave exactly like IDs that do not exist (404), and lists and search only include your own records.
+
+An account can only be used once its email is verified (schema 15, see [Email confirmation](#email-confirmation-schema-15)). Sign-up never creates a session: the emailed link does.
 
 | Method | Path | Body | Responses |
 | --- | --- | --- | --- |
-| GET | /auth/session | — | 200 `{authenticated, csrf_token, user: {id, email, created_at} \| null, signup: {enabled, invite_required}}` |
-| POST | /auth/signup | `{email, password, password_confirmation, invite_code}` | 201 `{authenticated: true, csrf_token, user}` and a session cookie; 400 `{error, field}` (`email`, `password`, `password_confirmation`); 403 `{error, field: "invite_code"}` for a missing, unknown, used or expired invite (or `{error}` when sign-up is closed); 409 `{error, field: "email"}`; 429 throttled |
-| POST | /auth/login | `{email, password}` | 200 `{authenticated: true, csrf_token, user}`; 401 `Invalid email or password` for every failure; 429 throttled |
+| GET | /auth/session | — | 200 `{authenticated, csrf_token, user: {id, email, created_at} \| null, signup: {enabled, invite_required, paused, paused_message}, mail_status}` |
+| GET | /auth/challenge?purpose= | — | 200 `{challenge, bits, expires_at}` for `signup`, `activate`, `resend` or `reset`; 400 other purposes; 429 after 30 per client per 5 minutes |
+| POST | /auth/signup | `{email, password, password_confirmation, invite_code, proof}` | **202** `{message}` and a confirmation cookie, for every address; 400 `{error, field}` (`email`, `password`, `password_confirmation`), or 400 `{code: "proof_invalid"}`; 403 `{error, field: "invite_code"}` for a missing, unknown, used or expired invite (or `{error}` when sign-up is closed or email is off); 503 `{code: "signup_paused"}`; 429 throttled. **There is no 409.** |
+| POST | /auth/login | `{email, password}` | 200 `{authenticated: true, csrf_token, user}`; 401 `Invalid email or password` for every failure; 403 `{code: "verification_required", email_hint}` or `{code: "verification_unavailable"}` only after a **correct** password on an account that has not verified its email (see below); 429 throttled |
 | POST | /auth/password | `{current_password, new_password, confirm_password}` | Changes only the signed-in account; see below |
 | POST | /auth/logout | — | 200 `{authenticated: false, csrf_token: null}` |
+| POST | /auth/email-verification/check | `{token}` | 200 `{valid: true, kind, email_hint, needs_password, signed_in_as_other}` or `{valid: false}`; never uses the link |
+| POST | /auth/email-verification/confirm | `{token, password?}` | 200 `{authenticated: true, csrf_token, user}` and a new session; 400 `{code: "password_required" \| "wrong_password", field: "password"}`; 409 `{code: "account_exists"}`; 410 for every other failure; 429; 503 |
+| POST | /auth/email-verification/resend | `{email, proof}` | **202** `{message}` always (malformed input too); 400 `{code: "proof_invalid"}`; 429 per client |
 
-- Emails are trimmed and lowercased; they are not verified. Passwords are 8–128 characters.
-- Invites are single-use and expire (default 7 days). Consuming the invite and creating the user happen in one transaction. Bad input never uses up the invite; a duplicate email (409) does, so one code can answer at most one "is this email registered?" question. With `SIGNUP_REQUIRES_INVITE=0` the 409 inherently reveals registered emails (rate-limited per IP). `SIGNUP_REQUIRES_INVITE=0` opens sign-up without codes; `SIGNUP_ENABLED=0` closes it.
-- Signup and login reject cross-origin `Origin` headers (403).
-- Login attempt budgets per five minutes: 30 per client IP; 10 per account (by email, known or unknown, so 429 never reveals an account), after which a client that has made fewer than 3 attempts on that account may still try, up to 50 per account. An attacker hammering one email therefore cannot lock its owner out. There is no global budget. Sign-up is limited to 10 per IP. Password changes and token creation use a separate per-user budget (10), so login abuse cannot block a signed-in owner. Over budget returns 429 with `Retry-After: 300`. Unknown emails take the same time as wrong passwords.
-- `/jobs/search` allows 120 requests per minute per account, plus 120 per client IP before authentication.
+- Emails are trimmed and lowercased. New addresses (sign-up, activation, `set-email`) must also be deliverable: an RFC 5322 dot-atom local part and an ASCII domain with at least two labels, no IP literals, no `localhost`, no non-ASCII characters (type the `xn--` form of an internationalized domain). Sign-in still looks up older addresses leniently. Passwords are 8–128 characters.
+- **No enumeration on sign-up.** The request never looks the address up: it always returns the same 202 and stores a pending sign-up. The queue worker decides what to send. A new address gets a confirmation link; an address that already has an account gets "You already have an account: sign in or reset your password", with no link, and the pending row is deleted. Login reveals that an account still needs verification only to someone who typed its correct password.
+- Invites are single-use and expire (default 7 days). An invite is checked at sign-up and consumed only when the sign-up is confirmed, in the same transaction that creates the account (403 `{code: "invite_used"}` if another sign-up confirmed it first). `SIGNUP_REQUIRES_INVITE=0` opens sign-up without codes; `SIGNUP_ENABLED=0` closes it. Sign-up is also closed while email is off (`MAIL_BACKEND=none`).
+- Sign-up, activation, resend and the password-reset request each need a solved proof-of-work: `GET /auth/challenge?purpose=…` returns a signed challenge, and the browser finds a nonce such that SHA-256(`challenge:nonce`) starts with `bits` zero bits (18 normally, 20 while email is degraded; about a second on a phone). Each challenge works once and expires after 10 minutes.
+- Signup, login, activation and the confirmation routes reject cross-origin `Origin` headers (403).
+- Client addresses are throttled as IPv4 addresses or IPv6 /64 prefixes. Login attempt budgets per five minutes: 30 per client; 10 per account (by email, known or unknown, so 429 never reveals an account), after which a client that has made fewer than 3 attempts on that account may still try, up to 50 per account. An attacker hammering one email therefore cannot lock its owner out. There is no global login budget. Sign-up, activation and resend share **one** budget per client: 5 per 5 minutes and 8 per day (429 with `Retry-After`). Per address (ignoring `+tags`, and dots for Gmail), at most 3 such emails a day, or 6 when the extra requests come from clients that have not asked for that address before; over that, the response is the same 202 and nothing is sent. Password changes and token creation use a separate per-user budget (10), so login abuse cannot block a signed-in owner. Unknown emails take the same time as wrong passwords.
+- `/jobs/search` allows 120 requests per minute per account, plus 120 per client before authentication.
 - A password change signs out that account's other sessions only.
 
-Administrators manage accounts from the server shell (`flask --app jobtracker ...`); there is no admin API and no email:
+Administrators manage accounts from the server shell (`flask --app jobtracker ...`); there is no admin API:
 
 | Command | Effect |
 | --- | --- |
 | `invite create [--count N] [--expires-days D]` | Prints N new single-use codes (only hashes are stored). Share them however you like. |
 | `invite list` | Code prefix, status (unused / expired / used by user N) and expiry |
-| `user list` | ID, email and creation time |
+| `user list [--unverified] [--undeliverable]` | ID, email, verified or unverified, deliverable or not, and creation time |
+| `user create EMAIL [--unverified] [--allow-placeholder]` | Creates an account (verified unless `--unverified`); prompts for the password. For servers where sign-up is off. |
+| `user verify EMAIL` / `user unverify EMAIL` | Marks the email verified (support confirmed it), or clears that and signs the account out |
+| `user send-verification EMAIL` / `--all-legacy` | Queues a verification link; confirming it needs the account's password. Never prints a link. |
 | `user reset-password EMAIL` | Prompts for a new password (never an argument) and signs that user out everywhere |
-| `user set-email ID EMAIL` | Changes a sign-in email, e.g. user #1's migration placeholder `owner@localhost` |
+| `user set-email ID EMAIL [--verified] [--send-verification]` | Changes a sign-in email in one transaction: the address must be deliverable; verification is cleared unless `--verified`; pending confirmations are deleted; every browser session of that account is signed out |
+| `user revoke-agents ID [--harness]` | Revokes the account's OAuth connections and agent tokens (and chat grants with `--harness`); prints the counts |
 | `user merge-messaging SOURCE TARGET` | Links a phone to an existing account: moves the harness grants of messaging account SOURCE (never activated, no data) to account TARGET, then deletes SOURCE |
+| `signup pending [--email E]` | Counts of pending confirmations by kind and delivery state (addresses masked) |
+| `mail test TO` / `mail status` | Sends a fixed test message / shows usage against the daily, per-kind and monthly limits |
 | `reset-workspace-password` | Legacy alias for resetting user #1 |
-| `worker [--once]` | Runs the queue worker (same as `python -m jobtracker.worker`) |
+| `worker [--once]` | Runs the queue worker (same as `python -m jobtracker.worker`), which also sends email |
+
+### Email confirmation (schema 15)
+
+Confirmations live in `email_confirmations`, never in `users`. A row is one of three kinds:
+
+- `signup`: a sign-up that is not an account yet. It holds the chosen password's hash. Confirming creates the account, already verified, and starts guided onboarding.
+- `activation`: a messaging account's chosen email and password (see the harness section). The account stays messaging-only until the link is confirmed.
+- `existing`: an account created before verification was required. It verifies at its next sign-in.
+
+The worker mints the token right before sending (only its SHA-256 is stored), so no token is ever in the queue. The link is `PUBLIC_BASE_URL/verify-email#token=…`. The token is in the URL fragment, which is never sent to a server; the page moves it into memory and clears the address bar before any other script runs. Links work once and expire 24 hours after they are sent. A link not sent within 24 hours (email delayed) is cancelled. Pending rows, with their password hashes, are deleted about two days after they are created at the latest, and right away when the address turns out to have an account.
+
+**Confirming needs the link and proof of the password:** either the confirmation cookie (`next_move_confirm`: HttpOnly, 48 hours, set in the browser that chose the password; one click), or typing that password again (5 tries per link; then the link stops working). So someone who receives a link for a sign-up they did not make cannot create, activate or verify an account that someone else controls. Checking a link never uses it. Confirming signs the browser in, replacing any other session (`check` reports `signed_in_as_other` so the page can warn first). Signing up again from the same browser replaces that browser's pending password and link. From another browser it adds a separate pending sign-up, and the first one confirmed wins.
+
+**Resend while signed out** (`/auth/email-verification/resend`) always answers 202 and looks nothing up while handling the request. The worker re-sends the newest pending link for that address, or a verification link for an unverified older account, and sends nothing for any other address.
+
+**Older accounts** keep `email_verified_at` NULL after the upgrade. Their browser sessions end. The next sign-in with the correct password returns 403 `verification_required` and emails a link (at most one a minute and 5 a day). An address that cannot receive mail (e.g. `owner@localhost`) returns `verification_unavailable`: an operator fixes it with `user set-email ID EMAIL --verified`. Until verified, their existing OAuth connections, agent tokens, the legacy token and harness grants keep working, but they cannot sign in to the dashboard, approve new connections or revoke tokens there. Support can revoke them with `user revoke-agents`. A completed emailed password reset also verifies the address.
+
+**Email limits.** All email shares a daily limit (`MAIL_DAILY_LIMIT`, default 90, rolling 24 h) and a monthly one (`MAIL_MONTHLY_LIMIT`, 3,000). Within the day, sign-up email (links, notices, resends) may use 50, of which the last 5 are reserved for older accounts' verification links. Password-reset email may use 25, and the rest (15) is kept for "password changed" notices. Before sending, the worker checks the recipient's domain in DNS (MX, else A/AAAA; no mail to domains that cannot receive it) and caps sign-up email per domain (10 a day, 40 for large providers) and per mail server (15). When sign-up email is used up for the day, `/auth/session` reports `signup.paused` with "Sign-up is paused for today. Try again tomorrow." and signup and activation return 503 `signup_paused`. Deferred email is retried later and is never counted as a failed attempt. `mail_status` is `degraded` while a limit is spent or the provider is failing, and `off` when email is turned off. It describes the whole service, never one address. Verification shows a masked `email_hint`. The password-reset status shows the full address, because that form needs it.
 
 ## Typical collaboration
 
@@ -232,7 +264,7 @@ The Resume Agent harness acts on JobTracker strictly as one user. These routes a
 **Activation (browser).**
 
 - `GET /auth/activation?token=` → `{valid}`. Reading never consumes the link, so previews and scanners are harmless.
-- `POST /auth/activate` `{token, email, password, password_confirmation}`. This sets the email and password, consumes the link, and signs in, all in one transaction. A used, expired or unknown link gets 410. An email already in use gets 409. The route shares the signup throttle. The dashboard opens activation from `/?activate=<token>`.
+- `POST /auth/activate` `{token, email, password, password_confirmation, proof}` consumes the activation link and returns **202** with a confirmation cookie. It creates no session, and gives no 409 for an address already in use. The chosen email is **not** bound yet: the account stays messaging-only (no email, no password, the harness keeps working) until the emailed confirmation link is opened. That link needs the activating browser's cookie or the chosen password, so a phone holder cannot claim someone else's address. An address that already belongs to another account gets an email saying so instead of a link. Confirming sets the email, password and verification, and signs in. A used, expired or unknown activation link gets 410. The route shares the sign-up budgets and pauses with sign-up. The dashboard opens activation from `/?activate=<token>`. Accounts activated before schema 15 verify at their next sign-in like other older accounts. A messaging account that never verified loses its chat link if its password is reset (the reset cannot tell the phone holder from the mailbox owner); verifying first keeps it.
 
 ## Third-party agents: OAuth, MCP and OpenAPI (schema 12)
 
