@@ -93,3 +93,46 @@ Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshot
 1. Delete a throwaway role and template in the app.
 2. Run `flask user delete --id <test account>` and the printed agent step.
 3. Run `flask storage sweep` (a dry run) and check it reports nothing unexpected.
+
+## Release record — launch stack, November 7, 2026
+
+Production and the test server both run NextMove `4ee109a` (PRs #36–#42: email verification, password reset, data deletion and export, branded email, telemetry, the onboarding "Skip for now" fix, and Gunicorn's control socket turned off). Production also runs NextMoveAgent `065b7bb` (PRs #12–#16). The two shipped in one cutover, because the new JobTracker image installs only hash-pinned packages.
+
+**Production (mynextmoov.com), about 08:35 UTC:**
+- **Schema** went from 14 to 17. Counts were unchanged (4 accounts, 56 roles, 32 resumes, 203 activities). On a copy, the rehearsal showed every pre-existing value identical by id.
+- **Settings added to `deploy/jobtracker.env`:**
+  - `MAIL_BACKEND=resend` and the `MAIL_FROM`/`MAIL_REPLY_TO` values from [Operations](OPERATIONS.md);
+  - `MAIL_DAILY_LIMIT=90`, `MAIL_MONTHLY_LIMIT=3000`, `POW_BITS=18`;
+  - `PASSWORD_RESET_ENABLED=0`, for now;
+  - `SENTRY_ENVIRONMENT=production`, and `SENTRY_FRONTEND_DSN` left empty.
+- **Secrets:** `deploy/secrets/mail_api_key` holds the Resend key. The `sentry_{backend,gateway,harness}_dsn` files are empty, so Sentry is off.
+- **Logs:** every container now uses the `journald` log driver. `/etc/systemd/journald.conf.d/nextmove.conf` keeps the host journal about 7 days. The old `json-file` logs were removed with the old containers.
+- **Rollback:**
+  - DigitalOcean snapshot `pre-launch-stack-2026-11-07`;
+  - checkpoint `/opt/nextmove/rollback/launch-stack-4ee109a`, holding the `jobtracker-data`, `gateway-data` and `harness-data` volumes plus the old env file;
+  - images `nextmove/jobtracker:rollback-3d24e2d` (committed from the running container, whose image had been pruned) and `nextmove/resume-agent:rollback-b18cf6b`.
+
+  The cutover script is `/opt/nextmove/nextmove-cutover-launch-stack-4ee109a.py`; its record is `deployment-record-launch-stack-4ee109a.json`.
+- **Smoke tests:**
+  - `/health` is ok, and the session reports sign-up open, mail ok and reset off;
+  - a client-sent `X-Request-ID` is replaced;
+  - the email logo, `/privacy`, the www redirect and both OAuth documents load;
+  - `POST /mcp` returns 401 with the metadata URL, and the harness and `/me` routes return 404;
+  - the gateway and harness are healthy, and no ERROR or WARNING appears in the logs;
+  - `mail status` is ok, and a `mail test` was accepted by Resend.
+- **Accounts:** account #1 (the owner) was marked verified. The other email account verifies at its next sign-in.
+
+**Test server (nicolasmelo.com/nextmove):**
+- Schema went from 12 to 17, with counts unchanged.
+- Settings: `MAIL_BACKEND=none` and `SIGNUP_ENABLED=0`.
+- New units with `LogNamespace=nextmove`, plus `/etc/systemd/journald@nextmove.conf`. The nginx snippet now sets request IDs and turns access logs off.
+- Account #1 is verified.
+- Checkpoint: `/opt/next-move/rollback/launch-stack-bd90c30`. The release then moved to `4ee109a`, which differs from `bd90c30` only in `deploy/gunicorn.conf.py`.
+
+**Still to do:**
+1. Check the test email's headers: SPF, DKIM and DMARC should all pass.
+2. Sign up end to end with a throwaway address.
+3. Turn on password reset after one real reset: set `PASSWORD_RESET_ENABLED=1` and restart web and worker.
+4. Redeploy the Mac bridge for heartbeats, then send the canary chat.
+5. Turn on Sentry by filling in the DSN files.
+6. Delete the release snapshots after 28 days.
