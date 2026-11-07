@@ -204,6 +204,7 @@ def test_deleted_account_is_never_reseeded_from_bootstrap_password(app, config):
     headers = login(client)
     assert client.post('/api/v1/auth/password', json=payload(), headers=headers).status_code == 200
     with app.app_context():
+        db.get_session().execute(text('DELETE FROM queued_tasks'))  # The password-changed notice (schema 16).
         db.get_session().execute(text('DELETE FROM users'))
         db.get_session().commit()
     # The live session for a deleted account ends; the environment hash is not reinstated.

@@ -72,3 +72,17 @@ Older releases refuse to start on a schema-15 database, and there is no down-mig
 9. **Before trying again,** take a fresh snapshot. Redeploying runs the 14→15 migration again from scratch.
 
 Without a rollback, `SIGNUP_REQUIRES_INVITE=1` makes sign-up invite-only at once.
+
+## Schema 16: self-service password reset
+
+**Before cut-over:** take the snapshot. Older releases refuse a schema-16 database, so a code rollback means restoring that snapshot, exactly as for schema 15.
+
+**Ship it switched off:** set `PASSWORD_RESET_ENABLED=0` in `deploy/jobtracker.env` (web and worker) for the first deploy.
+
+**After cut-over:**
+1. Run `flask user reset-link <your email>` in the worker container, open the link, set a password and sign in. Check that the audit line `operator reset link minted user_id=…` is in the logs, and that no line contains the link.
+2. Set `PASSWORD_RESET_ENABLED=1` and restart web and worker.
+3. Run one real request from the sign-in screen. In the received email's raw source, check that the link is exactly `https://mynextmoov.com/reset-password#token=…`, with no tracking redirect.
+4. Check `flask mail status` for the reset share.
+
+**Test server:** `MAIL_BACKEND=none` keeps self-service reset off there; use `flask user reset-link`.

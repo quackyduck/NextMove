@@ -69,7 +69,8 @@ export function PasswordSettings({ onClose, onSessionExpired }) {
         <form onSubmit={update}>
           <p>
             Use 8–128 characters. Other sessions will be signed out; this one
-            stays signed in.
+            stays signed in.{" "}
+            <a href={`${import.meta.env.BASE_URL}?forgot`} target="_blank" rel="noopener">Forgot your current password?</a>
           </p>
           <label className="form-label" htmlFor={`${id}-current`}>
             Current password

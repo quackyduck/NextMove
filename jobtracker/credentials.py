@@ -232,6 +232,9 @@ def replace(expected, password_hash):
                 User.id == expected.user_id, User.password_hash == expected.password_hash,
                 User.session_version == expected.session_version,
             ).values(password_hash=password_hash, session_version=User.session_version + 1)).rowcount
+            if changed == 1:
+                from .password_reset import revoke_reset_tokens
+                revoke_reset_tokens(connection, expected.user_id)  # Schema 16: old reset links die too.
         return changed == 1
     except SQLAlchemyError:
         raise Unavailable() from None
@@ -422,27 +425,33 @@ def init_app(app):
         click.echo(f'Revoked {counts["oauth"]} OAuth connection(s), {counts["agent"]} agent token(s) and '
                    f'{counts["harness"]} harness grant(s) for account {user_id}.')
 
-    def reset(credential):
+    def reset(credential, harness=None):
+        # Schema 16: operator recovery revokes like a reset (password_reset.operator_reset).
+        from .password_reset import operator_reset
         password = click.prompt('New password', hide_input=True, confirmation_prompt=True)
         problem = password_problem(password)
         if problem:
             raise click.ClickException(problem)
         try:
-            changed = replace(credential, generate_password_hash(password))
-        except Unavailable:
+            counts = operator_reset(credential, generate_password_hash(password), harness=harness)
+        except SQLAlchemyError:
             raise click.ClickException('Credential store unavailable') from None
-        if not changed:
+        if counts is None:
             raise click.ClickException('Password changed concurrently; retry recovery')
-        click.echo(f'Password reset for {credential.email}. Their browser sessions have been signed out.')
+        click.echo(f'Password reset for {credential.email}. Signed out all sessions; revoked {counts["oauth"]} '
+                   f'agent connection(s), {counts["agent"]} agent token(s) and {counts["harness"]} chat link(s).')
 
     @users.command('reset-password')
     @click.argument('email')
-    def user_reset_password(email):
-        """Administrator recovery; never accepts the password as a shell argument."""
+    @click.option('--keep-harness/--revoke-harness', 'harness', default=None,
+                  help='Override the chat-link rule (default: revoke only when the email is unverified).')
+    def user_reset_password(email, harness):
+        """Administrator recovery; never accepts the password as a shell argument. Signs the account out
+        everywhere, disconnects its agents and emails a "password changed" notice."""
         credential = find(normalize_email(email) or '')
         if credential is None:
             raise click.ClickException('No account with that email')
-        reset(credential)
+        reset(credential, harness=None if harness is None else not harness)
 
     @users.command('set-email')
     @click.argument('user_id', type=int)

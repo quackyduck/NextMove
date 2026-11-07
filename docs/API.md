@@ -45,7 +45,8 @@ Administrators manage accounts from the server shell (`flask --app jobtracker ..
 | `user create EMAIL [--unverified] [--allow-placeholder]` | Creates an account (verified unless `--unverified`); prompts for the password. For servers where sign-up is off. |
 | `user verify EMAIL` / `user unverify EMAIL` | Marks the email verified (support confirmed it), or clears that and signs the account out |
 | `user send-verification EMAIL` / `--all-legacy` | Queues a verification link; confirming it needs the account's password. Never prints a link. |
-| `user reset-password EMAIL` | Prompts for a new password (never an argument) and signs that user out everywhere |
+| `user reset-password EMAIL [--keep-harness \| --revoke-harness]` | Prompts for a new password (never an argument), signs that user out everywhere, revokes their OAuth connections, agent tokens and reset links (chat links too when the email is unverified, unless overridden), and emails the "password changed" notice. See [Password reset](#password-reset-schema-16) |
+| `user reset-link EMAIL \| --id ID [--minutes N]` | Prints a one-time reset link (5–1440 minutes, default 60). Sends no email and never verifies the address |
 | `user set-email ID EMAIL [--verified] [--send-verification]` | Changes a sign-in email in one transaction: the address must be deliverable; verification is cleared unless `--verified`; pending confirmations are deleted; every browser session of that account is signed out |
 | `user revoke-agents ID [--harness]` | Revokes the account's OAuth connections and agent tokens (and chat grants with `--harness`); prints the counts |
 | `user merge-messaging SOURCE TARGET` | Links a phone to an existing account: moves the harness grants of messaging account SOURCE (never activated, no data) to account TARGET, then deletes SOURCE |
@@ -324,3 +325,20 @@ Role resumes (`GET /jobs/<id>/resumes` and the upload response) carry `source`: 
 - Identical files (same SHA-256) return `identical: true` and no changes; the file is read once.
 
 Errors: 400 without `from` or `to`; 404 `"<from|to>: template or resume not found"` for an unknown ID or another account's (same body); 409 for a template with no version yet; 422 for a PDF (no text is extracted; upload a DOCX or TXT version), or a document over 2,000 paragraphs or 100,000 characters of text. An ID is looked up as a template first, then as a resume version.
+
+## Password reset (schema 16)
+
+Self-service reset for accounts with a password: `verified` accounts and `legacy_unverified` ones. Pending sign-ups and activations aren't accounts, and messaging-only accounts have no email, so they never receive a reset link. All three routes are signed-out, same-origin, JSON-only and HTTPS-only outside development.
+
+| Method | Path | Body | Responses |
+| --- | --- | --- | --- |
+| POST | /auth/password-reset/request | `{email, proof}` | 202 `{message}`, identical for every address; 400 `{code: "proof_invalid"}` (solve a new `/auth/challenge?purpose=reset`), 400 `{field: "email"}`; 429 per IP; 503 `{code: "reset_unavailable"}` when reset is off |
+| POST | /auth/password-reset/status | `{token}` | 200 `{valid: true, email}` or `{valid: false}`. Never consumes the link |
+| POST | /auth/password-reset/complete | `{token, password, password_confirmation}` | 200 `{message, email, disconnected: {sessions, agents, chat}, review_data}`; 400 `{field}` (the link stays valid); 410 for any unusable link; 429; 503 |
+
+- **Request.** The route checks the proof-of-work, then the throttles, then enqueues one anonymous task holding the address. It never reads `users`, so the response and the work are the same for every address. The worker looks the account up, checks that the address can receive mail, and only then mints the link. Throttles: 5 per 5 minutes and 8 per day per IP (IPv6 by /64); 3 per hour and 5 per day per address, using the canonical form (`+tags` and Gmail dots count as one address). Over the per-address limit the 202 is unchanged and nothing is sent.
+- **Link.** `{PUBLIC_BASE_URL}/reset-password#token=nmr_…`. It works once, expires after 60 minutes (`PASSWORD_RESET_MINUTES`) and is bound to the account's session generation and email, so any password or email change, or a newer link, kills it. Only a SHA-256 of the token is stored. The fragment never reaches a server.
+- **Status** returns the full email so password managers can fill it in; only someone holding a valid link sees it. Email verification masks its hint instead.
+- **Complete.** One transaction sets the password and signs out every browser session. It revokes OAuth connections (and their tokens and signed links) and managed agent tokens. When the email was still unverified it also revokes harness (chat) grants, since that email was never proven to belong to the phone's owner. An emailed link marks the address verified; an operator link doesn't. Completing never signs in. A "password changed" notice is queued, and self-service `POST /auth/password` sends it too.
+- `GET /auth/session` includes `password_reset: {enabled}`. It's true when `PASSWORD_RESET_ENABLED` isn't `0`, mail is on and `PUBLIC_BASE_URL` is set.
+- Mail: reset links use the `reset` share of the daily cap (`MAIL_LIMIT_RESET`, 25); the notice uses what's left (at least 15). A send deferred by the quota waits without using up attempts, for at most 48 hours.

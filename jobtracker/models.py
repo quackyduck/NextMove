@@ -422,3 +422,41 @@ class OAuthToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# Password reset (schema 16); see password_reset.py ------------------------------------------
+RESET_ISSUERS = ("email", "operator")
+RESET_OUTCOMES = ("sent", "deduped", "undeliverable", "disabled")
+
+
+class PasswordResetToken(Base):
+    """A single-use, short-lived reset link (hash only). Bound to the account's session generation and email."""
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        CheckConstraint("issued_by IN ('email','operator')", name="ck_password_reset_tokens_issued_by"),
+        CheckConstraint("session_version > 0", name="ck_password_reset_tokens_session_version"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    email_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PasswordResetRequest(Base):
+    """Support history: one row per reset request the worker matched to an account. No email, no IP."""
+    __tablename__ = "password_reset_requests"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('sent','deduped','undeliverable','disabled')",
+                        name="ck_password_reset_requests_outcome"),
+        Index("ix_password_reset_requests_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(12), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)

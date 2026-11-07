@@ -65,11 +65,15 @@ The browser test launcher gives each spec file separate disposable storage and a
 
 Accounts confirm their email before they can be used: sign-up emails a link that creates the account and signs in. The queue worker sends all email (`scripts/run.sh` starts it); locally the `console` mail backend logs messages, including links, to the terminal, and nothing is delivered. See [Email confirmation](docs/API.md#email-confirmation-schema-15) and [Outbound email](docs/OPERATIONS.md#outbound-email-and-email-verification--schema-15). The public privacy page is at `/privacy`.
 
+## Forgot your password
+
+Select **Forgot password?** on the sign-in screen and enter your email. If an account uses it, My Next Moov emails a link that works once and expires in 60 minutes. Opening the link lets you choose a new password. That signs you out everywhere and disconnects your connected agents and agent tokens, so reconnect them afterwards under **Agent access**. You then sign in with the new password. See [Password reset](docs/API.md#password-reset-schema-16).
+
 ## Change your password
 
 Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.
 
-The configured `APP_PASSWORD_HASH` is bootstrap-only after the credential is initialized. For administrator recovery, run `.venv/bin/flask --app jobtracker user reset-password EMAIL` (or the legacy `reset-workspace-password` for user #1) in the intended runtime with its configuration/data access; it prompts without echo and revokes all browser sessions. Do not pass a password as a shell argument or delete the database to reset access. Production recovery must use the service's data ownership/configuration, not the local development `.env`.
+The configured `APP_PASSWORD_HASH` is bootstrap-only after the credential is initialized. For administrator recovery, prefer `.venv/bin/flask --app jobtracker user reset-link EMAIL`, which prints a one-time link to hand to the account holder. Otherwise run `.venv/bin/flask --app jobtracker user reset-password EMAIL` (or the legacy `reset-workspace-password` for user #1) in the intended runtime with its configuration/data access; it prompts without echo and revokes all browser sessions. Do not pass a password as a shell argument or delete the database to reset access. Production recovery must use the service's data ownership/configuration, not the local development `.env`.
 
 ## Quick capture from a URL
 
