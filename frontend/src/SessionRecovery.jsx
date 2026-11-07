@@ -103,6 +103,9 @@ export function SessionRecovery({ email: knownEmail = "", onAuthenticated, onSwi
             Sign in as someone else (discards unsaved edits)
           </button>
         )}
+        <a className="btn btn-link w-100 mt-1" href={`${import.meta.env.BASE_URL}?forgot`} target="_blank" rel="noopener">
+          Forgot password? (opens a new tab)
+        </a>
       </form>
     </dialog>
   );

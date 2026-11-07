@@ -219,7 +219,12 @@ def session_status():
     from . import mailer
     return jsonify(authenticated=valid, csrf_token=session.get('csrf_token') if valid else None,
                    user=user_summary(g.credential) if valid else None, signup=signup_settings(),
-                   mail_status=mailer.status(cached=True))
+                   mail_status=mailer.status(cached=True), password_reset=_password_reset_settings())
+
+
+def _password_reset_settings():
+    from .password_reset import settings
+    return settings()
 
 
 CHECK_EMAIL = 'Check your email to finish creating your account.'
@@ -377,6 +382,8 @@ def change_password():
         session.clear()
         return error('Your sign-in changed. Sign in again before updating the password', 409)
     issue_session(credentials.Credential(observed.user_id, observed.email, '', observed.session_version + 1))
+    from .password_reset import notify_password_changed
+    notify_password_changed(observed.user_id)  # Password reset (schema 16): the "password changed" notice.
     return jsonify(authenticated=True, csrf_token=session['csrf_token'],
                    message='Password updated. Other sessions have been signed out.')
 

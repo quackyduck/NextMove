@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -389,6 +389,27 @@ def upgrade_v14_to_v15(connection):
     connection.execute(text('UPDATE schema_version SET version=15'))
 
 
+def upgrade_v15_to_v16(connection):
+    """Self-service password reset: single-use reset links (hash only) and a per-account request history."""
+    connection.execute(text(
+        'CREATE TABLE password_reset_tokens (id VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, '
+        'token_hash VARCHAR(64) NOT NULL, email_digest VARCHAR(64) NOT NULL, session_version INTEGER NOT NULL, '
+        'issued_by VARCHAR(10) NOT NULL, created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, '
+        'used_at DATETIME, revoked_at DATETIME, PRIMARY KEY (id), UNIQUE (token_hash), '
+        "CONSTRAINT ck_password_reset_tokens_issued_by CHECK (issued_by IN ('email','operator')), "
+        'CONSTRAINT ck_password_reset_tokens_session_version CHECK (session_version > 0), '
+        'FOREIGN KEY(user_id) REFERENCES users (id))'))
+    connection.execute(text('CREATE INDEX ix_password_reset_tokens_user_id ON password_reset_tokens (user_id)'))
+    connection.execute(text(
+        'CREATE TABLE password_reset_requests (id VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, '
+        'outcome VARCHAR(12) NOT NULL, created_at DATETIME NOT NULL, PRIMARY KEY (id), '
+        "CONSTRAINT ck_password_reset_requests_outcome CHECK (outcome IN ('sent','deduped','undeliverable','disabled')), "
+        'FOREIGN KEY(user_id) REFERENCES users (id))'))
+    connection.execute(text(
+        'CREATE INDEX ix_password_reset_requests_user_created ON password_reset_requests (user_id, created_at)'))
+    connection.execute(text('UPDATE schema_version SET version=16'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -432,5 +453,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [14]:
         upgrade_v14_to_v15(connection)
         versions = [15]
+    if versions == [15]:
+        upgrade_v15_to_v16(connection)
+        versions = [16]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

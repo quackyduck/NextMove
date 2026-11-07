@@ -176,7 +176,7 @@ def test_schema_14_databases_upgrade_to_15(app, config):
         assert connection.execute('SELECT version FROM schema_version').fetchone() == (14,)
     upgraded = create_app(config)
     with closing(sqlite3.connect(database_path(upgraded))) as connection:
-        assert connection.execute('SELECT version FROM schema_version').fetchone() == (15,)
+        assert connection.execute('SELECT version FROM schema_version').fetchone()[0] >= 15  # 16: password reset.
         assert connection.execute('SELECT id, email, password_hash, session_version FROM users ORDER BY id'
                                   ).fetchall() == before_users
         assert connection.execute('SELECT COUNT(*) FROM users WHERE email_verified_at IS NOT NULL').fetchone() == (0,)

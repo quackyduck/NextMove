@@ -88,7 +88,7 @@ def test_signup_creates_no_account_until_the_link_signs_in(app, client):
     confirmed = confirm_last(app, client, 'new@example.com')
     assert confirmed.status_code == 200 and confirmed.json['authenticated'] is True
     session = client.get('/api/v1/auth/session').json
-    assert set(session) == {'authenticated', 'csrf_token', 'user', 'signup', 'mail_status'}
+    assert set(session) == {'authenticated', 'csrf_token', 'user', 'signup', 'mail_status', 'password_reset'}
     assert session['authenticated'] is True and session['csrf_token'] == confirmed.json['csrf_token']
     assert set(session['user']) == {'id', 'email', 'created_at'}
     assert session['user']['id'] == 2 and session['user']['created_at'].endswith('Z')
@@ -110,6 +110,7 @@ def test_signup_without_a_proof_of_work_is_refused(app, client):
 def test_anonymous_session_reports_signup_settings(app, client):
     assert client.get('/api/v1/auth/session').json == {
         'authenticated': False, 'csrf_token': None, 'user': None, 'mail_status': 'ok',
+        'password_reset': {'enabled': True},
         'signup': {'enabled': True, 'invite_required': True, 'paused': False, 'paused_message': None}}
 
 

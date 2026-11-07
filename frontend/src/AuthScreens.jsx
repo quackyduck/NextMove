@@ -111,9 +111,9 @@ export function AuthField({ id, label, error, hint, inputRef, ...input }) {
   );
 }
 
-export function LoginForm({ signup, mailStatus, initialError = "", onAuthenticated, onSignup }) {
+export function LoginForm({ signup, mailStatus, initialError = "", onAuthenticated, onSignup, onForgot, initialEmail = "", notice = "" }) {
   const id = useId();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState(initialError);
   const [verification, setVerification] = useState(null);
@@ -163,11 +163,15 @@ export function LoginForm({ signup, mailStatus, initialError = "", onAuthenticat
   return (
     <AuthCard>
       <h1 className="mt-4">Sign in.</h1>
+      {notice && <div role="status" className="alert alert-success mt-3">{notice}</div>}
       <form onSubmit={submit}>
         <AuthField id={`${id}-email`} label="Email" type="email" autoComplete="username" required
           maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         <AuthField id={`${id}-password`} label="Password" type="password" autoComplete="current-password"
           required maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} />
+        {onForgot && (
+          <p className="mt-2 mb-0"><button type="button" className="btn btn-link p-0 align-baseline" onClick={() => onForgot(email.trim())}>Forgot password?</button></p>
+        )}
         {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
         <button className="btn btn-primary w-100 mt-3" disabled={busy}>{busy ? "Signing in…" : "Sign in →"}</button>
       </form>

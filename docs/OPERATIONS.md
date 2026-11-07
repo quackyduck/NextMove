@@ -319,3 +319,19 @@ They keep working through their agents (OAuth connections, agent tokens, the leg
 ### Backups and pending sign-ups
 
 `email_confirmations` holds pending sign-ups' email addresses and password hashes for about two days in the live database. **Snapshots contain them for as long as the snapshot is kept.** Treat snapshots as sensitive as the live database, and do not keep them longer than recovery needs (the privacy page promises at most 4 weeks).
+
+## Password reset — schema 16
+
+Additive migration: `password_reset_tokens` (hashes only) and `password_reset_requests` (per-account history, no email or IP, kept 30 days). Back up and stop writers as for any schema change. Older releases refuse schema 16, so rolling back the code means restoring the pre-migration backup. To switch the feature off without a rollback, set `PASSWORD_RESET_ENABLED=0` and restart.
+
+- **The queue worker must run.** It looks the account up, mints the link and sends it. It needs `PUBLIC_BASE_URL`.
+- **Mail.** Reset links use the `reset` share of `MAIL_DAILY_LIMIT` (`MAIL_LIMIT_RESET`, default 25), and the "password changed" notice uses what's left. `flask mail status` shows both. A deferred task's row holds the address for up to 48 hours.
+- **First production deploy.** Ship with `PASSWORD_RESET_ENABLED=0`. Smoke-test with `user reset-link`, then turn it on and run one real request end to end. Check the raw link in the received email: there must be no click-tracking redirect, and the `#token=` fragment must be intact.
+- **Test server** (`MAIL_BACKEND=none`): self-service reset is off. Use `flask user verify EMAIL` and then `flask user reset-link EMAIL`.
+
+### Support runbook
+
+- `flask --app jobtracker user reset-link EMAIL` (or `--id ID`, `--minutes N` from 5 to 1440) prints the link to stdout only. It's a credential: give it only to the account holder, over a channel you trust. Never paste it into a ticket, and never run the command in a recorded or logged session. A newer link replaces older ones. The link doesn't verify the address, so for an unverified account also run `flask user verify EMAIL` once you've confirmed the person another way.
+- `flask --app jobtracker user reset-password EMAIL` prompts for the password. It revokes sessions, OAuth connections, agent tokens and reset links, plus chat links when the email is unverified (override with `--keep-harness` or `--revoke-harness`), and emails the notice.
+- To revoke agents only, use `flask user revoke-agents ID [--harness]`.
+- Audit lines (logger `jobtracker.accounts`, never a token, link or email): `operator reset link minted user_id=N expires=… minutes=M operator=cli`, `operator password reset user_id=N operator=cli`, and `revoked user_id=N oauth=… agent=… harness=… via=reset|operator|cli`.

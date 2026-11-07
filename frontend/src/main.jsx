@@ -25,6 +25,7 @@ import { linkRoute } from "./authLink.js";
 import { Home } from "./Home.jsx";
 import { isPrivacyRoute, Privacy } from "./Privacy.jsx";
 import { VerifyEmail } from "./VerifyEmail.jsx";
+import { ForgotPasswordForm, ResetPasswordForm, resetNotice, resetScreen } from "./PasswordReset.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -87,7 +88,10 @@ function App() {
     // Email links (/verify-email) and /privacy render before, and regardless of, sign-in state.
     [publicPage, setPublicPage] = useState(() => (isPrivacyRoute() ? "privacy" : linkRoute() === "verify" ? "verify" : null)),
     [userId, setUserId] = useState(null),
-    [authScreen, setAuthScreen] = useState(initialAuthScreen),
+    [authScreen, setAuthScreen] = useState(() => resetScreen() || initialAuthScreen()),
+    // Password reset: the email carried between the sign-in and reset screens, and the post-reset banner.
+    [resetEmail, setResetEmail] = useState(""),
+    [loginNotice, setLoginNotice] = useState(""),
     [onboarding, setOnboarding] = useState(null),
     // { id, guided } while a setup screen is open; guided walks the remaining steps.
     [setup, setSetup] = useState(null),
@@ -117,7 +121,8 @@ function App() {
     api("/auth/session")
       .then((data) => {
         setCsrf(data.csrf_token);
-        setSession({ user: data.user || null, signup: data.signup || null, mailStatus: data.mail_status || "ok" });
+        setSession({ user: data.user || null, signup: data.signup || null, mailStatus: data.mail_status || "ok",
+          passwordReset: data.password_reset || null });
         if (data.user) setUserId(data.user.id);
         if (data.authenticated && oauthReturn()) return window.location.assign(oauthReturn());
         setAuth(data.authenticated);
@@ -361,6 +366,13 @@ function App() {
       ].includes(j.stage),
     );
   if (publicPage === "privacy") return <Privacy />;
+  // Password reset screens open from emailed links, signed in or not.
+  if (authScreen === "reset")
+    return <ResetPasswordForm onForgot={(email) => { setResetEmail(email); setAuthScreen("forgot"); }}
+      onDone={(data) => { setCsrf(null); setAuth(false); setResetEmail(data.email); setLoginNotice(resetNotice(data)); setAuthScreen("login"); }} />;
+  if (authScreen === "forgot")
+    return <ForgotPasswordForm initialEmail={resetEmail} mailStatus={session.mailStatus}
+      onLogin={(email) => { setResetEmail(email); setLoginNotice(""); setAuthScreen(auth ? "home" : "login"); }} />;
   if (auth === null)
     return (
       <main className="login">
@@ -378,8 +390,9 @@ function App() {
       <SignupForm signup={session.signup} mailStatus={session.mailStatus}
         onLogin={() => setAuthScreen("login")} />
     ) : (
-      <LoginForm signup={session.signup} mailStatus={session.mailStatus} initialError={error} onAuthenticated={authenticated}
-        onSignup={() => { setError(""); setAuthScreen("signup"); }} />
+      <LoginForm key={loginNotice} signup={session.signup} mailStatus={session.mailStatus} initialError={error} onAuthenticated={authenticated}
+        onSignup={() => { setError(""); setAuthScreen("signup"); }} initialEmail={resetEmail} notice={loginNotice}
+        onForgot={session.passwordReset?.enabled ? (email) => { setResetEmail(email); setAuthScreen("forgot"); } : undefined} />
     );
   if (setup) {
     const guidedSteps = onboarding?.steps.filter((step) => step.guided) || [];

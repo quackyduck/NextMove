@@ -92,6 +92,8 @@ Agents can create templates and add versions to them, but never choose the defau
 - `source_resume_id` must be one of the caller's own template versions; another account's ID fails exactly like an unknown one, and the database's composite foreign key refuses it too. A connection without `resumes:read` never sees a template's name or version through a source: its upload responses carry only `source: {resume_id}`, and `get_job_history` gives only `source_resume_id`.
 - The tenant isolation suite covers OAuth tokens on every route and every MCP tool.
 
+A password reset (self-service or by an operator) disconnects every agent connection and agent token, so reconnect them afterwards. Chat (harness) links survive a reset only when the account's email is verified.
+
 ## Next steps
 
 - **Structured resumes and templates.** Resumes are still files. Before agents can safely edit them (not only upload new files), the service needs a structured resume model (sections, bullets, versions) and server-side templates for rendering. The intended tools are:

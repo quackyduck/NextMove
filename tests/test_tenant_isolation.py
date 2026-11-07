@@ -122,6 +122,9 @@ COLLECTIONS = {
     ('POST', '/api/v1/auth/email-verification/check'): 'test_email_confirmation.py',
     ('POST', '/api/v1/auth/email-verification/confirm'): 'test_email_confirmation.py',
     ('POST', '/api/v1/auth/email-verification/resend'): 'test_email_confirmation.py',
+    ('POST', '/api/v1/auth/password-reset/request'): 'test_password_reset.py',
+    ('POST', '/api/v1/auth/password-reset/status'): 'test_password_reset.py',
+    ('POST', '/api/v1/auth/password-reset/complete'): 'test_password_reset.py',
     # Third-party agents (schema 12). Signed links name a grant, not an ID the caller chooses.
     ('GET', '/api/v1/oauth/connections'): 'test_lists_and_search_exclude_other_tenants',
     ('GET', '/api/v1/openapi.json'): 'public',
