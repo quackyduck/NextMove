@@ -55,11 +55,20 @@ export default function Onboarding({ step, done, position, total, guided, reauth
         <div className="onboarding-actions">
           {done ? (
             <button type="button" ref={continueRef} className="btn btn-primary" disabled={busy} onClick={() => onNext()}>Continue</button>
+          ) : step === "upload_resume" ? (
+            // One way past the resume step: a second "Continue later" link read as the same choice.
+            <>
+              <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={skip}
+                aria-describedby="resume-skip-hint">
+                Skip for now
+              </button>
+              <p id="resume-skip-hint" className="form-text mb-0">
+                You can add your resume anytime from Your resume templates in My Next Moov.
+              </p>
+            </>
           ) : (
             <>
-              <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={skip}>
-                {step === "upload_resume" ? "Skip for now" : "Skip agent setup"}
-              </button>
+              <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={skip}>Skip agent setup</button>
               <button type="button" className="btn btn-link" disabled={busy} onClick={onExit}>
                 {guided ? "Continue later" : "Back to your pipeline"}
               </button>

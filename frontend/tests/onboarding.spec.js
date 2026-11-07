@@ -128,7 +128,11 @@ test("skip both steps, log out mid-flow, resume, and finish from the checklist",
   const email = uniqueEmail("skipper");
   await signUp(page, email);
   await expect(page.getByRole("heading", { name: "Add your resume." })).toBeVisible();
-  await page.getByRole("button", { name: "Skip for now" }).click();
+  // One way past the resume step, which says where to add a resume later.
+  const skip = page.getByRole("button", { name: "Skip for now" });
+  await expect(skip).toHaveAccessibleDescription("You can add your resume anytime from Your resume templates in My Next Moov.");
+  await expect(page.getByRole("button", { name: /Continue later|Back to your pipeline/ })).toHaveCount(0);
+  await skip.click();
   await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
 
   // Stop here and sign out; signing back in resumes at the unfinished step.
@@ -201,14 +205,32 @@ test("upload errors are reported without leaving the step", async ({ page }) => 
 test("continue later holds for this tab and the next sign-in resumes setup", async ({ page }) => {
   const email = uniqueEmail("later");
   await signUp(page, email);
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await page.getByRole("button", { name: "Continue later" }).click();
   const checklist = page.getByRole("region", { name: /Finish setting up/ });
   await expect(checklist).toContainText("1 of 3 done");
-  await expect(checklist).toContainText("Upload your resume");
+  await expect(checklist).toContainText("Upload your resume · skipped");
+  await expect(checklist).toContainText("Connect an agent");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
   await page.getByRole("button", { name: /Sign out/ }).click();
   await signIn(page, email);
-  await expect(page.getByRole("heading", { name: "Add your resume." })).toBeVisible();
-  await expect(page.getByText("SETUP · STEP 1 OF 2")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+  await expect(page.getByText("SETUP · STEP 2 OF 2")).toBeVisible();
+});
+
+test("a skipped resume can be added later from Your resume templates", async ({ page }) => {
+  await signUp(page, uniqueEmail("later-resume"));
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await page.getByRole("button", { name: "Skip agent setup" }).click();
+  const checklist = page.getByRole("region", { name: /Finish setting up/ });
+  await expect(checklist).toContainText("Upload your resume · skipped");
+  await page.getByRole("button", { name: "Your resume templates" }).click();
+  await page.getByLabel("Resume file", { exact: true }).setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: PDF });
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
+  await expect.poll(async () => (await (await page.request.get(`${api}/onboarding`)).json())
+    .steps.find((step) => step.id === "upload_resume").status).toBe("done");
+  await page.getByRole("button", { name: "Your pipeline" }).click();
+  await expect(checklist).toContainText("2 of 3 done");
+  await expect(checklist).not.toContainText("Upload your resume");
 });
