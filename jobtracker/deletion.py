@@ -411,7 +411,7 @@ def delete_account(user_id, *, code=None, notify=True, via='cli'):
     return {'rows': rows, 'files': files, 'email_sent': sent, 'verified': verified}
 
 
-@taskqueue.handler('account_deleted_email', anonymous=True, delete_on_success=True, max_attempts=5, lease_seconds=60)
+@taskqueue.handler('account_deleted_email', mail=True, anonymous=True, delete_on_success=True, max_attempts=5, lease_seconds=60)
 def run_account_deleted_email(app, task):
     """A pure send: no account lookups, nothing that could create rows for the address, no links that act."""
     email = task.payload.get('email')

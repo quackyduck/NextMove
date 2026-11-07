@@ -199,7 +199,7 @@ dynamic user):
 sudo install -m 0644 deploy/next-move-worker.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now next-move-worker
-journalctl -u next-move-worker -f   # "Queue worker started"
+journalctl --namespace=nextmove -u next-move-worker -f   # "Queue worker started"
 ```
 
 `SIGTERM` lets the current task finish (network reads are capped at about 20 s)
@@ -388,3 +388,109 @@ Every email has the existing plain-text part plus a branded HTML part, rendered 
 The logo is served publicly at `PUBLIC_BASE_URL/static/email/mascot-96-v1.png` (allowlisted, cached as immutable); it must stay reachable for emails already delivered. A new image gets a new versioned name (add it to `EMAIL_ASSETS` in `jobtracker/__init__.py`) rather than replacing this file. There are no tracking pixels or redirected links; keep Resend open and click tracking off.
 
 Before launch, send each kind to Gmail (web and iOS), Apple Mail (macOS and iOS) and Outlook (365 web and Windows) and check light, dark and images-off rendering. Gmail ignores the dark-mode styles and inverts the light design; Outlook for Windows shows square corners.
+
+## Telemetry and alerting
+
+Errors go to Sentry (SaaS, US region) only when a DSN is configured. With no DSN, `sentry_sdk.init` is never
+called: there's no client, no background thread and no network traffic. The test server (nicolasmelo.com/nextmove)
+runs without Sentry.
+
+**Settings** (`deploy/production.env.example`):
+
+- `SENTRY_DSN_FILE` (preferred) or `SENTRY_DSN`: the backend project, for web and worker.
+- `SENTRY_FRONTEND_DSN`: the browser project's public DSN. It must be on `o<digits>.ingest.us.sentry.io` (or the
+  legacy `o<digits>.ingest.sentry.io`). That exact host, and nothing else, is added to the CSP `connect-src`. An
+  invalid value logs a warning and leaves browser telemetry off.
+- `SENTRY_ENVIRONMENT`.
+- `SENTRY_RELEASE`: set from the image build. It is sent only to Sentry, never in public output.
+- `LOG_FORMAT`: `json` by default, `text` in development.
+
+**What is sent.**
+
+Backend events (`jobtracker/telemetry.py`) contain:
+- the exception type and code frames, with the message always `[redacted]` and no local variables;
+- the route template (for example `/api/v1/files/<token>`) and the HTTP method;
+- tags `service`, `request_id`, `task_kind`, `alert`, `mail_reason`;
+- the numeric account ID only.
+
+Events never contain request bodies, query strings, headers, cookies, breadcrumbs, tracing data, `sys.argv`,
+emails or IP addresses. Every event is rebuilt from an allowlist, and a key denylist runs over the result. If
+scrubbing fails, the event is dropped.
+
+Browser events (`frontend/src/telemetry.js`) carry only:
+- the exception type and frames, without query strings;
+- the message, if it matches a short list of safe shapes (otherwise `[redacted]`);
+- the page name and the numeric account ID.
+
+The browser SDK is a lazily loaded chunk from npm, with no Replay, Feedback, console capture or tracing.
+`/api/v1/client-config` hands the browser its DSN and environment, never the release.
+
+**Request IDs.** Caddy overwrites `X-Request-ID` on every request, and nginx on the test server sets
+`$request_id`. Flask checks it again (`[A-Za-z0-9-]{8,64}`) or generates one. Every response carries it as a
+header, and 5xx JSON bodies carry it as `request_id`. The frontend shows "(reference: …)" on server failures, and
+the crash screen shows the Sentry event ID. Ask users for that reference, then search logs and Sentry for it. Queued
+worker tasks don't carry the web request's ID yet.
+
+**Logs.** Logs are one JSON object per line on stderr: `ts`, `level`, `logger`, `service`, `msg`, `request_id`,
+and for errors `exc_type` and `stack` (code lines only). The exception message is never logged. Unhandled exceptions
+log the route template, not the path. Token-bearing paths (`/api/v1/files/`, `/api/v1/uploads/`,
+`/api/v1/exports/`, activation, email-verification and password-reset links) are also masked in any message. The Gunicorn access log stays off. Messages pass through a redaction safety
+net covering emails, phone numbers, bearer and Next Move tokens, token query or fragment parameters, and signed-link
+paths. `WORKER_LOG_LEVEL=DEBUG` in production logs a startup warning.
+
+**Logs are kept about 7 days.**
+- **Production (mynextmoov.com):** every container logs to the host journal through Docker's `journald` driver,
+  and `/etc/systemd/journald.conf.d/nextmove.conf` keeps it about 7 days (`MaxRetentionSec=7day`,
+  `MaxFileSec=1day`). It's installed by NextMoveAgent's `deploy/host/setup-droplet.sh`; see NextMoveAgent
+  `docs/Deployment.md`, "Logs are kept about 7 days".
+- **Test server (nicolasmelo.com/nextmove):** the units set `LogNamespace=nextmove`, so their logs go to a
+  separate journal with its own 7-day limit, and the other apps on that shared host keep their own retention.
+  Install the limit once, then restart the units:
+
+  ```sh
+  sudo install -m 0644 deploy/journald-nextmove.conf /etc/systemd/journald@nextmove.conf
+  sudo install -m 0644 deploy/next-move.service deploy/next-move-worker.service /etc/systemd/system/
+  sudo systemctl daemon-reload && sudo systemctl restart next-move next-move-worker
+  journalctl --namespace=nextmove -u next-move -f
+  ```
+
+  The nginx snippet turns the access log off for every `/nextmove` location. nginx's own error log and the other
+  sites' access logs follow that host's logrotate settings (Ubuntu's default keeps 14 days).
+- **Check it:**
+  - Size: `journalctl --disk-usage` (production) or `journalctl --namespace=nextmove --disk-usage` (test).
+  - Oldest entry: `journalctl [--namespace=nextmove] -o short-iso | head -2`. It should be no more than about 8 days
+    old.
+  - Settings in effect: `systemd-analyze cat-config systemd/journald.conf` (production) or
+    `cat /etc/systemd/journald@nextmove.conf` (test).
+- **Elsewhere:** Gunicorn's access log is off and its error log goes to the journal. Droplet backups and snapshots
+  include the journal and follow DigitalOcean's schedule, which is longer than 7 days.
+
+**Check scrubbing end to end** after enabling a DSN: run `flask --app jobtracker telemetry-check` in the service's
+runtime. In Docker that's `docker compose exec jobtracker-web flask --app jobtracker telemetry-check`. It sends one
+synthetic error whose message, locals, tags, extras and context are full of `CANARY` strings. Open the event in
+Sentry and confirm that none of them is visible.
+
+**Health and crons.**
+- `/health` checks the database and is the external uptime target: `https://mynextmoov.com/health`, every minute,
+  expecting 200 and `"status":"ok"`.
+- The worker sends a Sentry Cron check-in `jobtracker-worker` every 5 minutes.
+
+**Alerts to configure in Sentry** (all email the operator):
+
+| Alert | Condition |
+| --- | --- |
+| New issue | Any new issue in the backend or browser project |
+| Error burst | More than 10 events in 5 minutes |
+| Mail (sign-up depends on it: Resend free tier, verification required) | Any event tagged `alert:mail_*` or `alert:signup_paused`. These are the `jobtracker.mail` logger's constant templates: daily or monthly usage at 80%, limit reached, category share at 80%, `signup paused: %s`, `mail degraded: %s`, provider rejected credentials. There is also `mail tasks failing`, sent when 3 or more mail tasks fail permanently within 15 minutes. Mail tasks are the queue handlers registered with `taskqueue.handler(..., mail=True)`; their individual failures never page. Any other kind, including an unregistered one, does. **Email on every occurrence, action interval 30 minutes, no muting**, plus an email when the issue resolves. Arguments are never sent, only the template and an allowlisted reason word. |
+| Worker silent | Cron `jobtracker-worker` missed twice (5-minute interval) |
+| Uptime | `/health` failing from two regions; TLS expiry |
+
+**Sentry project settings**:
+- Data Scrubber and Default Scrubbers on.
+- **Prevent Storing of IP Addresses** on.
+- Sensitive fields: the `EXTRA_DENYLIST` names.
+- Allowed Domains `mynextmoov.com` on the browser project.
+- Key rate limits (about 60/min for the browser key, 300/hour for the backend key).
+- Minimum retention.
+
+Sentry is a subprocessor; the `/privacy` page names it.

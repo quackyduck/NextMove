@@ -17,6 +17,9 @@ UnsetEnvironment=APP_PASSWORD AGENT_API_TOKEN
 ExecStart=/opt/next-move/current/.venv/bin/gunicorn --config deploy/gunicorn.conf.py jobtracker:create_app()
 Restart=on-failure
 RestartSec=5
+# Logs go to a separate journal kept about 7 days (deploy/journald-nextmove.conf); read them with
+# `journalctl --namespace=nextmove -u <unit>`.
+LogNamespace=nextmove
 TimeoutStopSec=45
 KillSignal=SIGTERM
 UMask=0077

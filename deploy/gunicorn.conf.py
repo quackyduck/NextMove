@@ -12,6 +12,14 @@ worker_tmp_dir = '/tmp'
 # No access log: resume URLs and private record identifiers stay out of logs.
 accesslog = None
 errorlog = '-'
+# JSON lines on stderr (jobtracker/logs.py): type and stack for errors, never exception messages.
+# LOG_FORMAT=text (or APP_ENV=development) keeps Gunicorn's plain format.
+if os.environ.get('LOG_FORMAT', 'text' if os.environ.get('APP_ENV') == 'development' else 'json') == 'json':
+    from jobtracker.logs import gunicorn_logconfig
+    logconfig_dict = gunicorn_logconfig('jobtracker-web')
+if os.environ.get('APP_ENV', 'production') != 'development':
+    import logging
+    logging.raiseExceptions = False  # a failing handler must not print the record (message and args) to stderr
 capture_output = False
 # ProxyFix is the sole scheme interpreter, controlled by TRUST_PROXY. Prevent
 # Gunicorn from independently accepting forwarded scheme headers.

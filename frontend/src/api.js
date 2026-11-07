@@ -1,4 +1,5 @@
 let csrf = null;
+const REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
 let authenticationGeneration = 0;
 const authenticationListeners = new Set();
 export function onAuthenticationRequired(listener) {
@@ -24,10 +25,14 @@ export async function api(path, { method = "GET", body, ...options } = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(
-      data.error || `Request failed (${response.status})`,
-    );
+    // A server failure names a reference the user can quote to support (the request's X-Request-ID).
+    const candidate = data.request_id || response.headers.get("X-Request-ID");
+    const requestId = REQUEST_ID.test(candidate || "") ? candidate : null;
+    let message = data.error || `Request failed (${response.status})`;
+    if (response.status >= 500 && requestId) message += ` (reference: ${requestId})`;
+    const error = new Error(message);
     error.status = response.status;
+    error.requestId = requestId;
     error.data = data;
     error.authenticationRequired =
       !path.startsWith("/auth/") &&

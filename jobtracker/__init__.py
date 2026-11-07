@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, request, send_from_directory
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import HTTPException, InternalServerError
 from werkzeug.security import generate_password_hash
 
 from .strict_json import JSONProvider
@@ -16,6 +16,16 @@ def secret_setting(name):
     """NAME, or the contents of the file named by NAME_FILE (container secrets)."""
     path = os.getenv(f'{name}_FILE')
     return Path(path).read_text().strip() if path else os.getenv(name)
+
+
+def _optional_secret(name):
+    """Like secret_setting, but a missing or unreadable file means "unset" (used for optional telemetry)."""
+    try:
+        return secret_setting(name)
+    except OSError:
+        import logging
+        logging.getLogger(__name__).warning('%s_FILE could not be read; treating %s as unset', name, name)
+        return None
 
 
 def create_app(test_config=None):
@@ -51,6 +61,10 @@ def create_app(test_config=None):
         TRUSTED_HOSTS=[host.strip() for host in os.getenv('APP_ALLOWED_HOSTS', '').split(',') if host.strip()] or None,
         APP_ROOT_PATH=os.getenv('APP_ROOT_PATH', ''),
         SESSION_COOKIE_NAME='next_move_session',
+        # Error telemetry (jobtracker/telemetry.py). Unset DSN = telemetry fully off.
+        SENTRY_DSN=_optional_secret('SENTRY_DSN'),
+        SENTRY_FRONTEND_DSN=os.getenv('SENTRY_FRONTEND_DSN', ''),
+        SENTRY_ENVIRONMENT=os.getenv('SENTRY_ENVIRONMENT', ''),
         MAX_CONTENT_LENGTH=10 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
@@ -82,6 +96,9 @@ def create_app(test_config=None):
         raise RuntimeError('Production SECRET_KEY must contain at least 32 characters')
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True, mode=0o700)
+    # First, so request IDs and error capture cover every later hook and blueprint.
+    from . import telemetry
+    telemetry.init_app(app)
     from . import throttle
     throttle.init_app(app)
     from . import db
@@ -162,12 +179,27 @@ def create_app(test_config=None):
     def http_error(exc):
         return jsonify(error=exc.description), exc.code
 
+    # On InternalServerError, not Exception: an unhandled exception still goes through Flask's
+    # handle_exception, which sends got_request_exception (Sentry) and calls log_exception before this runs.
+    # A handler for Exception would swallow both. The after_request hook adds request_id to the body.
+    @app.errorhandler(InternalServerError)
+    def internal_error(exc):
+        return jsonify(error='Something went wrong on our side.'), 500
+
+    def log_exception(exc_info):
+        # The route template, never request.path: paths carry signed tokens (/api/v1/files/<token>).
+        rule = request.url_rule.rule if request.url_rule is not None else '<unmatched>'
+        app.logger.error('Unhandled exception on %s %s', request.method, rule, exc_info=exc_info)
+    app.log_exception = log_exception
+
     @app.after_request
     def security_headers(response):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        policy = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        connect = telemetry.connect_src()  # only the exact Sentry ingest host, and only when browser telemetry is on
+        response.headers['Content-Security-Policy'] = f'{policy}; {connect}' if connect else policy
         if request_is_private():
             response.headers['Cache-Control'] = 'no-store'
         return response

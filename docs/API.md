@@ -86,6 +86,12 @@ Do not claim a role was applied to or a recruiter contacted merely because a res
 
 ## Routes
 
+Every response has an `X-Request-ID` header. A valid incoming value (`[A-Za-z0-9-]{8,64}`) is kept; in production
+Caddy always replaces it. 5xx JSON bodies are `{"error": "...", "request_id": "..."}`; quote that ID to My Next Moov
+support. `GET /api/v1/client-config` (public) returns the browser telemetry settings: `{"sentry": null}` or
+`{"sentry": {"dsn": "...", "environment": "..."}}`.
+
+
 JSON bodies must be valid Unicode: a string or key holding an unpaired UTF-16 surrogate escape (such as `"\ud800"`) is treated as malformed JSON and refused with the route's usual 400. Escaped surrogate pairs (`"\ud83d\ude00"`, an emoji) are fine. Raw bytes that are not valid UTF-8 in a JSON body are refused the same way. MCP answers either with JSON-RPC `-32700 Parse error`, and JSON nested more than 64 levels deep is treated as malformed too. On every route, a query string carrying raw (not percent-encoded) bytes that are not valid UTF-8 returns 400 `{"error": "The query string must be valid UTF-8"}`; percent-encoded UTF-8 such as `?q=%F0%9F%98%80` works as usual.
 
 | Method | Path | Use |

@@ -333,12 +333,12 @@ def deliver(identifier):
     return 'sent'
 
 
-@taskqueue.handler('send_confirmation', anonymous=True, max_attempts=5, lease_seconds=60, give_up=_give_up)
+@taskqueue.handler('send_confirmation', mail=True, anonymous=True, max_attempts=5, lease_seconds=60, give_up=_give_up)
 def run_send(app, task):
     deliver(task.payload['confirmation_id'])
 
 
-@taskqueue.handler('resend_confirmation', anonymous=True, delete_on_success=True, max_attempts=5, lease_seconds=60)
+@taskqueue.handler('resend_confirmation', mail=True, anonymous=True, delete_on_success=True, max_attempts=5, lease_seconds=60)
 def run_resend(app, task):
     """Find what is waiting for this address and send it again; send nothing to anyone else."""
     email = task.payload.get('email')

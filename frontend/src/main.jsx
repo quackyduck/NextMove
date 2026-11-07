@@ -27,6 +27,7 @@ import { isPrivacyRoute, Privacy } from "./Privacy.jsx";
 import { VerifyEmail } from "./VerifyEmail.jsx";
 import { ForgotPasswordForm, ResetPasswordForm, resetNotice, resetScreen } from "./PasswordReset.jsx";
 import { DeleteDialog, plural } from "./DeleteDialog.jsx";
+import { initTelemetry, reportError, setTelemetryPage, setTelemetryUser } from "./telemetry.js";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -53,6 +54,9 @@ class SetupBoundary extends React.Component {
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch(error) {
+    reportError(error); // the error only: never props, state or the component stack
+  }
   render() {
     if (!this.state.failed) return this.props.children;
     return (
@@ -64,6 +68,35 @@ class SetupBoundary extends React.Component {
             <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
             <button type="button" className="btn btn-outline-secondary" onClick={this.props.onSkip}>Skip setup for now</button>
           </div>
+        </div>
+      </main>
+    );
+  }
+}
+
+// Last resort for a render crash anywhere in the app. Reports the error only, and shows the event id
+// as a reference the user can quote to support.
+class AppErrorBoundary extends React.Component {
+  state = { failed: false, reference: null };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error) {
+    this.setState({ reference: reportError(error) });
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <main className="login">
+        <div className="login-card" role="alert">
+          <h1>Something went wrong in My Next Moov.</h1>
+          <p>Reload the page to try again. Your saved roles and resumes are safe.</p>
+          {this.state.reference && (
+            <p className="small text-body-secondary">
+              If it keeps happening, quote this reference to My Next Moov support: <code>{this.state.reference}</code>
+            </p>
+          )}
+          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
         </div>
       </main>
     );
@@ -120,6 +153,9 @@ function App() {
     [notice, setNotice] = useState(""),
     // Data deletion (schema 17): { kind: "job" | "resume", preview?, resume? } while a confirmation is open.
     [deleting, setDeleting] = useState(null);
+  // Telemetry knows only the numeric account id and the page name, never URLs or content.
+  useEffect(() => setTelemetryUser(auth ? userId : null), [auth, userId]);
+  useEffect(() => setTelemetryPage(page), [page]);
   useEffect(() => {
     api("/auth/session")
       .then((data) => {
@@ -1083,4 +1119,10 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+  <AppErrorBoundary>
+    <App />
+  </AppErrorBoundary>,
+);
+// Asynchronous and a no-op unless the server names a browser DSN (/api/v1/client-config).
+initTelemetry();

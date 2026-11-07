@@ -36,6 +36,12 @@ def run_file(spec, command=None):
                            # per-IP sign-up budget (5 per 5 minutes) applies per test, as for real visitors.
                            TRUST_PROXY='1',
                            PUBLIC_BASE_URL=f'http://127.0.0.1:{port}{prefix}')
+        # Browser tests never send telemetry. telemetry.spec.js gets a fake project on Sentry's US ingest host
+        # (the CSP must name it); the spec intercepts every request to it, so nothing leaves this machine.
+        for name in ('SENTRY_DSN', 'SENTRY_DSN_FILE', 'SENTRY_FRONTEND_DSN'):
+            environment.pop(name, None)
+        if Path(spec).name == 'telemetry.spec.js':
+            environment['SENTRY_FRONTEND_DSN'] = 'https://0123456789abcdef0123456789abcdef@o1.ingest.us.sentry.io/1'
         # One invite per suite lets browser tests create a second account.
         invite = subprocess.run([sys.executable, '-m', 'flask', '--app', 'jobtracker:create_app', 'invite', 'create'],
                                 cwd=ROOT, env=environment, check=True, capture_output=True, text=True)
