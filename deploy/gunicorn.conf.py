@@ -26,6 +26,8 @@ capture_output = False
 secure_scheme_headers = {}
 forwarded_allow_ips = ''
 umask = 0o077
+# Gunicorn 26's control socket (gunicornc) is unused, and under ProtectSystem=strict creating it logs an ERROR.
+control_socket_disable = True
 
 
 def post_fork(server, worker):
