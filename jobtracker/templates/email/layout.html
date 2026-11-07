@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{ subject }}</title>
+<style>
+  /* Brand tokens (frontend/src/style.css): paper #fafaf7, surface #fff, teal ink #254441, coral #ff6f59. */
+  body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+  img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+  a { color: #254441; }
+  .link-text a { color: #913d2e !important; word-break: break-all; }
+  @media (max-width: 620px) {
+    .mnm-card { padding: 28px 22px !important; }
+    .mnm-outer { padding: 16px 8px !important; }
+    .mnm-title { font-size: 26px !important; }
+  }
+  /* Dark: the app's dark theme (deep teal surfaces, cream text, the same coral action). Apple Mail, iOS Mail,
+     Outlook.com and newer Outlook honor this; Gmail applies its own inversion to the light version. */
+  @media (prefers-color-scheme: dark) {
+    .mnm-body, .mnm-outer { background-color: #142724 !important; }
+    .mnm-card { background-color: #1c3330 !important; border-color: #3c5850 !important; }
+    .mnm-ink, .mnm-title, .mnm-wordmark { color: #f4f5e9 !important; }
+    .mnm-muted, .mnm-footer, .mnm-footer td { color: #b9cbbf !important; }
+    .mnm-footer a, .mnm-ink a { color: #ffb1a2 !important; }
+    .link-text, .link-text a { color: #ffb1a2 !important; }
+    .mnm-rule { border-color: #3c5850 !important; }
+    .mnm-note { background-color: #25413a !important; color: #d8e5d8 !important; }
+    .mnm-secondary a { color: #ffb1a2 !important; border-color: #81998d !important; }
+  }
+  [data-ogsc] .mnm-title, [data-ogsc] .mnm-ink, [data-ogsc] .mnm-wordmark { color: #f4f5e9 !important; }
+  [data-ogsb] .mnm-body, [data-ogsb] .mnm-outer { background-color: #142724 !important; }
+  [data-ogsb] .mnm-card { background-color: #1c3330 !important; }
+</style>
+</head>
+<body class="mnm-body" style="margin:0; padding:0; background-color:#fafaf7; font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#fafaf7;">{{ preheader }}</div>
+<table role="presentation" class="mnm-outer" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafaf7; padding:32px 16px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%;">
+        <!-- Header: mascot + wordmark -->
+        <tr>
+          <td style="padding:0 8px 20px 8px;">
+            <a href="{{ base }}/" style="text-decoration:none;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align:middle; padding-right:12px;">
+                    <img src="{{ logo_url }}" width="48" height="48" alt="My Next Moov cow mascot" style="display:block; width:48px; height:48px;">
+                  </td>
+                  <td class="mnm-wordmark" style="vertical-align:middle; font-size:22px; line-height:1.2; font-weight:600; letter-spacing:-0.01em; color:#254441;">My Next Moov</td>
+                </tr>
+              </table>
+            </a>
+          </td>
+        </tr>
+        <!-- Card -->
+        <tr>
+          <td class="mnm-card" style="background-color:#ffffff; border:1px solid #dce3dc; border-radius:24px; padding:40px 40px 36px 40px;">
+            <h1 class="mnm-title" style="margin:0 0 16px 0; font-size:30px; line-height:1.2; font-weight:400; letter-spacing:-0.02em; color:#254441;">{{ title }}<span style="color:#ef3054;">.</span></h1>
+            {% for paragraph in paragraphs %}
+            <p class="mnm-ink" style="margin:0 0 16px 0; font-size:16px; line-height:1.55; color:#254441;">{{ paragraph }}</p>
+            {% endfor %}
+            {% if button %}
+            <!-- Button: a plain link (no tracking redirect). Coral with near-black teal text (AA contrast). -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px 0;">
+              <tr>
+                <td align="center" bgcolor="#ff6f59" style="background-color:#ff6f59; border-radius:999px;">
+                  <a href="{{ button.url }}" style="display:inline-block; padding:14px 28px; font-size:16px; line-height:1.2; font-weight:600; color:#142724; text-decoration:none; border-radius:999px;">{{ button.label }} &rarr;</a>
+                </td>
+              </tr>
+            </table>
+            {% if button.show_link %}
+            <!-- The link as text too: our tokens ride in the #fragment, which some clients drop from buttons. -->
+            <p class="mnm-muted" style="margin:16px 0 4px 0; font-size:13px; line-height:1.5; color:#53665f;">Button not working? Copy this link into your browser:</p>
+            <p class="link-text" style="margin:0 0 8px 0; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:1.5; color:#913d2e; word-break:break-all;"><a href="{{ button.url }}" style="color:#913d2e; text-decoration:underline; word-break:break-all;">{{ button.url }}</a></p>
+            {% endif %}
+            {% endif %}
+            {% if secondary %}
+            <p class="mnm-ink mnm-secondary" style="margin:16px 0 0 0; font-size:15px; line-height:1.55; color:#254441;">{{ secondary.before }} <a href="{{ secondary.url }}" style="color:#254441; text-decoration:underline;">{{ secondary.label }}</a></p>
+            {% endif %}
+            {% if note %}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0 0;">
+              <tr>
+                <td class="mnm-note" style="background-color:#edf4f0; border-radius:16px; padding:14px 18px; font-size:14px; line-height:1.5; color:#355752;">{{ note }}</td>
+              </tr>
+            </table>
+            {% endif %}
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td class="mnm-footer" style="padding:24px 8px 0 8px; font-size:13px; line-height:1.6; color:#53665f;">
+            <p style="margin:0 0 8px 0;">{{ why }}</p>
+            <p style="margin:0;"><a href="{{ base }}/" style="color:#53665f; text-decoration:none;">My Next Moov</a>
+              &middot; <a href="mailto:{{ support }}" style="color:#53665f; text-decoration:underline;">{{ support }}</a>
+              &middot; <a href="{{ base }}/privacy" style="color:#53665f; text-decoration:underline;">Privacy</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
