@@ -168,9 +168,29 @@ def test_drafts_are_idempotent_and_only_approval_files_them(client, app):
         resumes = services.list_resumes(user_id, job['id'])
         assert sorted(r['original_filename'] for r in resumes) == ['tailored-resume-r1.docx', 'tailored-resume-r1.pdf']
         assert [r['source']['resume_id'] for r in resumes] == [resume['id']] * 2  # The draft's template version.
+        # Schema 17: approval drops the draft's own file copies, so no hidden copy outlives the job resumes.
+        assert [p.name for p in harness.drafts_folder(user_id).iterdir() if p.is_file()] == []
         again = client.post(f"/api/v1/me/drafts/{first.json['id']}/approve", headers=grant)
         assert again.status_code == 200 and len(services.list_resumes(user_id, job['id'])) == 2
         assert services.get_job(user_id, job['id'])['stage'] == 'needs_review'  # stage is the user's call
+
+
+def test_approval_keeps_the_draft_files_when_it_fails_before_its_final_commit(client, app, monkeypatch):
+    """Schema 17: the draft's own copies are removed only after approval commits."""
+    from jobtracker import services
+    _, grant = account(client)
+    resume = upload_resume(client, grant).json
+    job = add_job(client, app, grant)
+    draft = save_draft(client, grant, job['id'], resume['id']).json
+
+    def crash(*args, **kwargs):
+        raise RuntimeError('crash before the final commit')
+    monkeypatch.setattr(services, '_activity', crash)
+    with pytest.raises(RuntimeError):
+        client.post(f"/api/v1/me/drafts/{draft['id']}/approve", headers=grant)
+    with app.app_context():
+        user_id = harness.authenticate_grant(grant['Authorization'][7:], 'jobs:read')
+        assert len([p for p in harness.drafts_folder(user_id).iterdir() if p.is_file()]) == 2
 
 
 def test_approval_files_drafts_under_the_harness_file_stem(client, app):

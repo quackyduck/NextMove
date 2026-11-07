@@ -31,6 +31,8 @@ def start_ingestion(user_id, url, key):
         if existing:
             if existing['token_id'] != token_id:
                 raise services.ServiceError('This retry key belongs to another token. Check its result in the app.', 409)
+            if existing['result'].get('status') == 'deleted':  # Schema 17: the role was deleted; never re-create it.
+                return {'id': existing['id'], 'status': 'deleted', 'error': 'This role was deleted'}
             if existing['url'] != url:
                 raise services.ServiceError('This Idempotency-Key was already used for a different URL', 409)
             return {'id': existing['id'], 'status': existing['status'], **existing['result']}

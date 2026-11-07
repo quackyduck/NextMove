@@ -125,7 +125,7 @@ def _claimable(moment):
 def load_handlers():
     # Handler modules register on import; a worker must know every kind before
     # it may fail a task as unknown. Add new handler modules here.
-    from . import confirmations, extraction_tasks, harness, ingestion, password_reset  # noqa: F401
+    from . import confirmations, deletion, extraction_tasks, harness, ingestion, password_reset  # noqa: F401
 
 
 def claim(engine):

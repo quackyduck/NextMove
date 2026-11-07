@@ -94,7 +94,7 @@ export function Privacy() {
             <li><strong>Correct</strong> information you can't change yourself.</li>
             <li><strong>Delete your account</strong> and everything in it. This is done within 14 days, and we'll confirm by email. Backups expire within the following 4 weeks.</li>
           </ul>
-          <p>You can also change your password, disconnect AI assistants and remove roles or resumes yourself in the app. Self-service export and account deletion are coming.</p>
+          <p>You can also change your password, disconnect AI assistants and remove roles, resumes or resume templates yourself in the app. To delete your whole account and everything in it, email us and we'll do it for you.</p>
           <p>We'll answer any privacy request, wherever you live.</p>
 
           <h2>Security</h2>

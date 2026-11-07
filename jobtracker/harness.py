@@ -418,4 +418,12 @@ def drafts_approve(draft_id):
     services._activity(user_id, row.job_id, 'draft_approved',
                        'Tailored resume approved; consider moving this role to Resume updated', {'draft_id': row.id})
     session.commit()
+    # Schema 17: no hidden copy outlives the job resume. Only after the commit: if anything above fails, the
+    # draft's own files are still there; a failed unlink leaves an orphan for the storage sweep.
+    for source in (row.docx_filename, row.pdf_filename):
+        if source:
+            try:
+                (drafts_folder(user_id) / source).unlink(missing_ok=True)
+            except OSError:
+                pass
     return jsonify(_draft(session.get(TailoredDraft, row.id)))

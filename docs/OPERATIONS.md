@@ -335,3 +335,48 @@ Additive migration: `password_reset_tokens` (hashes only) and `password_reset_re
 - `flask --app jobtracker user reset-password EMAIL` prompts for the password. It revokes sessions, OAuth connections, agent tokens and reset links, plus chat links when the email is unverified (override with `--keep-harness` or `--revoke-harness`), and emails the notice.
 - To revoke agents only, use `flask user revoke-agents ID [--harness]`.
 - Audit lines (logger `jobtracker.accounts`, never a token, link or email): `operator reset link minted user_id=N expires=… minutes=M operator=cli`, `operator password reset user_id=N operator=cli`, and `revoked user_id=N oauth=… agent=… harness=… via=reset|operator|cli`.
+
+## Data deletion and export — schema 17
+
+### Deletion and export requests (identity first)
+1. Find the account (`flask user list`) and reply with a one-time code from `flask support code --id N --for delete` (or `--for export`). The code works only for that account and that action; only its hash is stored, and it expires in 72 h.
+2. Act only on a reply **from the account's address that contains the code**, and whose raw headers ("Show original") show **SPF and DKIM `pass`** for the sender's domain. `flask support check CODE` shows which account and action it authorizes, without using it up.
+3. **Verified account:** run `user delete --id N --code CODE` or `user export --id N --code CODE`. The code is used up by that command, inside the deletion's own transaction, so a failed deletion leaves it usable.
+4. **Legacy unverified account:** a mailbox isn't proof of ownership. The requester must also sign in (proving the password, which verifies the address) or complete a password reset. Otherwise, treat it as "this address on someone else's account": move the address off it with `user set-email ID <placeholder> --verified`, then `user unverify`. The account is locked, and its data isn't deleted.
+5. **Messaging-only account (no email):** issue the code for that account id and send it in the chat. The user texts it back from their phone; you see it arrive in that conversation in Messages on the bridge Mac. Then run `user delete --id N --yes --code CODE`.
+6. **After `user delete`:**
+   - run the printed `resume-agent tenant delete --jobtracker-user N` in the gateway container;
+   - delete the conversation in Messages on the bridge Mac (with Messages in iCloud on, that removes it from iCloud too);
+   - delete its files under `~/Library/Messages/Attachments`;
+   - note the date in the support log.
+
+   This is all within 14 days of the request.
+7. **Exports:** send the printed link in the verified thread only, never as an attachment. Opening it shows a Download button and uses up nothing; each download counts, 3 in 48 h.
+
+Verified accounts get an "account deleted" email automatically; unverified ones don't, so reply in the thread.
+
+### Backups, snapshots and restores
+- **Release snapshots** go in dated directories (`snapshots/YYYY-MM-DD-<sha>`) and are **deleted after at most 28 days**. That's a release-checklist step: `find <snapshots> -mindepth 1 -maxdepth 1 -mtime +28 -exec rm -rf {} +`. The same rule covers copies of production data anywhere: the test server, scratch folders, laptops.
+- **Never restore a backup older than 35 days** (the ledger window). `deletions replay` refuses a database whose newest data is older than that.
+- **`--force` only after checking the backup's real date** from its snapshot directory name (`snapshots/YYYY-MM-DD-<sha>`). For example, a quiet account with no writes for 35 days can trip the check even on a recent backup. Never force a snapshot older than 35 days.
+- **Restore checklist,** in this order:
+  1. Stop `jobtracker-web` and `jobtracker-worker`, plus the gateway and harness if their volumes are restored too.
+  2. `flask deletions export > /secure/deletions-<date>.jsonl`, from the live database.
+  3. Restore.
+  4. `flask deletions replay /secure/deletions-<date>.jsonl` in a one-off container, with nothing serving.
+  5. For every `account` row in that file: `resume-agent tenant delete --jobtracker-user N`.
+  6. Start the services.
+  7. Delete the export file.
+- Deleted rows are overwritten in place (`PRAGMA secure_delete=ON`), and account deletion truncates the WAL. Old data therefore doesn't linger in later backups beyond their own window.
+
+### Storage sweep
+The worker runs a bounded sweep every 6 h: orphan files older than an hour, deleted accounts' folders (only those the ledger names) and expired exports. It refuses with an ERROR log line on an empty or unmigrated database, or a pass larger than 50 files or 1 folder. Run `flask storage sweep` for a dry run, and add `--apply` (plus `--force` after checking) to act. Unknown folders are only reported.
+
+### Logs
+Audit lines (logger `jobtracker.accounts`) carry ids and counts only:
+- `job deleted …`, `resume deleted …`, `template version deleted …`, `template deleted …`;
+- `account deleted user_id=N rows=R files=F operator=cli`;
+- `export created …`, `export downloaded …`;
+- `deletions replay …`.
+
+The bridge Mac's own logs (`~/Library/Logs/NextMove`) are redacted, and fall under the same log-retention statement.

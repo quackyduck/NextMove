@@ -100,6 +100,9 @@ def create_app(test_config=None):
     # Self-service password reset (schema 16): its routes, worker handlers and `user reset-link`.
     from . import password_reset
     password_reset.init_app(app)
+    # Data deletion and export (schema 17): browser-only delete routes, the export link, and the operator CLI.
+    from . import deletion
+    deletion.init_app(app)
     app.register_blueprint(api, url_prefix='/api/v1')
     app.register_blueprint(auth, url_prefix='/api/v1')
     from .profile import profile

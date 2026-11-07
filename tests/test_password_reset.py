@@ -646,7 +646,7 @@ def test_v15_upgrade_creates_the_reset_tables(config, tmp_path):
         assert connection.execute('SELECT version FROM schema_version').fetchone() == (15,)
     upgraded = create_app(config)
     with engine(upgraded).connect() as connection:
-        assert connection.scalar(text('SELECT version FROM schema_version')) == 16
+        assert connection.scalar(text('SELECT version FROM schema_version')) >= 16  # 17: data deletion.
         names = set(inspect(connection).get_table_names())
         assert {'password_reset_tokens', 'password_reset_requests'} <= names
         indexes = {index['name'] for index in inspect(connection).get_indexes('password_reset_requests')}

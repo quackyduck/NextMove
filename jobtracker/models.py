@@ -460,3 +460,56 @@ class PasswordResetRequest(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     outcome: Mapped[str] = mapped_column(String(12), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+
+
+# Data deletion and export (schema 17); see deletion.py ---------------------------------------
+DELETION_KINDS = ("account", "job", "resume", "master_resume", "template")
+
+
+class Deletion(Base):
+    """The deletion ledger: ids only, so a restored backup can be brought back to the deleted state.
+
+    No foreign keys on purpose: a row must outlive what it names. Kept 35 days (longer than any backup)."""
+    __tablename__ = "deletions"
+    __table_args__ = (
+        CheckConstraint("kind IN ('account','job','resume','master_resume','template')", name="ck_deletions_kind"),
+        Index("ix_deletions_created", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    object_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+
+
+class DataExport(Base):
+    """An operator-made export ZIP behind a short-lived download link (hash only)."""
+    __tablename__ = "data_exports"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    stored_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_download_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+SUPPORT_PURPOSES = ("delete", "export")
+
+
+class SupportCode(Base):
+    """One-time code support sends to prove mailbox (or phone) control before a deletion or export (hash only).
+
+    Bound to one account and one purpose; consumed inside the deletion (or with the export it authorizes).
+    No foreign key: a used code may outlive the account it deleted (account deletion removes its codes)."""
+    __tablename__ = "support_codes"
+    __table_args__ = (CheckConstraint("purpose IN ('delete','export')", name="ck_support_codes_purpose"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

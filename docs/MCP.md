@@ -94,6 +94,8 @@ Agents can create templates and add versions to them, but never choose the defau
 
 A password reset (self-service or by an operator) disconnects every agent connection and agent token, so reconnect them afterwards. Chat (harness) links survive a reset only when the account's email is verified.
 
+Agents can add and edit, but can't delete anything. Deleting roles, resumes and templates is for the signed-in user in the app only. No MCP tool, OAuth-scoped route or harness route deletes.
+
 ## Next steps
 
 - **Structured resumes and templates.** Resumes are still files. Before agents can safely edit them (not only upload new files), the service needs a structured resume model (sections, bullets, versions) and server-side templates for rendering. The intended tools are:

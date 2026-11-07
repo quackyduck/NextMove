@@ -26,6 +26,7 @@ def run(app, stop=None, poll_seconds=None):
     engine = app.extensions['jobtracker_db']['engine']
     log.info('Queue worker started (pid %s, poll %.1fs)', os.getpid(), poll)
     next_maintenance = 0.0
+    next_sweep = time.monotonic() + 60  # Schema 17: ledger pruning and the guarded storage sweep, every 6 h.
     while not stop.is_set():
         try:
             if time.monotonic() >= next_maintenance:
@@ -37,6 +38,10 @@ def run(app, stop=None, poll_seconds=None):
                     from .confirmations import prune as prune_confirmations
                     prune_confirmations(engine)
                 next_maintenance = time.monotonic() + MAINTENANCE_SECONDS
+            if time.monotonic() >= next_sweep:
+                from .deletion import maintenance as deletion_maintenance
+                deletion_maintenance(app)
+                next_sweep = time.monotonic() + 6 * 3600
             if taskqueue.run_once(app) is None:
                 stop.wait(poll)
         except Exception:  # noqa: BLE001 - e.g. a locked database; back off and continue
