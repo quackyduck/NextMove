@@ -115,7 +115,7 @@ for (const scheme of schemes) {
       await page.getByRole("button", { name: "Skip for now" }).click();
       await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
       await shoot(page, "onboarding-agent", viewport, scheme);
-      await page.getByRole("button", { name: "Skip agent setup" }).click();
+      await page.getByRole("button", { name: "Skip for now" }).click();
       await expect(page.getByRole("heading", { name: "Your pipeline." })).toBeVisible();
       await expect(page.locator(".onboarding-checklist")).toBeVisible();
       await shoot(page, "onboarding-checklist", viewport, scheme);

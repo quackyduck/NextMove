@@ -1567,46 +1567,8 @@ nav {
   padding-top: var(--space-5);
   border-top: var(--border-width) solid var(--color-line);
 }
-.onboarding-list {
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-  padding-left: var(--space-5);
-}
-.onboarding-list li {
-  margin-bottom: var(--space-1);
-}
-.onboarding-list li::marker {
-  font-family: var(--font-sans);
-  color: var(--color-accent-strong);
-}
-.onboarding .section-heading {
-  margin-top: var(--space-6);
-}
-.snippet-title {
-  font-family: var(--font-sans);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-label);
-  text-transform: none;
-  color: var(--color-ink-2);
-  margin-bottom: 6px;
-}
-.setup-snippet {
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre;
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-2);
-  border: var(--border-width) solid var(--color-inverse);
-  border-radius: var(--radius-0);
-  background: var(--color-inverse);
-  color: var(--color-on-inverse);
-}
 .onboarding a:focus-visible,
-.onboarding button:focus-visible,
-.setup-snippet:focus-visible {
+.onboarding button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
@@ -1775,7 +1737,7 @@ nav {
 }
 
 /* Keep code monospaced while UI labels share the sans family. */
-.agent-secret, .setup-snippet { font-family: var(--font-mono); }
+.agent-secret { font-family: var(--font-mono); }
 .stage-badge, .stage-badge::before, .outreach-badge, .nav-count,
 .agent-token-status, .onboarding-checklist-item > span::before {
   border-radius: var(--radius-round);

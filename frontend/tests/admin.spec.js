@@ -133,7 +133,8 @@ test("anyone else gets no Admin link and a not-found page", async ({ page }) => 
   expect(session.user.is_admin).toBe(false);
   await page.goto(base);
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("button", { name: "Skip agent setup" }).click();
+  await expect(page.getByRole("heading", { name: "Set up an agent." })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await page.goto(`${base}admin`);
