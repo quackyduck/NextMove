@@ -64,7 +64,7 @@ def downgrade_to_v8(app):
                 connection.execute(f'DROP TABLE "{table}_v9"')
         for (sql,) in legacy.execute("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
             connection.execute(sql)
-        for table in ('password_reset_tokens', 'password_reset_requests', 'email_confirmations', 'mail_usage', 'oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes', 'resume_templates',
+        for table in ('deletions', 'data_exports', 'support_codes', 'password_reset_tokens', 'password_reset_requests', 'email_confirmations', 'mail_usage', 'oauth_tokens', 'oauth_codes', 'oauth_grants', 'oauth_clients', 'tailored_drafts', 'harness_grants', 'activation_tokens', 'onboarding_steps', 'master_resumes', 'resume_templates',
                       'users', 'invite_codes', 'queued_tasks'):
             connection.execute(f'DROP TABLE IF EXISTS "{table}"')
         if credential:
@@ -86,15 +86,23 @@ def without_owner(result):
     return [tuple(row[index] for index in keep) for row in result]
 
 
+def rewind_data_deletion(connection):
+    """Turn a schema-17 sqlite3 connection back into schema 16: drop the deletion, export and support-code tables."""
+    connection.executescript('DROP TABLE deletions; DROP TABLE data_exports; DROP TABLE support_codes; '
+                             'UPDATE schema_version SET version=16;')
+
+
 def rewind_password_reset(connection):
     """Turn a schema-16 sqlite3 connection back into schema 15: drop the password reset tables."""
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] == 17:
+        rewind_data_deletion(connection)
     connection.executescript('DROP TABLE password_reset_tokens; DROP TABLE password_reset_requests; '
                              'UPDATE schema_version SET version=15;')
 
 
 def rewind_verification(connection):
     """Turn a schema-15 sqlite3 connection back into schema 14 (rows kept, except ownerless queue tasks)."""
-    if connection.execute('SELECT version FROM schema_version').fetchone()[0] == 16:
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (16, 17):
         rewind_password_reset(connection)
     from jobtracker.migrations import QUEUED_TASKS_COLUMNS, QUEUED_TASKS_V9_DDL
     connection.executescript(
@@ -109,7 +117,7 @@ def rewind_verification(connection):
 
 def rewind_resume_sources(connection):
     """Turn a schema-14 sqlite3 connection back into schema 13: resumes lose source_master_resume_id (rows kept)."""
-    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (15, 16):
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (15, 16, 17):
         rewind_verification(connection)
     columns = 'id, user_id, job_id, original_filename, stored_filename, media_type, size, sha256, created_at'
     connection.executescript(
@@ -127,7 +135,7 @@ def rewind_resume_sources(connection):
 
 def rewind_resume_templates(connection):
     """Turn a schema-13 (or 14) sqlite3 connection's resume tables back into schema 12 (rows kept)."""
-    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (14, 15, 16):
+    if connection.execute('SELECT version FROM schema_version').fetchone()[0] in (14, 15, 16, 17):
         rewind_resume_sources(connection)
     columns = 'id, user_id, version, original_filename, stored_filename, media_type, size, sha256, created_at'
     connection.executescript(

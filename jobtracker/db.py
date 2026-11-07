@@ -30,6 +30,8 @@ def init_app(app):
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA busy_timeout=5000")
             cursor.execute("PRAGMA journal_mode=WAL")
+            # Schema 17: deleted rows are overwritten, not left in free pages that every backup would copy.
+            cursor.execute("PRAGMA secure_delete=ON")
             cursor.close()
 
     if app.config.get("QUEUE_WORKER"):

@@ -1974,3 +1974,10 @@ nav {
 .home-footer a, .privacy-page a { color: var(--color-ink); }
 .auth-legal { font-size: var(--text-sm); color: var(--color-muted); }
 .auth-notice { font-size: var(--text-sm); }
+
+/* Data deletion (schema 17) */
+.delete-dialog { max-width: min(32rem, calc(100vw - 32px)); border: 1px solid var(--bs-border-color, #ccc); border-radius: 12px; padding: 1.25rem; }
+.delete-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.resume-row { display: flex; align-items: center; gap: 0.5rem; }
+.resume-row .resume-link { flex: 1 1 auto; min-width: 0; }
+.danger-zone { display: flex; justify-content: flex-end; }

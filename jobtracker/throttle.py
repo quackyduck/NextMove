@@ -133,6 +133,7 @@ def transaction(decide):
     """
     try:
         with closing(sqlite3.connect(current_app.extensions['login_throttle_path'], timeout=5)) as connection:
+            connection.execute('PRAGMA secure_delete=ON')  # Schema 17: pruned attempts don't linger in free pages.
             # Serialize pruning, counting, and reservation across processes. The
             # password hash runs AFTER commit, so slow hashes never hold a lock.
             connection.execute('BEGIN IMMEDIATE')

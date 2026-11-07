@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import inspect, text
 
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 PLACEHOLDER_ADMIN_EMAIL = 'owner@localhost'
 
 
@@ -410,6 +410,26 @@ def upgrade_v15_to_v16(connection):
     connection.execute(text('UPDATE schema_version SET version=16'))
 
 
+def upgrade_v16_to_v17(connection):
+    """Data deletion and export: the deletion ledger (ids only), export links (hash only) and support codes."""
+    connection.execute(text(
+        'CREATE TABLE deletions (id VARCHAR(36) NOT NULL, kind VARCHAR(16) NOT NULL, user_id INTEGER NOT NULL, '
+        'object_id VARCHAR(36), created_at DATETIME NOT NULL, PRIMARY KEY (id), '
+        "CONSTRAINT ck_deletions_kind CHECK (kind IN ('account','job','resume','master_resume','template')))"))
+    connection.execute(text('CREATE INDEX ix_deletions_created ON deletions (created_at)'))
+    connection.execute(text(
+        'CREATE TABLE data_exports (id VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, token_hash VARCHAR(64) NOT NULL, '
+        'stored_name VARCHAR(100) NOT NULL, size INTEGER NOT NULL, created_at DATETIME NOT NULL, '
+        'expires_at DATETIME NOT NULL, downloads INTEGER NOT NULL, last_download_at DATETIME, PRIMARY KEY (id), '
+        'UNIQUE (token_hash), UNIQUE (stored_name), FOREIGN KEY(user_id) REFERENCES users (id))'))
+    connection.execute(text('CREATE INDEX ix_data_exports_user_id ON data_exports (user_id)'))
+    connection.execute(text(
+        'CREATE TABLE support_codes (id VARCHAR(36) NOT NULL, code_hash VARCHAR(64) NOT NULL, user_id INTEGER NOT NULL, '
+        'purpose VARCHAR(10) NOT NULL, created_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, used_at DATETIME, '
+        "PRIMARY KEY (id), UNIQUE (code_hash), CONSTRAINT ck_support_codes_purpose CHECK (purpose IN ('delete','export')))"))
+    connection.execute(text('UPDATE schema_version SET version=17'))
+
+
 def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [1]:
         upgrade_v1_to_v2(connection)
@@ -456,5 +476,8 @@ def migrate(connection, versions, bootstrap_hash=None, admin_email=None):
     if versions == [15]:
         upgrade_v15_to_v16(connection)
         versions = [16]
+    if versions == [16]:
+        upgrade_v16_to_v17(connection)
+        versions = [17]
     if versions != [SCHEMA_VERSION]:
         raise RuntimeError(f'Unsupported database schema version {versions}; expected {SCHEMA_VERSION}. Run migrations before starting.')

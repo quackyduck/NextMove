@@ -26,6 +26,7 @@ import { Home } from "./Home.jsx";
 import { isPrivacyRoute, Privacy } from "./Privacy.jsx";
 import { VerifyEmail } from "./VerifyEmail.jsx";
 import { ForgotPasswordForm, ResetPasswordForm, resetNotice, resetScreen } from "./PasswordReset.jsx";
+import { DeleteDialog, plural } from "./DeleteDialog.jsx";
 import { OnboardingChecklist } from "./OnboardingChecklist.jsx";
 
 // Only people in setup download the onboarding screens.
@@ -116,7 +117,9 @@ function App() {
     [contact, setContact] = useState({ name: "", email: "", notes: "" }),
     [intakeContact, setIntakeContact] = useState({ name: "", email: "" }),
     [intakeResume, setIntakeResume] = useState(null),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    // Data deletion (schema 17): { kind: "job" | "resume", preview?, resume? } while a confirmation is open.
+    [deleting, setDeleting] = useState(null);
   useEffect(() => {
     api("/auth/session")
       .then((data) => {
@@ -868,6 +871,12 @@ function App() {
                       </button>
                     </div>
                   </form>
+                  <div className="danger-zone mt-3">
+                    <button type="button" className="btn btn-outline-danger btn-sm" disabled={busy}
+                      onClick={() => run(async () => setDeleting({ kind: "job", preview: await api(`/jobs/${selected.id}/deletion`) }))}>
+                      Delete role
+                    </button>
+                  </div>
                   <section className="form-panel mt-4">
                     <h2 className="section-heading mt-0">Contacts</h2>
                     {extras.contacts.map((c) => (
@@ -935,9 +944,9 @@ function App() {
                       available.
                     </p>
                     {extras.resumes.map((r) => (
+                      <div className="resume-row" key={r.id}>
                       <a
                         className="resume-link"
-                        key={r.id}
                         href={apiUrl(`/resumes/${r.id}/download`)}
                       >
                         ↓ {r.original_filename || r.filename || "Resume"}
@@ -952,6 +961,10 @@ function App() {
                             : ""}
                         </small>
                       </a>
+                      <button type="button" className="btn btn-link btn-sm text-danger resume-delete"
+                        aria-label={`Delete ${r.original_filename || "resume"}`} disabled={busy}
+                        onClick={() => setDeleting({ kind: "resume", resume: r })}>Delete</button>
+                      </div>
                     ))}
                     <form
                       onSubmit={(e) => {
@@ -1030,6 +1043,29 @@ function App() {
           </>
         )}
       </main>
+      {deleting?.kind === "job" && selected && (
+        <DeleteDialog title={<>Delete <bdi>{selected.title || "this role"}</bdi>{selected.company ? <> at <bdi>{selected.company}</bdi></> : null}?</>}
+          onClose={(done) => {
+            setDeleting(null);
+            if (done) {
+              setJobs((current) => current.filter((j) => j.id !== selected.id));
+              setSelected(null);
+              navigate("pipeline");
+              setNotice("Role deleted.");
+            }
+          }}
+          onConfirm={() => api(`/jobs/${selected.id}`, { method: "DELETE", body: { version: selected.version } })}>
+          <p>This permanently deletes the role, its notes and activity, {plural(deleting.preview.contacts, "contact")} and {plural(deleting.preview.resumes, "resume file")}.</p>
+          <p className="text-secondary">To keep it out of your pipeline instead, set its outcome to Not interested.</p>
+        </DeleteDialog>
+      )}
+      {deleting?.kind === "resume" && (
+        <DeleteDialog title={<>Delete <bdi>{deleting.resume.original_filename || "this resume"}</bdi>?</>}
+          onClose={(done) => { setDeleting(null); if (done) reloadExtras(); }}
+          onConfirm={() => api(`/resumes/${deleting.resume.id}`, { method: "DELETE" })}>
+          <p>This permanently deletes this file from the role.{deleting.resume.source ? " It's a tailored resume; the template it came from stays." : ""}</p>
+        </DeleteDialog>
+      )}
       {reauthRequired && <SessionRecovery email={session.user?.email} onAuthenticated={sessionRecovered}
         onSwitchAccount={() => { setReauthRequired(false); run(signOut); }} />}
 

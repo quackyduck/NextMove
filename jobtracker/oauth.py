@@ -38,7 +38,7 @@ SCOPE_LABELS = {
     'jobs:write': 'Add roles, move them between stages, and add notes and contacts',
     'resumes:read': 'Read and download your resumes',
     'resumes:write': 'Upload new resume versions and create resume templates; renaming templates and choosing '
-                     'the default stay with you (nothing is ever deleted)',
+                     'the default stay with you (agents can never delete)',
 }
 # Schemes that could run code or read local files if used as a redirect.
 UNSAFE_SCHEMES = {'javascript', 'data', 'file', 'vbscript', 'about', 'blob', 'filesystem'}

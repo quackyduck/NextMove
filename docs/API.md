@@ -286,7 +286,7 @@ Schema 12 adds `oauth_clients`, `oauth_grants`, `oauth_codes` and `oauth_tokens`
 
 ## Resume templates (schema 13)
 
-A resume template is a named master resume for one kind of role ("Senior product manager", "Engineering manager"), with its own version history numbered 1, 2, ... Names are free text (100 characters, NFC-normalized, no control or formatting characters such as NUL or bidi overrides), unique per account ignoring case, runs of whitespace and NFKC compatibility forms such as full-width letters; descriptions are optional (2,000 characters; newlines and tabs allowed). An account keeps up to 10 templates and 20 versions of each. Nothing is ever deleted.
+A resume template is a named master resume for one kind of role ("Senior product manager", "Engineering manager"), with its own version history numbered 1, 2, ... Names are free text (100 characters, NFC-normalized, no control or formatting characters such as NUL or bidi overrides), unique per account ignoring case, runs of whitespace and NFKC compatibility forms such as full-width letters; descriptions are optional (2,000 characters; newlines and tabs allowed). An account keeps up to 10 templates and 20 versions of each. Agents can never delete; you can delete versions and templates in the app (see [Deleting data](#deleting-data-schema-17)).
 
 Exactly one template is the **default**: it is what "the master resume" means for `/profile/resume`, the harness `/me/master-resumes` routes and MCP `list_resumes` / `read_resume` without an ID. The default is never empty: new templates start without one, and the first template to receive a version becomes the default. An upload that names no template (for example `/profile/resume` or onboarding) goes to the default. Before there is one, it goes to the account's only template if it has exactly one; otherwise to the template named "Main resume" (created if needed, which needs a free slot: with 10 templates and no default it is refused with 409). The default changes only by promoting another template that has at least one version. Signed `master` upload links (MCP `create_resume_upload_link`) are pinned to the default at issue time when there is one; issued before any default, they resolve it when used. Schema 13 adds `resume_templates` and `master_resumes.template_id`, and moves each account's existing versions into a default "Main resume" with their numbers unchanged; accounts with no master resume get no template.
 
@@ -342,3 +342,38 @@ Self-service reset for accounts with a password: `verified` accounts and `legacy
 - **Complete.** One transaction sets the password and signs out every browser session. It revokes OAuth connections (and their tokens and signed links) and managed agent tokens. When the email was still unverified it also revokes harness (chat) grants, since that email was never proven to belong to the phone's owner. An emailed link marks the address verified; an operator link doesn't. Completing never signs in. A "password changed" notice is queued, and self-service `POST /auth/password` sends it too.
 - `GET /auth/session` includes `password_reset: {enabled}`. It's true when `PASSWORD_RESET_ENABLED` isn't `0`, mail is on and `PUBLIC_BASE_URL` is set.
 - Mail: reset links use the `reset` share of the daily cap (`MAIL_LIMIT_RESET`, 25); the notice uses what's left (at least 15). A send deferred by the quota waits without using up attempts, for at most 48 hours.
+
+## Deleting data (schema 17)
+
+Only the signed-in owner can delete, in the app: a browser session plus `X-CSRF-Token`, and HTTPS outside development. OAuth and MCP tokens, managed agent tokens, harness grants and the legacy `AGENT_API_TOKEN` are refused (401/403). Agents can add and edit, but never delete. None of these routes is in the OpenAPI contract, and there are no delete tools.
+
+| Method | Path | Body | Result |
+| --- | --- | --- | --- |
+| GET | /jobs/{id}/deletion | — | `{contacts, activities, resumes, drafts}`, the counts the confirmation shows |
+| DELETE | /jobs/{id} | `{version}` | Deletes the role with its contacts, notes, activity, resumes and drafts, and their files. 409 when `version` is stale. Queued fill tasks for the role are cancelled. Ingestion receipts are kept but scrubbed (`url` emptied), so replaying the same Idempotency-Key answers `{"status": "deleted"}` and never re-creates the role. |
+| DELETE | /resumes/{id} | — | Deletes one job resume and its file. Signed links for it stop working. |
+| GET | /templates/{id}/deletion | — | `{name, versions, tailored_resumes_unlinked, drafts, is_default, other_templates, deletable}` |
+| DELETE | /templates/{id} | `{confirm_name}` | Deletes the template and all its versions. The name must match exactly (400). The default can't be deleted while other templates exist (409); the only template can. |
+| DELETE | /templates/{id}/versions/{version_id} | — | Deletes one version. The version must belong to that template (404 otherwise). Numbers are never reused or renumbered. Refused (409) when it's the default template's last version and another template has versions. |
+
+**What happens to related data:**
+- Tailored resumes made from a deleted version keep their content and lose their link to the source. The role's history records why.
+- Harness drafts made from it are deleted.
+- Approving a draft now removes the draft's own file copies, so no hidden copy outlives the job resume.
+
+Every deletion is final; there's no undo or trash. Each one writes an id-only row to the deletion ledger (`deletions`, kept 35 days), which lets an operator re-apply deletions after restoring a backup (OPERATIONS.md).
+
+**Export download.** The operator's `flask user export` link is `{PUBLIC_BASE_URL}/api/v1/exports/nme_…`. It needs no session and is valid 48 h.
+- `GET` shows a small page with a **Download my data (ZIP)** button and uses up nothing, so mail scanners and link previews are harmless.
+- The button sends a same-origin `POST` to the same URL; a cross-origin POST gets 403. Each POST counts, and 3 are allowed.
+- Unknown, expired or used-up links get a 404 page.
+
+Administrators (`flask --app jobtracker …`):
+
+| Command | Effect |
+| --- | --- |
+| `user delete EMAIL \| --id N --code CODE [--yes] [--allow-owner] [--pending-only]` | Deletes the account and everything in it after a typed confirmation. The support code must have been issued for this account and `delete`; it's consumed in the deletion transaction, and `--yes` never waives it. `--yes` needs `--id`. Refuses the workspace owner without `--allow-owner`. Verified accounts get an "account deleted" email. Prints the NextMoveAgent step. |
+| `user export EMAIL \| --id N --code CODE` | Builds a ZIP of the account's data and prints a 48-hour download link. The code must have been issued for this account and `export`; it's consumed with the export. |
+| `support code --id N --for delete\|export` / `support check CODE` | Issues a one-time code bound to one account and one action (72 h), and shows what a returned code authorizes without using it up |
+| `deletions export` / `deletions replay FILE [--force]` | Ledger export before a restore, and replay after it (never sends mail) |
+| `storage sweep [--apply] [--force]` | Reports, or with `--apply` removes, orphan files and deleted accounts' folders. Guarded. |

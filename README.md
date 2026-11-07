@@ -69,6 +69,10 @@ Accounts confirm their email before they can be used: sign-up emails a link that
 
 Select **Forgot password?** on the sign-in screen and enter your email. If an account uses it, My Next Moov emails a link that works once and expires in 60 minutes. Opening the link lets you choose a new password. That signs you out everywhere and disconnects your connected agents and agent tokens, so reconnect them afterwards under **Agent access**. You then sign in with the new password. See [Password reset](docs/API.md#password-reset-schema-16).
 
+## Delete your data
+
+Delete a role (with its contacts, notes, activity and files), one resume, a template version or a whole template from the app; each asks for confirmation, and deleting is permanent. AI agents can add and edit but never delete. Account deletion and data export are handled by support within 14 days (see [Deleting data](docs/API.md#deleting-data-schema-17)).
+
 ## Change your password
 
 Select **Change password** in the sidebar. Enter your current password, a new password of 8–128 characters, and its confirmation. The change keeps this device signed in and signs out other browser sessions. Only a verifier hash is stored, in the workspace database; the change survives restarts and redeployments. Agent tokens cannot change this password and are managed separately.

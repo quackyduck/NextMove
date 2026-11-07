@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { api, apiUrl } from "./api.js";
+import { DeleteDialog } from "./DeleteDialog.jsx";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain";
@@ -118,6 +119,9 @@ function TemplateCard({ template, hasDefault, names, notice, onBusyChange, onCha
   const [history, setHistory] = useState(null);
   const [historyError, setHistoryError] = useState("");
   const [error, setError] = useState("");
+  // Data deletion (schema 17): { kind: "template", preview } or { kind: "version", item } while confirming.
+  const [deleting, setDeleting] = useState(null);
+  const blocked = template.is_default && names.length > 1;
   const path = `/templates/${encodeURIComponent(template.id)}`;
   const { latest } = template;
   const hidden = <span className="visually-hidden"> (<bdi>{template.name}</bdi>)</span>;
@@ -150,6 +154,20 @@ function TemplateCard({ template, hasDefault, names, notice, onBusyChange, onCha
       if (!e.authenticationRequired) setError(e.message);
     }
   }
+  async function askDeleteTemplate() {
+    setError("");
+    try {
+      setDeleting({ kind: "template", preview: await api(`${path}/deletion`) });
+    } catch (e) {
+      if (!e.authenticationRequired) setError(e.message);
+    }
+  }
+  async function deleted(done, message) {
+    setDeleting(null);
+    if (!done) return;
+    if (deleting?.kind === "version") setHistory((current) => current?.filter((item) => item.id !== deleting.item.id) || null);
+    await onChanged(message, { cardId: deleting?.kind === "version" ? template.id : undefined });
+  }
   async function uploaded(data) {
     const message = data.created ? `Saved ${data.resume.original_filename} as version ${data.resume.version}.`
       : "That file matches the latest version, so nothing changed.";
@@ -180,8 +198,11 @@ function TemplateCard({ template, hasDefault, names, notice, onBusyChange, onCha
           <button type="button" className="btn btn-outline-secondary" onClick={() => setEditing(true)}>Edit{hidden}</button>
           {!template.is_default && latest &&
             <button type="button" className="btn btn-outline-secondary" onClick={makeDefault}>Make default{hidden}</button>}
+          <button type="button" className="btn btn-outline-danger" disabled={blocked} onClick={askDeleteTemplate}
+            aria-describedby={blocked ? `${id}-blocked` : undefined}>Delete template{hidden}</button>
         </div>
       )}
+      {blocked && !editing && <p id={`${id}-blocked`} className="form-text">Make another template the default before deleting this one.</p>}
       <UploadForm path={`${path}/versions`} label={<>New version of <bdi>{template.name}</bdi></>} onBusyChange={onBusyChange} onUploaded={uploaded} />
       {latest && (
         <details className="template-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
@@ -193,11 +214,31 @@ function TemplateCard({ template, hasDefault, names, notice, onBusyChange, onCha
                 <li key={item.id} className="mb-2">
                   <a href={downloadUrl(template, item.version)} download>Version {item.version}: <bdi>{item.original_filename}</bdi></a>
                   <span className="form-text"> · {formatSize(item.size)} · {formatDate(item.created_at)}</span>
+                  {" "}<button type="button" className="btn btn-link btn-sm text-danger p-0 align-baseline"
+                    aria-label={`Delete version ${item.version} of ${template.name}`}
+                    onClick={() => setDeleting({ kind: "version", item })}>Delete</button>
                 </li>
               ))}
             </ul>
           )}
         </details>
+      )}
+      {deleting?.kind === "template" && (
+        <DeleteDialog title={<>Delete <bdi>{template.name}</bdi>?</>} confirmText={template.name}
+          confirmLabel={<>Type the template name, <bdi>{template.name}</bdi>, to confirm</>}
+          onConfirm={() => api(path, { method: "DELETE", body: { confirm_name: template.name } })}
+          onClose={(done) => deleted(done, `Deleted ${template.name}.`)}>
+          <p>This permanently deletes the template and its {deleting.preview.versions === 1 ? "version" : `${deleting.preview.versions} versions`}.</p>
+          {deleting.preview.tailored_resumes_unlinked > 0 &&
+            <p>{deleting.preview.tailored_resumes_unlinked === 1 ? "1 tailored resume keeps" : `${deleting.preview.tailored_resumes_unlinked} tailored resumes keep`} its content on its role but will no longer link to this template.</p>}
+        </DeleteDialog>
+      )}
+      {deleting?.kind === "version" && (
+        <DeleteDialog title={<>Delete version {deleting.item.version} of <bdi>{template.name}</bdi>?</>}
+          onConfirm={() => api(`${path}/versions/${encodeURIComponent(deleting.item.id)}`, { method: "DELETE" })}
+          onClose={(done) => deleted(done, `Deleted version ${deleting.item.version}.`)}>
+          <p>This permanently deletes <bdi>{deleting.item.original_filename}</bdi>. Other versions keep their numbers. Tailored resumes made from it keep their content.</p>
+        </DeleteDialog>
       )}
     </article>
   );
@@ -276,7 +317,7 @@ export function MasterResume({ reauthRequired, onBusyChange, onSaved }) {
       {templates && (
         <section className="form-panel mb-4" aria-labelledby={`${id}-new`}>
           <h2 id={`${id}-new`} className="section-heading mt-0">New template</h2>
-          <p className="form-text">For a different kind of role. You can keep up to 10 templates; nothing is deleted.</p>
+          <p className="form-text">For a different kind of role. You can keep up to 10 templates, and delete the ones you no longer need.</p>
           <TemplateForm taken={names} submitLabel="Create template" onSubmit={create} />
         </section>
       )}

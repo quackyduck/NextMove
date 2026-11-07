@@ -51,6 +51,15 @@ class Endpoint:
 
 
 ENDPOINTS = [
+    # Data deletion (schema 17): browser session plus CSRF only; every agent credential is refused.
+    Endpoint('GET', '/api/v1/jobs/<job_id>/deletion', '/api/v1/jobs/{job}/deletion', ('session',)),
+    Endpoint('DELETE', '/api/v1/jobs/<job_id>', '/api/v1/jobs/{job}', ('session',), {'version': 1}),
+    Endpoint('DELETE', '/api/v1/resumes/<resume_id>', '/api/v1/resumes/{resume}', ('session',)),
+    Endpoint('GET', '/api/v1/templates/<template_id>/deletion', '/api/v1/templates/{template}/deletion', ('session',)),
+    Endpoint('DELETE', '/api/v1/templates/<template_id>', '/api/v1/templates/{template}', ('session',),
+             {'confirm_name': 'Main resume'}),
+    Endpoint('DELETE', '/api/v1/templates/<template_id>/versions/<version_id>',
+             '/api/v1/templates/{template}/versions/{master}', ('session',)),
     Endpoint('GET', '/api/v1/jobs/<job_id>', '/api/v1/jobs/{job}', ('session', 'oauth', 'legacy')),
     Endpoint('PATCH', '/api/v1/jobs/<job_id>', '/api/v1/jobs/{job}', ('session', 'oauth', 'legacy'),
              {'title': 'Hijacked', 'stage': 'offer'}),
@@ -132,6 +141,9 @@ COLLECTIONS = {
     ('GET', '/api/v1/templates'): 'test_lists_and_search_exclude_other_tenants',
     ('POST', '/api/v1/templates'): 'test_creations_belong_to_the_caller',
     ('POST', '/api/v1/uploads/<token>'): 'test_mcp_oauth.py',
+    # Data export (schema 17): the link's token, not an ID, names the export.
+    ('GET', '/api/v1/exports/<token>'): 'test_data_deletion.py',
+    ('POST', '/api/v1/exports/<token>'): 'test_data_deletion.py',
 }
 
 

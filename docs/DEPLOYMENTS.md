@@ -86,3 +86,10 @@ Without a rollback, `SIGNUP_REQUIRES_INVITE=1` makes sign-up invite-only at once
 4. Check `flask mail status` for the reset share.
 
 **Test server:** `MAIL_BACKEND=none` keeps self-service reset off there; use `flask user reset-link`.
+
+## Schema 17: data deletion and export
+
+Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshots older than 28 days. **At the cut-over, with web and worker stopped, run a one-time `flask --app jobtracker storage vacuum`** in a one-off container. It vacuums the main and throttle databases at their configured paths. `secure_delete` only overwrites pages freed from now on; the VACUUM rewrites pages left by earlier deletions, such as the schema 15 and 16 cleanups. Older releases refuse schema 17; rolling back means restoring the snapshot **and then replaying the deletion ledger** (OPERATIONS.md, "Backups, snapshots and restores"). Deploy NextMoveAgent's `resume-agent tenant delete` (branch `feat/tenant-delete`) first or alongside. After cut-over:
+1. Delete a throwaway role and template in the app.
+2. Run `flask user delete --id <test account>` and the printed agent step.
+3. Run `flask storage sweep` (a dry run) and check it reports nothing unexpected.

@@ -32,7 +32,9 @@ INSTRUCTIONS = (
     + ', '.join(f'{key} ({label})' for key, label in STAGE_LABELS.items())
     + '. Outcome (active, rejected, withdrawn, closed, accepted, not_interested) is separate from stage. '
     'Only move a role to a stage that reflects work the user actually did: uploading a resume is not applying. '
-    'Resume uploads always add a new version; nothing is ever deleted. Confirm with the user before changing '
+    'Agents can add and edit roles, notes, contacts, resumes and templates, but can\'t delete anything: only the '
+    'signed-in user can delete, in My Next Moov. Resume uploads always add a new version. '
+    'Confirm with the user before changing '
     'stage or outcome unless they asked for that exact change. '
     'The user may keep several resume templates, one per kind of role (list_templates); "the master resume" is the '
     'default template. Before tailoring a resume for a role, pick the template whose name and description fit that '
