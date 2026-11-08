@@ -191,8 +191,24 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
       <section className="form-panel mb-4" aria-label="Connect an AI assistant">
         <h2 className="section-heading mt-0">Connect an AI assistant</h2>
-        <p>Assistants that support MCP connectors (Claude, ChatGPT, Cursor and others) connect without a token. Add this server URL as a custom connector, then sign in and choose what it may do:</p>
+        <p>Assistants that support MCP connectors connect with this server URL. No token needed.</p>
         <pre className="agent-url">{base}/mcp</pre>
+        <button type="button" className="btn btn-outline-secondary btn-sm mb-3" disabled={busy}
+          onClick={() => run(async () => {
+            try { await navigator.clipboard.writeText(`${base}/mcp`); }
+            catch { throw new Error("Copy unavailable. Select the server URL and copy it manually."); }
+            setNotice("Server URL copied.");
+          })}>
+          Copy server URL
+        </button>
+        <h3 className="h6">Set up in Claude</h3>
+        <ol>
+          <li>In Claude, open <strong>Settings → Connectors</strong> and choose <strong>Add custom connector</strong>. This is easiest in Claude on the web or the desktop app.</li>
+          <li>Paste the server URL above.</li>
+          <li>If Claude asks, sign in to My Next Moov and choose what Claude may do.</li>
+          <li>Once My Next Moov shows as connected, start a new chat. Claude can then add job postings to your tracker. Try: “Add this posting to My Next Moov,” followed by the link.</li>
+        </ol>
+        <p className="form-text">ChatGPT, Cursor and other assistants that support MCP connectors work the same way: add the server URL as a custom connector.</p>
         <p className="form-text">Other agents can use the OAuth-protected API described at <code>{base}/api/v1/openapi.json</code>.</p>
         <h3 className="h6 mt-3">Connected apps</h3>
         {!loading && !connections.length && <p className="mb-0">No apps connected yet.</p>}

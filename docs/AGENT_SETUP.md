@@ -13,11 +13,19 @@ sign-up. It explains these options and links to Agent access with
 Use this if your agent supports MCP connectors. Claude, Claude Code, ChatGPT,
 Cursor and many others do.
 
-1. Open **Agent access** and copy the server URL under **Connect an AI assistant**
-   (for example `https://mynextmoov.com/mcp`).
-2. In your agent, add it as a custom connector (in Claude: **Settings → Connectors
-   → Add custom connector**).
-3. Sign in to My Next Moov when asked, and choose what the agent may do.
+To set it up in Claude:
+
+1. Open **Agent access** in My Next Moov and copy the server URL under
+   **Connect an AI assistant** (`https://mynextmoov.com/mcp`).
+2. In Claude, open **Settings → Connectors** and choose **Add custom connector**.
+   This is easiest in Claude on the web or the desktop app.
+3. Paste the server URL. If Claude asks, sign in to My Next Moov and choose what
+   Claude may do.
+4. Once My Next Moov shows as connected, start a new chat. Claude can then add job
+   postings to your tracker. Try: "Add this posting to My Next Moov," followed by the link.
+
+Other assistants that support MCP connectors work the same way: add the server URL
+as a custom connector and sign in.
 
 The app then appears under **Connected apps** on Agent access, where you can
 disconnect it at any time.

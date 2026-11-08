@@ -36,6 +36,8 @@ test("an agent's OAuth request signs in, asks for consent, returns a code, and s
   await page.getByRole("button", { name: "Agent access", exact: true }).click();
   const app = page.getByRole("region", { name: "Connect an AI assistant" });
   await expect(app).toContainText(`${path}mcp`);
+  await expect(app.getByRole("heading", { name: "Set up in Claude" })).toBeVisible();
+  await expect(app).toContainText("Add custom connector");
   await expect(app.getByRole("article")).toContainText("Phone assistant");
   await expect(app.getByRole("article")).toContainText("See roles");
   await app.getByRole("button", { name: "Disconnect Phone assistant" }).click();
