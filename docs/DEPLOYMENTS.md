@@ -98,6 +98,16 @@ Take the dated snapshot first (`snapshots/YYYY-MM-DD-<sha>`) and delete snapshot
 
 Additive (`users.is_admin`, `users.last_seen_at`, `admin_actions`). Take the dated snapshot first. After cut-over, run `flask --app jobtracker user set-admin <your verified email>` in a one-off container, sign in, and open `/admin`. The privacy page wording for this release (last-use time, support-action records and their 1-year retention) was approved by the owner on November 7, 2026. Rolling back means restoring the snapshot, or the downgrade in OPERATIONS.md ("Admin page — schema 18"). **Every restore from now on** gets one more step: compare `flask user list`'s admin column with what you expect, and re-run `set-admin --revoke` before starting web.
 
+## Release record — agent onboarding and connector steps, November 8, 2026
+
+Production runs NextMove `4167207` (PR #48: a simpler agent step in onboarding, a copyable agent prompt on Agent access, and Claude and Muse connector steps). Frontend and docs only: no schema change and no settings changed. NextMoveAgent stays at `4a178d3`. The test server was not updated and still runs `3b3a2ab`.
+
+**Production (mynextmoov.com), about 05:46 UTC:**
+- **Before:** volume checkpoint `/opt/nextmove/rollback/agent-onboarding-4167207`; rollback image `nextmove/jobtracker:rollback-a1fb769`. No Droplet snapshot, since there was no schema change.
+- **Schema** stayed at 18. Records were unchanged (57 roles, 32 resumes, 205 activities, 5 accounts).
+- **Smoke tests:** `/health` is ok; the home and privacy pages load; `POST /mcp` returns 401; the served bundle has the new onboarding step, the agent prompt and the Muse steps; web and worker logs show no errors.
+- **Record:** `/opt/nextmove/deployment-record-agent-onboarding-4167207.json`; script `/opt/nextmove/nextmove-cutover-agent-onboarding-4167207.py`.
+
 ## Release record — admin page, November 7, 2026
 
 Production and the test server both run NextMove `3b3a2ab` (PR #45: the admin page, schema 18). NextMoveAgent stays at `065b7bb`. No settings changed.
