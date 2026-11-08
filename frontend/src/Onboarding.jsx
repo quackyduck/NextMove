@@ -1,8 +1,6 @@
 import { BrandIdentity } from "./Brand.jsx";
 import React, { useEffect, useId, useRef, useState } from "react";
 import { api } from "./api.js";
-import { NewTokenPanel, SCOPE_LABELS, TokenCreateForm, copySecret, testConnection } from "./AgentAccess.jsx";
-import { agentSnippets, siteBase, TOKEN_FILE } from "./agentSnippets.js";
 
 export const AGENT_SETUP_DOCS = "https://github.com/quackyduck/NextMove/blob/main/docs/AGENT_SETUP.md";
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -12,7 +10,7 @@ const ACCEPT = ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-o
 // users download it.
 const SCREENS = { upload_resume: ResumeStep, connect_agent: AgentStep };
 
-export default function Onboarding({ step, done, position, total, guided, reauthRequired, onState, onNext, onExit, onSignOut }) {
+export default function Onboarding({ step, done, position, total, guided, reauthRequired, onState, onNext, onOpenAgentAccess, onSignOut }) {
   const headingRef = useRef(null);
   const continueRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -50,28 +48,25 @@ export default function Onboarding({ step, done, position, total, guided, reauth
           <button type="button" className="btn btn-link btn-sm" onClick={onSignOut} disabled={busy}>Sign out</button>
         </div>
         {guided && <p className="eyebrow mt-4">SETUP · STEP {position} OF {total}</p>}
-        <Screen headingRef={headingRef} busy={busy} run={run} onState={onState} reauthRequired={reauthRequired} />
+        <Screen headingRef={headingRef} busy={busy} run={run} onState={onState} reauthRequired={reauthRequired}
+          onOpenAgentAccess={onOpenAgentAccess} />
         {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
         <div className="onboarding-actions">
           {done ? (
             <button type="button" ref={continueRef} className="btn btn-primary" disabled={busy} onClick={() => onNext()}>Continue</button>
-          ) : step === "upload_resume" ? (
-            // One way past the resume step: a second "Continue later" link read as the same choice.
+          ) : (
+            // One way past each step: the action on the screen, or skip. A second
+            // "Continue later" link read as the same choice.
             <>
               <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={skip}
-                aria-describedby="resume-skip-hint">
+                aria-describedby={`${step}-skip-hint`}>
                 Skip for now
               </button>
-              <p id="resume-skip-hint" className="form-text mb-0">
-                You can add your resume anytime from Your resume templates in My Next Moov.
+              <p id={`${step}-skip-hint`} className="form-text mb-0">
+                {step === "upload_resume"
+                  ? "You can add your resume anytime from Your resume templates in My Next Moov."
+                  : "You can create an agent token anytime from Agent access in My Next Moov."}
               </p>
-            </>
-          ) : (
-            <>
-              <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={skip}>Skip agent setup</button>
-              <button type="button" className="btn btn-link" disabled={busy} onClick={onExit}>
-                {guided ? "Continue later" : "Back to your pipeline"}
-              </button>
             </>
           )}
         </div>
@@ -133,87 +128,27 @@ function ResumeStep({ headingRef, busy, run, onState }) {
   );
 }
 
-function Snippet({ title, text, busy, run }) {
+// Informational only: the token form, snippets and connection test live on
+// Agent access, which completes this step once a token connects.
+function AgentStep({ headingRef, busy, onOpenAgentAccess }) {
   const id = useId();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = setTimeout(() => setCopied(false), 4000);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <div className="mt-3">
-      <h3 className="snippet-title" id={id}>{title}</h3>
-      <pre className="setup-snippet" role="region" aria-labelledby={id} tabIndex={0}>{text}</pre>
-      <button type="button" className="btn btn-sm btn-outline-secondary" disabled={busy}
-        onClick={() => run(async () => {
-          try { await navigator.clipboard.writeText(text); }
-          catch { throw new Error("Copy unavailable. Select the snippet and copy it manually."); }
-          setCopied(true);
-        })}>
-        Copy {title} snippet
-      </button>
-      <span role="status" className="form-text ms-2">{copied ? `${title} snippet copied` : ""}</span>
-    </div>
-  );
-}
-
-function AgentStep({ headingRef, busy, run, onState }) {
-  const id = useId();
-  const [created, setCreated] = useState(null);
-  const [permissions, setPermissions] = useState(["roles:search", "roles:ingest"]);
-  const [notice, setNotice] = useState("");
-  const [connected, setConnected] = useState(false);
-  const scopes = created?.agent_token.permissions || permissions;
-  const snippets = agentSnippets({ base: siteBase(), permissions: scopes });
-  function create(values) {
-    return run(async () => {
-      setNotice("");
-      setCreated(await api("/agent-tokens", { method: "POST", body: values }));
-    });
-  }
-  function test() {
-    run(async () => {
-      const data = await testConnection(created.token);
-      setConnected(true);
-      setNotice(`Connected as ${data.agent_token.name}. No role was created.`);
-      // The server marks this step done from the successful token use.
-      onState(await api("/onboarding"));
-    });
-  }
   return (
     <section aria-labelledby={`${id}-title`}>
       <h1 id={`${id}-title`} ref={headingRef} tabIndex={-1}>Set up an agent.</h1>
       <p className="text-secondary">
-        Optional. Let an AI agent such as Claude Code check postings for duplicates and add roles for your review.
-        Each agent gets its own scoped token that you can revoke at any time.
+        Optional. You can give an AI agent such as Claude Code access to My Next Moov, so it can check postings for
+        duplicates and add roles for your review.
       </p>
-      <ol className="onboarding-list">
-        <li>Create a token below. It is shown once.</li>
-        <li>Save it to <code>{TOKEN_FILE}</code> (private, <code>chmod 600</code>; the guide has a safe command) or your agent’s secret settings. Never put it in a prompt or a URL.</li>
-        <li>Copy a setup snippet for your agent and test the connection.</li>
-      </ol>
-      <p className="mb-0"><a href={AGENT_SETUP_DOCS} target="_blank" rel="noreferrer">Read the full agent setup guide (opens in a new tab)</a></p>
-      {notice && <div role="status" className="alert alert-success mt-3">{notice}</div>}
-      <div className="mt-3">
-        {created?.token && !connected ? (
-          <NewTokenPanel secret={created.token} busy={busy}
-            onCopy={() => run(async () => { await copySecret(created.token); setNotice("Token copied. Store it securely; do not paste it into a conversation."); })}
-            onTest={test}
-            onHide={() => { setCreated({ agent_token: created.agent_token }); setNotice("Token hidden. You can test it later from Agent access."); }} />
-        ) : !created ? (
-          <TokenCreateForm busy={busy} onCreate={create} onPermissionsChange={setPermissions} initialName="My agent" />
-        ) : null}
-      </div>
-      <section aria-label="Setup snippets">
-        <h2 className="section-heading">Setup snippets</h2>
-        <p className="form-text mb-0">
-          Scopes: {scopes.map((scope) => SCOPE_LABELS[scope]).join("; ") || "none selected"}. The snippets read the token from
-          a file or the <code>NEXTMOVE_INGEST_TOKEN</code> environment variable; they never contain it.
-        </p>
-        <Snippet title="Claude Code" text={snippets.claudeCode} busy={busy} run={run} />
-        <Snippet title="HTTP agent" text={snippets.http} busy={busy} run={run} />
-      </section>
+      <p className="text-secondary">
+        To do that, create an agent token. Each agent gets its own token with only the access you choose, and you can
+        revoke it at any time.
+      </p>
+      <button type="button" className="btn btn-primary w-100 mt-2" disabled={busy} onClick={onOpenAgentAccess}>
+        Create an agent token
+      </button>
+      <p className="form-text mt-2 mb-0">
+        <a href={AGENT_SETUP_DOCS} target="_blank" rel="noreferrer">Read the agent setup guide (opens in a new tab)</a>
+      </p>
     </section>
   );
 }

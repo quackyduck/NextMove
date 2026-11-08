@@ -1,145 +1,100 @@
-# Set up your job intake agent
+# Connect an agent to My Next Moov
 
-This walkthrough covers named tokens for duplicate search, URL intake, and
-resume uploads. Use the deployed version with the permissions described below. No MCP server is required: a scoped token and this client
-provide the workflow. MCP can be added later for agents that require tool discovery.
+An AI agent can check job postings against the roles you've already saved,
+add new ones for your review, and attach tailored resumes. There are two ways to
+connect one. Both are set up from **Agent access** in My Next Moov.
 
-## 1. Create access on the site
+New accounts are also offered an optional **Set up an agent** step right after
+sign-up. It explains these options and links to Agent access with
+**Create an agent token**. The dashboard checklist links there later too.
 
-New accounts are offered the same flow as an optional **Set up an agent** step
-right after sign-up (and from the dashboard checklist later). It also shows
-ready-to-copy setup snippets for Claude Code and for a generic HTTP agent; they
-reference the token by file path or `NEXTMOVE_INGEST_TOKEN`, never by value.
+## Option 1: a connector (no token)
 
-Sign in, open **Agent access**, name the token for the agent, choose an expiry,
-and keep **Search saved roles for duplicates** and **Add roles from URLs and
-upload resumes** checked. Enter the current workspace password and select
-**Create token**.
-Copy the secret once, save it, then select **Test connection**. This browser test
-creates no role. **I've saved my token** hides it; leaving/reloading also discards
-it. A lost secret cannot be recovered: revoke it and create a replacement.
+Use this if your agent supports MCP connectors, such as Claude, Claude Code or
+Muse.
 
-Search-only tokens are available by unchecking Add roles. Tokens cannot read
-private notes or existing resumes, edit role fields, or administer access.
-Add roles tokens can also append resume versions to any saved role; existing tokens
-with that permission work without being replaced.
+To set it up in Claude:
 
-## 2. Store the token on the agent's machine
+1. Open **Agent access** in My Next Moov and copy the server URL under
+   **Connect an AI assistant** (`https://mynextmoov.com/mcp`).
+2. In Claude, open **Settings → Connectors** and choose **Add custom connector**.
+   This is easiest in Claude on the web or the desktop app.
+3. Paste the server URL. If Claude asks, sign in to My Next Moov and choose what
+   Claude may do.
+4. Once My Next Moov shows as connected, start a new chat. Claude can then add job
+   postings to your tracker. Try: "Add this posting to My Next Moov," followed by the link.
 
-For a local agent, create a private file interactively; the token is not placed in
-shell history or printed. Run this yourself, outside the agent conversation:
+To set it up in Muse:
 
-```sh
-python3 - <<'PY'
-from pathlib import Path
-import getpass, os
-folder = Path.home() / '.config' / 'nextmove'
-folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-fd = os.open(folder / 'agent-token', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as file:
-    file.write(getpass.getpass('Paste your NextMove token: ').strip() + '\n')
-PY
-```
+1. In a Muse chat, ask it to create a custom connector for My Next Moov using the
+   server URL `https://mynextmoov.com/mcp`.
+2. If Muse asks, sign in to My Next Moov and choose what Muse may do.
+3. Once connected, ask Muse to add a job posting to your tracker, followed by the link.
 
-The command refuses to overwrite an existing file. For a hosted agent, use its
-secret manager to inject `NEXTMOVE_INGEST_TOKEN` into the client process. Give
-the agent only the file path or variable name. Never paste the value into chat,
-URLs, source code, screenshots, or command arguments. The client reads it internally
-and refuses redirects and non-HTTPS sites (except loopback development).
+The app then appears under **Connected apps** on Agent access, where you can
+disconnect it at any time.
 
-## 3. Test from the agent's machine
+## Option 2: an agent token and a prompt
 
-Check out the reviewed version of this repository and run from that folder:
+Use this for any agent that can make HTTP requests but doesn't support connectors.
 
-```sh
-python3 scripts/ingest_url.py --token-file "$HOME/.config/nextmove/agent-token" \
-  --base-url https://mynextmoov.com --test-connection
-```
+### 1. Create a token
 
-Expect `connected: true`, the token name, and both permissions. A 401 means an
-invalid, expired, or revoked token; a 403 can mean HTTPS is required. This verifies
-connectivity and authentication without creating a role. For hosted agents omit
-`--token-file` to use the injected environment secret. Use the exact deployed base
-URL; the client appends `/api/v1` itself.
+On **Agent access**, under **Create a token**:
 
-## 4. Enable the skill
+- Name it after the agent (for example "Laptop agent").
+- Choose when it expires.
+- Keep **Search saved roles for duplicates** and **Add roles from URLs and upload
+  resumes** checked, unless you want a search-only agent.
+- Enter your current password and select **Create token**.
 
-The repository includes `.agents/skills/nextmove-url-intake/SKILL.md`. Open this
-checkout as your agent's working project. Codex supports project-local skills in
-`.agents/skills`; see [official skill setup](https://learn.chatgpt.com/docs/build-skills).
-Start a fresh task if the skill is not discovered. For another agent, register
-this SKILL.md using its skill mechanism, keep this checkout available, and configure
-its working directory to this repository. The skill depends on the client and
-this guide; copying only SKILL.md to another location is insufficient.
+The token is shown **once**. Copy it, then select **Test connection** to check it
+works. The test creates no role. If you lose the token, revoke it and create
+another; it can't be shown again.
 
-Give the agent these nonsecret settings: checkout location, base URL, and token
-file path (or environment variable name). Allow running the Python client and
-HTTPS access to your site. No database, server login, or workspace password is needed.
+### 2. Give the token to your agent, not to the chat
 
-Example request:
+Store the token where your agent keeps secrets:
 
-> Use $nextmove-url-intake to check this posting and add it if it is new:
-> https://careers.example/jobs/123. Use https://mynextmoov.com and
-> the private token file at ~/.config/nextmove/agent-token. Pause on possible
-> duplicates and leave new roles for my review.
+- **Hosted agents**: add a secret or environment variable named
+  `NEXTMOVE_INGEST_TOKEN`.
+- **Agents on your own computer**: save it in a private file at
+  `~/.config/nextmove/agent-token` that only your user can read.
 
-## 5. Search, submit, and review
+Never paste the token into a conversation, a link, a screenshot or source code.
 
-The agent first searches using the URL and any known company/title:
+### 3. Paste the prompt
 
-```sh
-python3 scripts/ingest_url.py 'https://careers.example/jobs/123?jobId=123' \
-  --search --company 'Example' --title 'Backend Engineer' \
-  --token-file "$HOME/.config/nextmove/agent-token"
-```
+Under **Connect your agent**, select **Copy prompt** and paste it into your agent.
+The prompt has your site's real address and tells the agent:
 
-The client checks every available result page. Duplicates are skipped. Possible
-matches require your decision; a failed/incomplete search must not silently proceed.
-Job identifiers and unknown query parameters stay significant; known tracking
-parameters do not. If there is no match, submit:
+- where to read the token (the file or `NEXTMOVE_INGEST_TOKEN`), and to keep it private;
+- how to check the connection;
+- to search for duplicates before adding a posting, and to ask you about possible matches;
+- how to add a posting and wait for the result;
+- how to attach a resume to a saved role.
 
-```sh
-python3 scripts/ingest_url.py 'https://careers.example/jobs/123?jobId=123' \
-  --token-file "$HOME/.config/nextmove/agent-token" --wait
-```
+Then ask the agent something like:
 
-Keep the printed Idempotency-Key. If the response is lost, repeat with
-`--idempotency-key THE_SAME_KEY`; a fresh key is a new submission. Extraction is
-asynchronous; the client waits up to 70 seconds and reports failures/warnings.
-Search and submission are separate operations; they do not enforce uniqueness
-against concurrent writers.
+> Check this posting and add it if it's new: https://careers.example/jobs/123
 
-Agent submissions appear in the pipeline's **Needs review** column. Open the role,
-check extracted details/notes and warnings, choose **Interesting** in the stage
-selector, then save. Manual entries and Quick capture saves start **Interesting**.
-Existing roles retain their current stages; no roles are reclassified during upgrade.
+### What the agent can and can't do with a token
 
-## 6. Revoke or rotate access
+- New roles land in **Needs review**. Open the role, check the details, and move it
+  to **Interesting** when you want to keep it.
+- Each resume upload adds a new version to the role and doesn't change its stage.
+  Uploading the same file twice adds two versions, so check before retrying an upload.
+- Tokens can't read your notes or existing resumes, edit roles, or manage access.
 
-In **Agent access**, find the named token and select Revoke, then Confirm revoke.
-New searches, connection checks, submissions, resume uploads, and receipt reads fail immediately.
-Already accepted work may finish; saved roles remain. Remove the local secret or
-hosted secret configuration. To rotate, create/test a replacement, configure the
-agent with it, then revoke the old token. Old ingestion receipts belong to the old
-token; do not replay unresolved submissions using a replacement and a fresh key.
-Password changes revoke browser sessions but do not revoke agent tokens.
+## Revoke or replace access
 
-## Attach a resume after saving a role
+On **Agent access**:
 
-Use the saved role ID (`job_id` from a successful ingestion receipt) with the same
-Add roles token:
+- **Token**: find it under **Your tokens**, select **Revoke**, then **Confirm revoke**.
+  It stops working immediately. Roles it already added stay saved. Remove the token
+  from your agent's secrets too.
+- **Connector**: select **Disconnect** under **Connected apps**.
 
-```sh
-python3 scripts/agent_example.py 'ROLE_UUID' '/absolute/path/resume.pdf' \
-  --token-file "$HOME/.config/nextmove/agent-token" \
-  --base-url https://mynextmoov.com
-```
-
-Hosted agents may omit `--token-file` to use `NEXTMOVE_INGEST_TOKEN`. PDF, DOCX, and
-UTF-8 TXT are supported; keep files under 10 MB. The upload client preserves the
-file’s basename for display and downloads (without exposing its local directory).
-Names containing control characters are rejected. Each upload adds a version and
-leaves the role's stage unchanged. Creation and upload are two API calls. Keep the
-upload receipt; check in the browser before retrying an uncertain upload, because
-retries can add duplicate attachment versions. Tokens still cannot list/download
-existing attachments or read role notes.
+To replace a token, create and test the new one, update your agent's secret, then
+revoke the old one. Changing your password signs out your browsers but doesn't
+revoke agent tokens.

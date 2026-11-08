@@ -3,8 +3,8 @@ name: nextmove-url-intake
 description: Search NextMove for existing roles before submitting authorized job URLs for human review.
 ---
 
-Use the repository's `scripts/ingest_url.py` from its checkout. Read
-`docs/AGENT_SETUP.md` for configuration. Requires Python 3, network access,
+Use the repository's `scripts/ingest_url.py` from its checkout; run it with
+`--help` for its options and `docs/AGENT_SETUP.md` for token setup. Requires Python 3, network access,
 configured NextMove base URL, and a token with search and ingestion permissions.
 Use a configured private token-file path or an injected NEXTMOVE_INGEST_TOKEN;
 never read, print, or paste the secret into a prompt. Never obtain broad credentials.
