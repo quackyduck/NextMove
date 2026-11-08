@@ -38,6 +38,8 @@ test("an agent's OAuth request signs in, asks for consent, returns a code, and s
   await expect(app).toContainText(`${path}mcp`);
   await expect(app.getByRole("heading", { name: "Set up in Claude" })).toBeVisible();
   await expect(app).toContainText("Add custom connector");
+  await expect(app.getByRole("heading", { name: "Set up in Muse" })).toBeVisible();
+  await expect(app).not.toContainText("ChatGPT");
   await expect(app.getByRole("article")).toContainText("Phone assistant");
   await expect(app.getByRole("article")).toContainText("See roles");
   await app.getByRole("button", { name: "Disconnect Phone assistant" }).click();

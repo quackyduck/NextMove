@@ -208,7 +208,12 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
           <li>If Claude asks, sign in to My Next Moov and choose what Claude may do.</li>
           <li>Once My Next Moov shows as connected, start a new chat. Claude can then add job postings to your tracker. Try: “Add this posting to My Next Moov,” followed by the link.</li>
         </ol>
-        <p className="form-text">ChatGPT, Cursor and other assistants that support MCP connectors work the same way: add the server URL as a custom connector.</p>
+        <h3 className="h6">Set up in Muse</h3>
+        <ol>
+          <li>In a Muse chat, ask it to create a custom connector for My Next Moov using the server URL above.</li>
+          <li>If Muse asks, sign in to My Next Moov and choose what Muse may do.</li>
+          <li>Once connected, ask Muse to add a job posting to your tracker, followed by the link.</li>
+        </ol>
         <p className="form-text">Other agents can use the OAuth-protected API described at <code>{base}/api/v1/openapi.json</code>.</p>
         <h3 className="h6 mt-3">Connected apps</h3>
         {!loading && !connections.length && <p className="mb-0">No apps connected yet.</p>}
@@ -236,7 +241,7 @@ export function AgentAccess({ reauthRequired, onBusyChange, onConnected }) {
       ) : <TokenCreateForm busy={busy} onCreate={create} />}
       <section className="form-panel mb-4" aria-label="Agent setup instructions">
         <h2 className="section-heading mt-0">Connect your agent</h2>
-        <p>If your agent supports MCP connectors (Claude, Claude Code and many others do), the server URL under Connect an AI assistant is the easiest route: no token needed. For any other agent, use a token:</p>
+        <p>If your agent supports MCP connectors (Claude, Claude Code and Muse do), the server URL under Connect an AI assistant is the easiest route: no token needed. For any other agent, use a token:</p>
         <ol>
           <li>Create a token above and copy it. It is shown once.</li>
           <li>Save it where your agent keeps secrets: an environment variable or secret named <code>NEXTMOVE_INGEST_TOKEN</code>, or a private file at <code>{TOKEN_FILE}</code> on the computer the agent runs on. Don’t paste it into the chat.</li>

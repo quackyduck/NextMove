@@ -10,8 +10,8 @@ sign-up. It explains these options and links to Agent access with
 
 ## Option 1: a connector (no token)
 
-Use this if your agent supports MCP connectors. Claude, Claude Code, ChatGPT,
-Cursor and many others do.
+Use this if your agent supports MCP connectors, such as Claude, Claude Code or
+Muse.
 
 To set it up in Claude:
 
@@ -24,8 +24,12 @@ To set it up in Claude:
 4. Once My Next Moov shows as connected, start a new chat. Claude can then add job
    postings to your tracker. Try: "Add this posting to My Next Moov," followed by the link.
 
-Other assistants that support MCP connectors work the same way: add the server URL
-as a custom connector and sign in.
+To set it up in Muse:
+
+1. In a Muse chat, ask it to create a custom connector for My Next Moov using the
+   server URL `https://mynextmoov.com/mcp`.
+2. If Muse asks, sign in to My Next Moov and choose what Muse may do.
+3. Once connected, ask Muse to add a job posting to your tracker, followed by the link.
 
 The app then appears under **Connected apps** on Agent access, where you can
 disconnect it at any time.
