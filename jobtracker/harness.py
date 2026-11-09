@@ -16,6 +16,7 @@ files become a job resume, and there is no draft download route.
 """
 from datetime import timedelta, timezone
 from functools import wraps
+from types import SimpleNamespace
 import hashlib
 import hmac
 import re
@@ -37,6 +38,10 @@ from .resume_templates import list_templates
 
 harness = Blueprint('harness', __name__)
 GRANT_PREFIX = 'nm_harness_'
+# Signed links and dated notes name the grant they were made under. Harness grant ids carry this prefix in
+# links so they can never be mistaken for an OAuth grant id.
+LINK_GRANT_PREFIX = 'h:'
+CLIENT_NAME = 'My Next Moov chat'
 SIGNATURE_SKEW_SECONDS = 300
 ACTIVATION_HOURS = 24
 DRAFT_LIMIT = 5 * 1024 * 1024
@@ -111,6 +116,11 @@ def create_grant(connection, user_id):
 
 def authenticate_grant(raw, scope):
     """The grant owner's user_id when the grant is live and carries `scope`, else None."""
+    row = _live_grant(raw, scope)
+    return row['user_id'] if row else None
+
+
+def _live_grant(raw, scope):
     if not isinstance(raw, str) or not raw.startswith(GRANT_PREFIX) or not 32 <= len(raw) <= 256:
         return None
     table = HarnessGrant.__table__
@@ -123,7 +133,17 @@ def authenticate_grant(raw, scope):
     if last_used is None or last_used.replace(tzinfo=timezone.utc) < now() - timedelta(seconds=60):
         with _engine().begin() as connection:
             connection.execute(update(table).where(*live).values(last_used_at=now()))
-    return row['user_id']
+    return row
+
+
+def grant_scopes(link_grant_id):
+    """(user_id, scopes) of a live harness grant named in a signed link, else None."""
+    if not isinstance(link_grant_id, str) or not link_grant_id.startswith(LINK_GRANT_PREFIX):
+        return None
+    with _engine().connect() as connection:
+        row = connection.execute(select(HarnessGrant.user_id, HarnessGrant.scopes).where(
+            HarnessGrant.id == link_grant_id[len(LINK_GRANT_PREFIX):], HarnessGrant.revoked_at.is_(None))).first()
+    return (row.user_id, set(row.scopes)) if row else None
 
 
 def require_grant(scope):
@@ -133,12 +153,14 @@ def require_grant(scope):
             if not _transport_allowed():
                 return _error('HTTPS required', 403)
             scheme, _, raw = request.headers.get('Authorization', '').partition(' ')
-            user_id = authenticate_grant(raw, scope) if scheme.lower() == 'bearer' else None
-            if user_id is None:
+            row = _live_grant(raw, scope) if scheme.lower() == 'bearer' else None
+            if row is None:
                 response, status = _error('Authentication required', 401)
                 response.headers['WWW-Authenticate'] = 'Bearer realm="NextMove harness"'
                 return response, status
-            g.user_id, g.auth_type = user_id, 'harness'
+            g.user_id, g.auth_type = row['user_id'], 'harness'
+            g.harness_grant = SimpleNamespace(user_id=row['user_id'], grant_id=LINK_GRANT_PREFIX + row['id'],
+                                              scopes=set(row['scopes']), client_name=CLIENT_NAME)
             return view(*args, **kwargs)
         return wrapped
     return decorator
@@ -273,6 +295,30 @@ def jobs_posting(job_id):
     if not text:
         raise services.ServiceError('Paste the job description')
     return jsonify(_job(services.update_job(g.user_id, job_id, {'description': text})))
+
+
+# Tools -------------------------------------------------------------------
+@harness.get('/me/tools')
+@require_grant('jobs:read')
+def tools_list():
+    """The connector's tools this grant may run, so the chat agent works the tracker the way Claude or Muse do."""
+    from . import mcp
+    return jsonify(tools=mcp.tool_definitions(g.harness_grant.scopes), instructions=mcp.INSTRUCTIONS)
+
+
+@harness.post('/me/tools/<name>')
+@require_grant('jobs:read')
+def tools_call(name):
+    """Run one connector tool as the grant owner. A tool's own failure is 422 with a message for the model."""
+    from . import mcp
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) - {'arguments'}:
+        return _error('Send {"arguments": {...}}', 400)
+    g.oauth = g.harness_grant  # The tools read the caller's scopes, grant (for links) and name (for notes) here.
+    result, error = mcp.run_tool(name, data.get('arguments') or {})
+    if error is not None:
+        return _error(error, 404 if result == 'unknown' else 422)
+    return jsonify(result=result)
 
 
 @harness.get('/me/extractions/<task_id>')
