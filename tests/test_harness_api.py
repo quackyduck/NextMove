@@ -433,3 +433,24 @@ def test_activation_uses_the_per_address_budget_too(client, app):
         used_links = connection.execute(text('SELECT COUNT(*) FROM activation_tokens WHERE used_at IS NOT NULL')).scalar()
     sent = [message for message in mailer.outbox if message['To'].startswith('target+')]
     assert len(sent) == 3 and used_links == 4  # The canonical address (no +tag) got its 3 for the day.
+
+
+def test_a_link_already_saved_returns_that_role_instead_of_a_copy(client, app):
+    user_id, grant = account(client)
+    first = add_job(client, app, grant)
+    assert first['existing'] is False
+    with app.app_context():
+        from jobtracker import services
+        version = services.get_job(user_id, first['id'])['version']
+        services.update_job(user_id, first['id'], {'stage': 'applied', 'version': version})
+    for url in (FIELDS['url'], FIELDS['url'] + '/?utm_source=imessage', 'https://www.jobs.example.com/1'):
+        again = client.post('/api/v1/me/jobs', headers=grant, json={'url': url})
+        assert again.status_code == 200, url
+        assert again.json['existing'] is True and again.json['extraction_id'] is None
+        assert (again.json['id'], again.json['stage'], again.json['stage_label']) == (first['id'], 'applied', 'Applied')
+    other = client.post('/api/v1/me/jobs', headers=grant, json={'url': 'https://jobs.example.com/2'})
+    assert other.status_code == 202 and other.json['existing'] is False
+    # Another account's copy of the same link is never matched.
+    _, stranger = account(client)
+    theirs = client.post('/api/v1/me/jobs', headers=stranger, json={'url': FIELDS['url']})
+    assert theirs.status_code == 202 and theirs.json['id'] != first['id']
