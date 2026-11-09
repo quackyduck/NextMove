@@ -69,7 +69,11 @@ def create_app(test_config=None):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_COOKIE_SECURE=not development,
-        PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+        # Rolling sign-in: every authenticated response re-signs the cookie with a fresh 30 days, so only a
+        # month with no visit signs out (12 hours used to sign everyone out overnight). Password changes,
+        # resets and sign-out-everywhere still end every session at once via session_version.
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        SESSION_REFRESH_EACH_REQUEST=True,
     )
     if test_config:
         app.config.update(test_config)
