@@ -206,12 +206,14 @@ def upload_link(base, grant_id, target, template_id=None, source_id=None):
 
 
 def _redeem(purpose, token, seconds, scope):
-    from .oauth import grant_scopes
+    from . import harness, oauth
     try:
         claims = _serializer(purpose).loads(token, max_age=seconds)
     except BadSignature:
         raise services.ServiceError('This link is invalid or has expired; ask your agent for a new one', 404) from None
-    granted = grant_scopes(claims.get('g'))
+    issued_under = claims.get('g')
+    is_harness = isinstance(issued_under, str) and issued_under.startswith(harness.LINK_GRANT_PREFIX)
+    granted = (harness if is_harness else oauth).grant_scopes(issued_under)
     if granted is None or scope not in granted[1]:
         raise services.ServiceError('This link is invalid or has expired; ask your agent for a new one', 404)
     g.link_scopes = granted[1]

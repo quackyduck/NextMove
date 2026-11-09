@@ -267,6 +267,8 @@ The Resume Agent harness acts on JobTracker strictly as one user. These routes a
 - `GET /me/drafts/<id>`: the same shape. There is no download route for drafts.
 - `POST /me/drafts/<id>/approve`: the only way a draft is exported. It files the draft's DOCX (and PDF) as resume versions on its job, named `<file_stem>.docx` (default `tailored-resume-r<revision>`), and records activity. It never changes the job's stage. Repeating it is a no-op.
 - `POST /me/activation-links`: 201 `{url, activated: false, expires_at}`, a single-use link valid for 24 hours, built from `PUBLIC_BASE_URL`. An already activated account gets 200 `{url, activated: true}` with the dashboard URL.
+- `GET /me/tools`: `{tools, instructions}`, the MCP connector's tool definitions this grant's scopes allow (a harness grant has all of them) and the connector's instructions. The chat agent offers these tools to its model.
+- `POST /me/tools/<name>` `{arguments}`: runs that connector tool as the grant's owner, through the same code as MCP `tools/call`, so validation, versions, activity and agent limits are identical. Returns 200 `{result}`. A tool's own refusal (bad stage, stale version, another account's ID) is 422 `{error}`, worded for the model; an unknown tool is 404; a body with anything besides `arguments` is 400. Dated notes are signed "My Next Moov chat". Download and upload links it creates are tied to the grant and stop working when the grant is revoked.
 
 **Activation (browser).**
 

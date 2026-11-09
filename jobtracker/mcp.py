@@ -482,30 +482,42 @@ def endpoint():
     if method == 'ping':
         return _result(identifier, {})
     if method == 'tools/list':
-        return _result(identifier, {'tools': [entry['definition'] for entry in TOOLS.values()
-                                              if entry['scope'] in g.oauth.scopes]})
+        return _result(identifier, {'tools': tool_definitions(g.oauth.scopes)})
     if method == 'tools/call':
         return _call(identifier, params)
     return _error(identifier, -32601, f'Method not found: {method}')
 
 
-def _call(identifier, params):
-    entry = TOOLS.get(params.get('name'))
+def tool_definitions(scopes):
+    return [entry['definition'] for entry in TOOLS.values() if entry['scope'] in scopes]
+
+
+def run_tool(name, arguments):
+    """(result, None) or (kind, message): kind is 'unknown' for no such tool, 'invalid' for bad arguments and
+    'failed' for the tool's own refusal. g.oauth names the caller: an OAuth connection or a harness grant."""
+    entry = TOOLS.get(name)
     if entry is None:
-        return _error(identifier, -32602, f'Unknown tool: {params.get("name")}')
-    arguments = params.get('arguments') or {}
+        return 'unknown', f'Unknown tool: {name}'
     if not isinstance(arguments, dict):
-        return _error(identifier, -32602, 'arguments must be an object')
+        return 'invalid', 'arguments must be an object'
     if entry['scope'] not in g.oauth.scopes:
-        return _tool_error(identifier, f'This connection was not granted {entry["scope"]}. Ask the user to reconnect '
-                                       'My Next Moov and allow it.')
+        return 'failed', (f'This connection was not granted {entry["scope"]}. Ask the user to reconnect My Next Moov '
+                          'and allow it.')
     unknown = set(arguments) - set(entry['definition']['inputSchema']['properties'])
     if unknown:
-        return _tool_error(identifier, 'Unknown arguments: ' + ', '.join(sorted(unknown)))
+        return 'failed', 'Unknown arguments: ' + ', '.join(sorted(unknown))
     try:
-        result = entry['handler'](arguments)
+        return entry['handler'](arguments), None
     except (ToolError, services.ServiceError) as exc:
-        return _tool_error(identifier, str(exc))
+        return 'failed', str(exc)
+
+
+def _call(identifier, params):
+    result, error = run_tool(params.get('name'), params.get('arguments') or {})
+    if result in ('unknown', 'invalid') and error is not None:
+        return _error(identifier, -32602, error)
+    if error is not None:
+        return _tool_error(identifier, error)
     return _result(identifier, {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False)}],
                                 'structuredContent': result, 'isError': False})
 

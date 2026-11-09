@@ -125,6 +125,9 @@ COLLECTIONS = {
     ('POST', '/api/v1/me/drafts'): 'test_harness_creations_belong_to_the_grant_owner',
     ('GET', '/api/v1/me/templates'): 'test_lists_and_search_exclude_other_tenants',
     ('POST', '/api/v1/me/activation-links'): 'test_harness_api.py',
+    # Connector tools under a harness grant: every tool takes the caller's IDs only (MCP tools/call code path).
+    ('GET', '/api/v1/me/tools'): 'test_harness_tools.py',
+    ('POST', '/api/v1/me/tools/<name>'): 'test_harness_tools.py::test_tools_never_reach_another_accounts_roles',
     ('GET', '/api/v1/auth/activation'): 'test_harness_api.py',
     ('POST', '/api/v1/auth/activate'): 'test_harness_api.py',
     # Email confirmation (schema 15): unauthenticated; the token, not an ID, names the row.
