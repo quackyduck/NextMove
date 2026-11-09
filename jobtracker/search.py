@@ -117,6 +117,21 @@ def evidence(row, query):
                 evidence={'company_similarity': round(company, 3), 'title_similarity': round(title, 3)})
 
 
+def same_posting(user_id, url):
+    """The user's most recently updated role saved from this posting URL (tracking parameters ignored), or None."""
+    target = posting_url(url)
+    rows = get_session().execute(select(Job.id, Job.url).where(
+        Job.user_id == user_id, Job.url != '', func.length(Job.url) <= 4096
+    ).order_by(Job.updated_at.desc(), Job.id).limit(MAX_ROLES)).all()
+    for row in rows:
+        try:
+            if posting_url(row.url) == target:
+                return row.id
+        except ServiceError:
+            continue
+    return None
+
+
 def search(user_id, args):
     query = parameters(args)
     rows = get_session().execute(select(

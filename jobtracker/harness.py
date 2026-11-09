@@ -35,6 +35,7 @@ from .extraction import extract_posting, validate_url
 from .models import ActivationToken, ExtractionTask, HARNESS_SCOPES, HarnessGrant, MasterResume, TailoredDraft, User, new_id, now
 from .profile import RESUME_LIMIT, REQUEST_LIMIT, master_folder, save_version
 from .resume_templates import list_templates
+from .search import same_posting
 
 harness = Blueprint('harness', __name__)
 GRANT_PREFIX = 'nm_harness_'
@@ -248,8 +249,10 @@ def templates_list():
 
 # Jobs and postings ------------------------------------------------------
 def _job(job):
+    from .mcp import STAGE_LABELS
     return {'id': job['id'], 'url': job['url'], 'title': job['title'], 'company': job['company'],
-            'stage': job['stage'], 'posting': job['description'] or None}
+            'stage': job['stage'], 'stage_label': STAGE_LABELS.get(job['stage'], job['stage']),
+            'outcome': job['outcome'], 'posting': job['description'] or None}
 
 
 @harness.post('/me/jobs')
@@ -258,8 +261,12 @@ def jobs_create():
     data = request.get_json(silent=True)
     services._payload(data, {'url'})
     validate_url(data.get('url'))
-    job = services.create_job(g.user_id, {'url': data['url'].strip(), 'stage': 'needs_review'})
-    return jsonify(**_job(job), extraction_id=queue_fill(g.user_id, job)), 202
+    url = data['url'].strip()
+    # A link the user already saved returns that role instead of a second copy (search.posting_url decides).
+    if (known := same_posting(g.user_id, url)) is not None:
+        return jsonify(**_job(services.get_job(g.user_id, known)), existing=True, extraction_id=None), 200
+    job = services.create_job(g.user_id, {'url': url, 'stage': 'needs_review'})
+    return jsonify(**_job(job), existing=False, extraction_id=queue_fill(g.user_id, job)), 202
 
 
 def queue_fill(user_id, job):
