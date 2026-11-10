@@ -2038,3 +2038,14 @@ nav {
 @media (max-width: 760px) {
   .admin-chart-label { font-size: 22px; }
 }
+
+/* iOS Safari zooms into any field under 16px when it is focused and stays zoomed after.
+   On touch screens, give every text field 16px so signing in (or typing anywhere) never zooms the page.
+   !important because component rules (.search-wrap input, .toolbar .form-select, .form-control-sm) are more specific. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
