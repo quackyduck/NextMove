@@ -76,6 +76,14 @@ At phone widths the mascot is hidden and the panels stack.
 
 ## Mascot and name
 
+The favicon simplifies the mascot to a cow face with round glasses, using deep
+teal outlines, coral muzzle/ears and off-white face details. Master artwork is
+`frontend/src/assets/moov-favicon.png`; browser exports live alongside it in `frontend/src/assets/`
+(`favicon.ico` with 16/32/48px entries, 32px and 192px PNGs, and a 180px Apple
+touch icon). `frontend/index.html` references them as Vite assets so the production image
+includes them, with versioned URLs that follow the configured deployment base path.
+
+
 The visible product name is **My Next Moov**. `frontend/src/Brand.jsx`
 shares the wordmark and cow illustration across the sidebar, authentication
 and onboarding. A larger cow sits beside the pipeline title. It remains
